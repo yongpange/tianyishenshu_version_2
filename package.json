@@ -1,0 +1,47 @@
+{
+  "name": "tianyishenshu-website",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "setup-env": "node scripts/setup-env.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.50.0",
+    "@tanstack/react-query": "^5.0.0",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "antd": "^5.12.0",
+    "autoprefixer": "^10.0.1",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.0.0",
+    "framer-motion": "^10.16.0",
+    "lucide-react": "^0.292.0",
+    "lunar-javascript": "^1.7.3",
+    "next": "14.0.0",
+    "postcss": "^8",
+    "react": "^18",
+    "react-dom": "^18",
+    "tailwind-merge": "^2.0.0",
+    "tailwindcss": "^3.3.0",
+    "tencentcloud-sdk-nodejs-sms": "^4.1.56",
+    "typescript": "^5",
+    "zustand": "^4.4.0"
+  },
+  "devDependencies": {
+    "eslint": "^8",
+    "eslint-config-next": "14.0.0"
+  },
+  "description": "这是一个基于 Next.js 的现代命理网站，提供命运解读和人生策展服务。",
+  "main": "next.config.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
