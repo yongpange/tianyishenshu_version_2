@@ -1,426 +1,589 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { 
-  Form, 
-  Input, 
-  Select, 
-  Button, 
-  Card, 
-  Steps, 
-  Modal, 
+import { useForm, Controller } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import {
+  Form,
+  Input,
+  Select,
+  Button,
+  Card,
+  Steps,
+  Progress,
   message,
+  Skeleton,
+  Modal,
   Row,
   Col
 } from 'antd'
-import { CheckCircleFilled } from '@ant-design/icons'
-import SimpleAreaSelector from '@/components/SimpleAreaSelector'
+import { CheckCircleFilled, LoadingOutlined, CalendarOutlined } from '@ant-design/icons'
+
+// 动态导入地区选择器，避免 SSR 问题
+const AreaSelector = dynamic(
+  () => import('@/components/SimpleAreaSelector'),
+  { 
+    ssr: false,
+    loading: () => <Skeleton.Input active style={{ width: '100%', height: 40 }} />
+  }
+)
 
 const { Option } = Select
 
-// 生成年份选项（1900-2024）
-const generateYears = () => {
-  const years = []
-  for (let year = 1900; year <= 2024; year++) {
-    years.push({ value: year, label: `${year}年` })
-  }
-  return years.reverse()
+// Zod 验证模式
+const profileSchema = z.object({
+  nickname: z.string().min(1, '请输入昵称').max(20, '昵称不能超过20个字符'),
+  gender: z.enum(['男', '女'], { errorMap: () => ({ message: '请选择性别' }) }),
+  year: z.number().min(1900, '年份不能早于1900年').max(2024, '年份不能晚于2024年'),
+  month: z.number().min(1, '月份必须在1-12之间').max(12, '月份必须在1-12之间'),
+  day: z.number().min(1, '日期必须在1-31之间').max(31, '日期必须在1-31之间'),
+  hour: z.number().min(0, '小时必须在0-23之间').max(23, '小时必须在0-23之间'),
+  minute: z.number().min(0, '分钟必须在0-59之间').max(59, '分钟必须在0-59之间'),
+  area: z.object({
+    province: z.string().min(1, '请选择省份'),
+    city: z.string().min(1, '请选择城市'),
+    district: z.string().min(1, '请选择区县')
+  })
+})
+
+type ProfileFormData = z.infer<typeof profileSchema>
+
+// 生成步骤
+enum GenerationStep {
+  IDLE = 0,
+  ANALYZING = 1,
+  GENERATING = 2,
+  COMPLETED = 3
 }
 
-// 生成月份选项
-const generateMonths = () => {
-  const months = []
-  for (let month = 1; month <= 12; month++) {
-    months.push({ value: month, label: `${month}月` })
-  }
-  return months
+const stepMessages = {
+  [GenerationStep.IDLE]: '',
+  [GenerationStep.ANALYZING]: '正在分析出生信息...',
+  [GenerationStep.GENERATING]: '正在生成性格报告...',
+  [GenerationStep.COMPLETED]: '报告生成完成'
 }
-
-// 生成日期选项
-const generateDays = (year?: number, month?: number) => {
-  if (!year || !month) return []
-  
-  const daysInMonth = new Date(year, month, 0).getDate()
-  const days = []
-  for (let day = 1; day <= daysInMonth; day++) {
-    days.push({ value: day, label: `${day}日` })
-  }
-  return days
-}
-
-// 生成小时选项
-const generateHours = () => {
-  const hours = []
-  for (let hour = 0; hour <= 23; hour++) {
-    hours.push({ value: hour, label: `${hour.toString().padStart(2, '0')}时` })
-  }
-  return hours
-}
-
-// 生成分钟选项
-const generateMinutes = () => {
-  const minutes = []
-  for (let minute = 0; minute <= 59; minute++) {
-    minutes.push({ value: minute, label: `${minute.toString().padStart(2, '0')}分` })
-  }
-  return minutes
-}
-
-interface FormData {
-  nickname: string
-  gender: string
-  year: number
-  month: number
-  day: number
-  hour: number
-  minute: number
-  area: {
-    province?: string
-    city?: string
-    district?: string
-  }
-}
-
-// 移除旧的AreaData接口，使用新的AreaSelector组件
 
 export default function ProfilePage() {
-  const [form] = Form.useForm()
-  const [loading, setLoading] = useState(false)
-  const [lunarModalVisible, setLunarModalVisible] = useState(false)
-  const [lunarForm] = Form.useForm()
-  const [isFormValid, setIsFormValid] = useState(false)
   const router = useRouter()
+  const [loading, setLoading] = useState(false)
+  const [generationStep, setGenerationStep] = useState(GenerationStep.IDLE)
+  const [progress, setProgress] = useState(0)
+  const [showProgress, setShowProgress] = useState(false)
+  const [showLunarModal, setShowLunarModal] = useState(false)
+  const [lunarDate, setLunarDate] = useState({
+    year: undefined as number | undefined,
+    month: undefined as number | undefined,
+    day: undefined as number | undefined,
+    isLeap: false
+  })
 
-  // 监听表单变化，检查是否所有字段都已填写
-  const handleFormChange = () => {
-    const values = form.getFieldsValue()
-    const areaValues = values.area || {}
-    const isAreaComplete = areaValues.province && areaValues.city && areaValues.district
-    const isValid = values.nickname && values.gender && values.year && values.month && 
-                   values.day !== undefined && values.hour !== undefined && values.minute !== undefined && 
-                   isAreaComplete
-    setIsFormValid(isValid)
+  // React Hook Form 配置
+  const {
+    control,
+    handleSubmit,
+    formState: { errors, isValid },
+    watch,
+    setValue
+  } = useForm<ProfileFormData>({
+    resolver: zodResolver(profileSchema),
+    mode: 'onChange',
+    defaultValues: {
+      nickname: '',
+      gender: undefined,
+      year: undefined,
+      month: undefined,
+      day: undefined,
+      hour: 12,
+      minute: 0,
+      area: {
+        province: '',
+        city: '',
+        district: ''
+      }
+    }
+  })
+
+  // 监听表单变化
+  const watchedValues = watch()
+
+  // 页面加载时检查登录状态
+  useEffect(() => {
+    try {
+      const loginData = localStorage.getItem('loginData')
+      if (!loginData) {
+        message.error('请先登录')
+        router.push('/login')
+        return
+      }
+
+      // 尝试加载已保存的数据
+      const savedData = localStorage.getItem('userData')
+      if (savedData) {
+        try {
+          const userData = JSON.parse(savedData)
+          // 填充表单
+          Object.keys(userData).forEach(key => {
+            if (userData[key] !== undefined) {
+              setValue(key as keyof ProfileFormData, userData[key])
+            }
+          })
+        } catch (error) {
+          console.error('加载保存的数据失败:', error)
+        }
+      }
+    } catch (error) {
+      console.error('检查登录状态失败:', error)
+    }
+  }, [router, setValue])
+
+  // 获取用户手机号
+  const getUserPhoneNumber = (): string | null => {
+    try {
+      const loginData = localStorage.getItem('loginData')
+      if (loginData) {
+        const parsed = JSON.parse(loginData)
+        return parsed.phoneNumber || null
+      }
+      return null
+    } catch {
+      return null
+    }
   }
 
-  // 地区选择变化
-  const handleAreaChange = (areaValue: any) => {
-    form.setFieldsValue({ area: areaValue })
-    handleFormChange()
+  // 处理地区变化
+  const handleAreaChange = (value: any) => {
+    setValue('area', value, { shouldValidate: true })
   }
 
-  // 简单的农历转换功能（暂时用模拟转换）
-  const handleLunarConvert = () => {
-    lunarForm.validateFields().then(values => {
-      // 简单的模拟转换逻辑
-      const solarYear = values.lunarYear
-      const solarMonth = values.lunarMonth
-      const solarDay = values.lunarDay + 10 // 简单的偏移处理
-      
-      form.setFieldsValue({
-        year: solarYear,
-        month: solarMonth,
-        day: solarDay > 28 ? solarDay - 28 : solarDay
+  // 农历转阳历
+  const convertLunarToSolar = () => {
+    if (!lunarDate.year || !lunarDate.month || !lunarDate.day) {
+      message.error('请完整填写农历日期')
+      return
+    }
+
+    try {
+      // 使用农历转换库
+      const { Lunar, Solar } = require('lunar-javascript')
+      const lunar = Lunar.fromYmd(lunarDate.year, lunarDate.month, lunarDate.day)
+      const solar = lunar.getSolar()
+
+      // 更新表单值
+      setValue('year', solar.getYear(), { shouldValidate: true })
+      setValue('month', solar.getMonth(), { shouldValidate: true })
+      setValue('day', solar.getDay(), { shouldValidate: true })
+
+      message.success(`农历${lunarDate.year}年${lunarDate.month}月${lunarDate.day}日 转换为 阳历${solar.getYear()}年${solar.getMonth()}月${solar.getDay()}日`)
+      setShowLunarModal(false)
+
+      // 重置农历日期
+      setLunarDate({
+        year: undefined,
+        month: undefined,
+        day: undefined,
+        isLeap: false
       })
+    } catch (error) {
+      console.error('农历转换失败:', error)
+      message.error('农历转换失败，请检查日期是否正确')
+    }
+  }
+
+  // 模拟进度更新
+  const updateProgress = async () => {
+    setShowProgress(true)
+    setGenerationStep(GenerationStep.ANALYZING)
+    setProgress(20)
+
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    setProgress(50)
+
+    setGenerationStep(GenerationStep.GENERATING)
+    await new Promise(resolve => setTimeout(resolve, 2000))
+    setProgress(80)
+
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    setGenerationStep(GenerationStep.COMPLETED)
+    setProgress(100)
+
+    await new Promise(resolve => setTimeout(resolve, 500))
+    setShowProgress(false)
+  }
+
+  // 表单提交
+  const onSubmit = async (data: ProfileFormData) => {
+    try {
+      setLoading(true)
       
-      message.success(`农历已转换为阳历`)
-      setLunarModalVisible(false)
-      lunarForm.resetFields()
-      handleFormChange()
-    })
+      const userId = getUserPhoneNumber()
+      if (!userId) {
+        message.error('未找到登录信息，请重新登录')
+        router.push('/login')
+        return
+      }
+
+      console.log('📝 提交表单数据:', data)
+
+      // 保存到 localStorage
+      localStorage.setItem('userData', JSON.stringify(data))
+
+      // 转换为 UserInfo 格式
+      const userInfo = {
+        name: data.nickname,
+        gender: data.gender,
+        year: data.year,
+        month: data.month,
+        day: data.day,
+        hour: data.hour,
+        minute: data.minute,
+        area: data.area
+      }
+
+      // 开始进度显示
+      await updateProgress()
+
+      // 调用 API 生成报告
+      const response = await fetch('/api/personality-report/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userInfo,
+          userId
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        message.success('信息保存成功，性格报告已生成！')
+        router.push('/dashboard')
+      } else {
+        throw new Error(result.error || '生成报告失败')
+      }
+
+    } catch (error) {
+      console.error('提交失败:', error)
+      message.error(error instanceof Error ? error.message : '保存失败，请重试')
+      setShowProgress(false)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
-      <div className="max-w-2xl mx-auto">
-        {/* Logo和标题 */}
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-8">
+      <Card
+        className="w-full max-w-4xl shadow-lg"
+      >
+        {/* 头部 */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-4">
             <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center mr-3">
-              <span className="text-white text-sm font-bold">●</span>
+              <span className="text-white text-sm font-bold">天</span>
             </div>
-            <h1 className="text-2xl font-bold text-gray-800">天乙神数</h1>
+            <h1 className="text-2xl font-bold text-gray-800 m-0">天乙神数</h1>
           </div>
-          <h2 className="text-xl text-gray-700 mb-2">完善您的个人信息</h2>
-          <p className="text-gray-500">填写详细信息，获得精准命理分析</p>
+          
+          <h2 className="text-xl font-semibold text-gray-700 mb-2">完善您的个人信息</h2>
+          <p className="text-gray-500">提高详细信息，获取精准生辰分析</p>
+
+          {/* 步骤指示器 */}
+          <div className="mt-6">
+            <Steps
+              current={1}
+              size="small"
+              items={[
+                { title: '身份验证', icon: <CheckCircleFilled className="text-green-500" /> },
+                { title: '完善信息', icon: loading ? <LoadingOutlined /> : undefined },
+                { title: '查看报告' }
+              ]}
+            />
+          </div>
         </div>
 
-        {/* 步骤指示器 */}
-        <div className="mb-8">
-          <Steps
-            current={1}
-            items={[
-              {
-                title: '身份验证',
-                status: 'finish',
-                icon: <CheckCircleFilled className="text-green-500" />
-              },
-              {
-                title: '完善信息',
-                status: 'process'
-              },
-              {
-                title: '进入应用',
-                status: 'wait'
-              }
-            ]}
-          />
-        </div>
-
-        {/* 表单卡片 */}
-        <Card className="shadow-lg">
-          <Form
-            form={form}
-            layout="vertical"
-            onValuesChange={handleFormChange}
-          >
-            <Row gutter={16}>
-              {/* 昵称 */}
-              <Col xs={24} sm={12}>
-                <Form.Item
-                  label="昵称"
-                  name="nickname"
-                  rules={[{ required: true, message: '请输入您的昵称' }]}
-                >
+        {/* 表单 */}
+        <Form layout="vertical" onFinish={handleSubmit(onSubmit)}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* 昵称 */}
+            <Form.Item 
+              label="昵称" 
+              validateStatus={errors.nickname ? 'error' : ''}
+              help={errors.nickname?.message}
+              required
+            >
+              <Controller
+                name="nickname"
+                control={control}
+                render={({ field }) => (
                   <Input 
-                    placeholder="请输入您的昵称" 
+                    {...field}
+                    placeholder="请输入您的昵称"
                     size="large"
                   />
-                </Form.Item>
-              </Col>
-
-              {/* 性别 */}
-              <Col xs={24} sm={12}>
-                <Form.Item
-                  label="性别"
-                  name="gender"
-                  rules={[{ required: true, message: '请选择性别' }]}
-                >
-                  <Select placeholder="男" size="large">
-                    <Option value="male">男</Option>
-                    <Option value="female">女</Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-            </Row>
-
-            {/* 出生日期和时间 */}
-            <Form.Item label="出生日期时间">
-              <div className="mb-2">
-                <Button 
-                  type="link" 
-                  onClick={() => setLunarModalVisible(true)}
-                  className="p-0 text-blue-500"
-                >
-                  农历转换成太阳历
-                </Button>
-              </div>
-              <Row gutter={8}>
-                <Col span={5}>
-                  <Form.Item 
-                    name="year" 
-                    rules={[{ required: true, message: '请选择年份' }]}
-                    noStyle
-                  >
-                    <Select placeholder="1990年" size="large" showSearch>
-                      {generateYears().map(year => (
-                        <Option key={year.value} value={year.value}>
-                          {year.label}
-                        </Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
-                </Col>
-                <Col span={4}>
-                  <Form.Item 
-                    name="month" 
-                    rules={[{ required: true, message: '请选择月份' }]}
-                    noStyle
-                  >
-                    <Select placeholder="1月" size="large">
-                      {generateMonths().map(month => (
-                        <Option key={month.value} value={month.value}>
-                          {month.label}
-                        </Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
-                </Col>
-                <Col span={4}>
-                  <Form.Item 
-                    name="day" 
-                    rules={[{ required: true, message: '请选择日期' }]}
-                    noStyle
-                  >
-                    <Select placeholder="1日" size="large">
-                      {generateDays(
-                        form.getFieldValue('year'), 
-                        form.getFieldValue('month')
-                      ).map(day => (
-                        <Option key={day.value} value={day.value}>
-                          {day.label}
-                        </Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
-                </Col>
-                <Col span={5}>
-                  <Form.Item 
-                    name="hour" 
-                    rules={[{ required: true, message: '请选择时辰' }]}
-                    noStyle
-                  >
-                    <Select placeholder="12时" size="large">
-                      {generateHours().map(hour => (
-                        <Option key={hour.value} value={hour.value}>
-                          {hour.label}
-                        </Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
-                </Col>
-                <Col span={6}>
-                  <Form.Item 
-                    name="minute" 
-                    rules={[{ required: true, message: '请选择分钟' }]}
-                    noStyle
-                  >
-                    <Select placeholder="00分" size="large">
-                      {generateMinutes().map(minute => (
-                        <Option key={minute.value} value={minute.value}>
-                          {minute.label}
-                        </Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
-                </Col>
-              </Row>
-            </Form.Item>
-
-            {/* 出生地区 */}
-            <Form.Item 
-              label="出生地区"
-              name="area"
-              rules={[{ required: true, message: '请选择完整的出生地区' }]}
-            >
-              <SimpleAreaSelector 
-                value={form.getFieldValue('area')}
-                onChange={handleAreaChange}
-                placeholder={{
-                  province: "选择省份",
-                  city: "选择城市", 
-                  district: "选择区县"
-                }}
-                size="large"
+                )}
               />
             </Form.Item>
 
-            {/* 按钮区域 */}
-            <div className="flex justify-between mt-8">
-              <Button 
-                size="large" 
-                onClick={() => router.back()}
-                className="px-8"
+            {/* 性别 */}
+            <Form.Item 
+              label="性别" 
+              validateStatus={errors.gender ? 'error' : ''}
+              help={errors.gender?.message}
+              required
+            >
+              <Controller
+                name="gender"
+                control={control}
+                render={({ field }) => (
+                  <Select 
+                    {...field}
+                    placeholder="请选择性别"
+                    size="large"
+                  >
+                    <Option value="男">男</Option>
+                    <Option value="女">女</Option>
+                  </Select>
+                )}
+              />
+            </Form.Item>
+          </div>
+
+          {/* 出生日期时间 */}
+          <Form.Item label="出生日期时间" required>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm text-gray-600">请选择阳历出生日期时间</span>
+              <Button
+                type="link"
+                icon={<CalendarOutlined />}
+                onClick={() => setShowLunarModal(true)}
+                className="text-blue-600 hover:text-blue-700"
               >
-                返回
-              </Button>
-              <Button 
-                type="primary" 
-                size="large" 
-                loading={loading}
-                disabled={!isFormValid}
-                className="px-8"
-                style={{
-                  backgroundColor: isFormValid ? '#000' : '#d9d9d9',
-                  borderColor: isFormValid ? '#000' : '#d9d9d9'
-                }}
-                onClick={() => {
-                  const values = form.getFieldsValue()
-                  console.log('保存的用户信息:', values)
-                  
-                  // 将数据保存到localStorage
-                  const userData = {
-                    ...values,
-                    timestamp: Date.now()
-                  }
-                  localStorage.setItem('userData', JSON.stringify(userData))
-                  
-                  message.success('信息保存成功！')
-                  router.push('/dashboard')
-                }}
-              >
-                保存并继续
+                农历转换成阳历
               </Button>
             </div>
-          </Form>
-        </Card>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <Controller
+                name="year"
+                control={control}
+                render={({ field }) => (
+                  <Select 
+                    {...field}
+                    placeholder="年份"
+                    size="large"
+                    showSearch
+                    status={errors.year ? 'error' : ''}
+                  >
+                    {Array.from({ length: 125 }, (_, i) => 2024 - i).map(year => (
+                      <Option key={year} value={year}>{year}年</Option>
+                    ))}
+                  </Select>
+                )}
+              />
+              
+              <Controller
+                name="month"
+                control={control}
+                render={({ field }) => (
+                  <Select 
+                    {...field}
+                    placeholder="月份"
+                    size="large"
+                    status={errors.month ? 'error' : ''}
+                  >
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map(month => (
+                      <Option key={month} value={month}>{month}月</Option>
+                    ))}
+                  </Select>
+                )}
+              />
 
-        {/* 农历转换弹窗 */}
+              <Controller
+                name="day"
+                control={control}
+                render={({ field }) => (
+                  <Select 
+                    {...field}
+                    placeholder="日期"
+                    size="large"
+                    status={errors.day ? 'error' : ''}
+                  >
+                    {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+                      <Option key={day} value={day}>{day}日</Option>
+                    ))}
+                  </Select>
+                )}
+              />
+
+              <Controller
+                name="hour"
+                control={control}
+                render={({ field }) => (
+                  <Select 
+                    {...field}
+                    placeholder="小时"
+                    size="large"
+                    status={errors.hour ? 'error' : ''}
+                  >
+                    {Array.from({ length: 24 }, (_, i) => i).map(hour => (
+                      <Option key={hour} value={hour}>{hour}时</Option>
+                    ))}
+                  </Select>
+                )}
+              />
+
+              <Controller
+                name="minute"
+                control={control}
+                render={({ field }) => (
+                  <Select 
+                    {...field}
+                    placeholder="分钟"
+                    size="large"
+                    status={errors.minute ? 'error' : ''}
+                  >
+                    {Array.from({ length: 60 }, (_, i) => i).map(minute => (
+                      <Option key={minute} value={minute}>{minute.toString().padStart(2, '0')}分</Option>
+                    ))}
+                  </Select>
+                )}
+              />
+            </div>
+            {(errors.year || errors.month || errors.day || errors.hour || errors.minute) && (
+              <div className="text-red-500 text-sm mt-1">请完整填写出生日期时间</div>
+            )}
+          </Form.Item>
+
+          {/* 出生地区 */}
+          <Form.Item 
+            label="出生地区" 
+            validateStatus={errors.area ? 'error' : ''}
+            help={errors.area?.province?.message || errors.area?.city?.message || errors.area?.district?.message}
+            required
+          >
+            <AreaSelector
+              value={watchedValues.area}
+              onChange={handleAreaChange}
+              placeholder="请选择出生地区"
+            />
+          </Form.Item>
+
+          {/* 提交按钮 */}
+          <div className="flex gap-4 mt-8">
+            <Button 
+              size="large" 
+              className="flex-1"
+              onClick={() => router.back()}
+            >
+              返回
+            </Button>
+            <Button 
+              type="primary" 
+              size="large" 
+              htmlType="submit"
+              loading={loading}
+              disabled={!isValid}
+              className="flex-1 bg-black hover:bg-gray-800 border-black"
+            >
+              保存并继续
+            </Button>
+          </div>
+        </Form>
+
+        {/* 进度弹窗 */}
+        {showProgress && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <Card className="w-80">
+              <div className="text-center">
+                <div className="mb-4">
+                  <LoadingOutlined style={{ fontSize: 48, color: '#1890ff' }} />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">正在生成性格报告</h3>
+                <p className="text-gray-600 mb-4">{stepMessages[generationStep]}</p>
+                <Progress percent={progress} strokeColor="#1890ff" />
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* 农历转换模态框 */}
         <Modal
-          title="农历转换成太阳历"
-          open={lunarModalVisible}
-          onOk={handleLunarConvert}
-          onCancel={() => {
-            setLunarModalVisible(false)
-            lunarForm.resetFields()
-          }}
+          title="农历转阳历"
+          open={showLunarModal}
+          onOk={convertLunarToSolar}
+          onCancel={() => setShowLunarModal(false)}
           okText="转换"
           cancelText="取消"
+          width={500}
         >
-          <Form form={lunarForm} layout="vertical">
-            <Row gutter={16}>
-              <Col span={8}>
-                <Form.Item
-                  label="农历年份"
-                  name="lunarYear"
-                  rules={[{ required: true, message: '请输入农历年份' }]}
-                >
-                  <Select placeholder="农历年份" showSearch>
-                    {generateYears().map(year => (
-                      <Option key={year.value} value={year.value}>
-                        {year.value}年
-                      </Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item
-                  label="农历月份"
-                  name="lunarMonth"
-                  rules={[{ required: true, message: '请输入农历月份' }]}
-                >
-                  <Select placeholder="农历月份">
-                    {generateMonths().map(month => (
-                      <Option key={month.value} value={month.value}>
-                        {month.value}月
-                      </Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item
-                  label="农历日期"
-                  name="lunarDay"
-                  rules={[{ required: true, message: '请输入农历日期' }]}
-                >
-                  <Select placeholder="农历日期">
-                    {Array.from({length: 30}, (_, i) => i + 1).map(day => (
-                      <Option key={day} value={day}>
-                        {day}日
-                      </Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-              </Col>
-            </Row>
-            <div className="text-gray-500 text-sm mt-2">
+          <div className="space-y-4">
+            <div className="text-sm text-gray-600 mb-4">
               请输入农历日期，系统将自动转换为对应的阳历日期
             </div>
-          </Form>
+
+            <Row gutter={16}>
+              <Col span={8}>
+                <div className="mb-2">
+                  <label className="block text-sm font-medium text-gray-700">农历年份</label>
+                </div>
+                <Select
+                  placeholder="选择年份"
+                  value={lunarDate.year}
+                  onChange={(value) => setLunarDate(prev => ({ ...prev, year: value }))}
+                  style={{ width: '100%' }}
+                  showSearch
+                >
+                  {Array.from({ length: 125 }, (_, i) => 2024 - i).map(year => (
+                    <Select.Option key={year} value={year}>{year}年</Select.Option>
+                  ))}
+                </Select>
+              </Col>
+
+              <Col span={8}>
+                <div className="mb-2">
+                  <label className="block text-sm font-medium text-gray-700">农历月份</label>
+                </div>
+                <Select
+                  placeholder="选择月份"
+                  value={lunarDate.month}
+                  onChange={(value) => setLunarDate(prev => ({ ...prev, month: value }))}
+                  style={{ width: '100%' }}
+                >
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map(month => (
+                    <Select.Option key={month} value={month}>{month}月</Select.Option>
+                  ))}
+                </Select>
+              </Col>
+
+              <Col span={8}>
+                <div className="mb-2">
+                  <label className="block text-sm font-medium text-gray-700">农历日期</label>
+                </div>
+                <Select
+                  placeholder="选择日期"
+                  value={lunarDate.day}
+                  onChange={(value) => setLunarDate(prev => ({ ...prev, day: value }))}
+                  style={{ width: '100%' }}
+                >
+                  {Array.from({ length: 30 }, (_, i) => i + 1).map(day => (
+                    <Select.Option key={day} value={day}>{day}日</Select.Option>
+                  ))}
+                </Select>
+              </Col>
+            </Row>
+
+            <div className="text-xs text-gray-500 mt-4">
+              <p>• 农历转阳历功能基于中国传统历法计算</p>
+              <p>• 转换结果将自动填入上方的出生日期字段</p>
+              <p>• 如遇闰月等特殊情况，请咨询专业人士</p>
+            </div>
+          </div>
         </Modal>
-      </div>
+      </Card>
     </div>
   )
-} 
+}

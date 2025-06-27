@@ -3,7 +3,7 @@ import { CozeAPI, COZE_CN_BASE_URL, ChatStatus, RoleType } from '@coze/api'
 
 // 环境变量配置
 const COZE_API_TOKEN = process.env.COZE_API_TOKEN || ''
-const COZE_BOT_ID = process.env.COZE_BOT_ID || ''
+const COZE_BOT_ID = process.env.BOT_ID || ''
 
 // 初始化 Coze API 客户端
 const coze = new CozeAPI({
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
 ` : message
 
     // 调用 Coze 智能体
-    const chatResponse = await coze.chat.create({
+    const result = await coze.chat.createAndPoll({
       bot_id: COZE_BOT_ID,
       user_id: 'user_' + Date.now(), // 生成唯一用户ID
       additional_messages: [
@@ -55,37 +55,21 @@ export async function POST(request: NextRequest) {
       conversation_id: conversationId, // 如果有对话ID则传入，用于保持对话连续性
     })
 
-    // 等待聊天完成
-    let chat = chatResponse
-    while (chat.status === ChatStatus.IN_PROGRESS) {
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      chat = await coze.chat.retrieve({ 
-        chat_id: chat.id,
-        conversation_id: chat.conversation_id 
-      })
-    }
-
-    if (chat.status === ChatStatus.COMPLETED) {
-      // 获取对话消息
-      const messagesResponse = await coze.chat.message.list({
-        chat_id: chat.id,
-        conversation_id: chat.conversation_id,
-      })
-
+    if (result.chat.status === ChatStatus.COMPLETED && result.messages) {
       // 找到AI的回复
-      const aiMessage = messagesResponse.data.find(
+      const aiMessage = result.messages.find(
         msg => msg.role === RoleType.Assistant && msg.type === 'answer'
       )
 
       return NextResponse.json({
         success: true,
         response: aiMessage?.content || '抱歉，我现在无法回答这个问题。',
-        conversationId: chat.conversation_id,
-        chatId: chat.id,
+        conversationId: result.chat.conversation_id,
+        chatId: result.chat.id,
       })
     } else {
       return NextResponse.json(
-        { error: '智能体响应失败', status: chat.status },
+        { error: '智能体响应失败', status: result.chat.status },
         { status: 500 }
       )
     }

@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { smsCodeStore, cleanExpiredCodes, debugSmsStore } from '@/lib/sms-store'
+import { createOrGetUser, verifyInviteCode, markInviteCodeAsUsed } from '@/lib/user-manager'
 
-// 获取服务器存储的兑换码
+// 获取服务器存储的兑换码（保留作为备用）
 const getServerInviteCodes = () => {
   const codes = globalThis.inviteCodesStore || []
   return codes
 }
 
-// 标记兑换码为已使用
-const markInviteCodeAsUsed = (codeToMark: string) => {
+// 旧的标记兑换码函数（已废弃，保留作为备用）
+const markInviteCodeAsUsedLocal = (codeToMark: string) => {
   const codes = globalThis.inviteCodesStore || []
   const codeIndex = codes.findIndex((item: any) => item.code === codeToMark)
   if (codeIndex !== -1) {
@@ -112,57 +113,56 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      const serverCodes = getServerInviteCodes()
-      console.log('🎫 服务器兑换码列表:', serverCodes.map((c: any) => ({ code: c.code, status: c.status })))
-      
-      const foundCode = serverCodes.find((item: any) => item.code === inviteCode)
-      
-      if (!foundCode) {
-        console.log('❌ 兑换码不存在:', inviteCode)
+      console.log('🎟️ 开始验证兑换码:', inviteCode)
+
+      // 使用Supabase验证兑换码
+      inviteCodeValid = await verifyInviteCode(inviteCode)
+
+      if (!inviteCodeValid) {
+        console.log('❌ 兑换码无效或已使用:', inviteCode)
         return NextResponse.json(
-          { success: false, message: '兑换码无效' },
+          { success: false, message: '兑换码无效或已使用' },
           { status: 400 }
         )
       }
 
-      if (foundCode.status === 'used') {
-        console.log('❌ 兑换码已被使用:', inviteCode)
-        return NextResponse.json(
-          { success: false, message: '兑换码已被使用' },
-          { status: 400 }
-        )
-      }
-
-      // 标记兑换码已使用
-      markInviteCodeAsUsed(inviteCode)
-      console.log('✅ 兑换码验证成功并标记为已使用:', inviteCode)
-      inviteCodeValid = true
+      console.log('✅ 兑换码验证成功:', inviteCode)
     }
 
     // 验证成功，清除验证码
     smsCodeStore.delete(phone)
 
-    // 生成用户token（实际项目中应使用JWT）
-    const userToken = `token_${phone}_${Date.now()}`
+    try {
+      // 创建或获取用户
+      const user = await createOrGetUser(phone, inviteCodeValid ? inviteCode : undefined)
 
-    // 这里应该保存用户信息到数据库
-    // 实际项目中应该：
-    // 1. 检查用户是否已存在
-    // 2. 创建新用户或更新现有用户
-    // 3. 记录兑换码使用情况
-    // 4. 生成JWT token
-
-    return NextResponse.json({
-      success: true,
-      message: '登录成功',
-      data: {
-        token: userToken,
-        phone,
-        inviteCodeUsed: inviteCodeValid,
-        // 根据兑换码给予不同权益
-        permissions: inviteCodeValid ? ['premium', 'basic'] : ['basic']
+      // 如果有兑换码，标记为已使用
+      if (inviteCodeValid && inviteCode) {
+        await markInviteCodeAsUsed(inviteCode, phone)
+        console.log('✅ 兑换码已标记为已使用:', inviteCode)
       }
-    })
+
+      // 生成用户token（实际项目中应使用JWT）
+      const userToken = `token_${phone}_${Date.now()}`
+
+      return NextResponse.json({
+        success: true,
+        message: '登录成功',
+        data: {
+          token: userToken,
+          phone,
+          userId: user.id,
+          inviteCodeUsed: inviteCodeValid,
+          permissions: user.permissions
+        }
+      })
+    } catch (error) {
+      console.error('用户创建失败:', error)
+      return NextResponse.json(
+        { success: false, message: '登录失败，请重试' },
+        { status: 500 }
+      )
+    }
 
   } catch (error) {
     console.error('验证短信验证码失败:', error)

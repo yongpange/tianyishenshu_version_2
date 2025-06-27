@@ -127,6 +127,13 @@ export default function LoginPage() {
       })
 
       if (response.ok) {
+        // 保存手机号到localStorage
+        const loginData = {
+          phoneNumber,
+          timestamp: Date.now()
+        }
+        localStorage.setItem('loginData', JSON.stringify(loginData))
+
         alert('登录成功!')
         // 跳转到信息填写页面
         window.location.href = '/profile'

@@ -43,14 +43,39 @@ export default function AdminDashboard() {
 
     // 加载兑换码列表
     loadCodes()
+
+    // 设置定时刷新，每30秒检查一次兑换码状态
+    const interval = setInterval(() => {
+      loadCodes()
+    }, 30000)
+
+    return () => clearInterval(interval)
   }, [router])
 
   const loadCodes = async () => {
-    // 从localStorage加载兑换码
+    try {
+      // 优先从Supabase加载兑换码
+      const response = await fetch('/api/invite-code/supabase')
+      if (response.ok) {
+        const result = await response.json()
+        if (result.success) {
+          // 按创建时间倒序排列（最新的在上面）
+          const sortedCodes = result.data.sort((a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          )
+          setCodes(sortedCodes)
+          return
+        }
+      }
+    } catch (error) {
+      console.error('从Supabase加载兑换码失败:', error)
+    }
+
+    // 降级到localStorage
     const data = localStorage.getItem('invite_codes')
     const allCodes = data ? JSON.parse(data) : []
     setCodes(allCodes)
-    
+
     // 同步到服务器
     await syncCodesToServer(allCodes)
   }
@@ -86,28 +111,50 @@ export default function AdminDashboard() {
   const handleCreateCode = async () => {
     setLoading(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 500))
-      
+      // 优先使用Supabase创建兑换码
+      const response = await fetch('/api/invite-code/supabase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          count: 1,
+          remarks: remarks || `管理员生成 ${new Date().toLocaleString()}`
+        })
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        if (result.success) {
+          message.success('兑换码生成成功！')
+          setModalVisible(false)
+          setRemarks('')
+          // 重新加载兑换码列表
+          await loadCodes()
+          return
+        }
+      }
+
+      // 降级到localStorage方式
       const newCode = {
         id: Date.now().toString(),
         code: generateCode(),
-        status: 'unused',
+        status: 'active',
         createdAt: new Date().toISOString(),
-        remarks
+        remarks: remarks || `管理员生成 ${new Date().toLocaleString()}`
       }
 
       const existingCodes = JSON.parse(localStorage.getItem('invite_codes') || '[]')
-      existingCodes.push(newCode)
+      existingCodes.unshift(newCode) // 添加到开头，保持最新的在上面
       localStorage.setItem('invite_codes', JSON.stringify(existingCodes))
-      
+
       // 同步到服务器
       await syncCodesToServer(existingCodes)
-      
+
       setCodes(existingCodes)
       setModalVisible(false)
       setRemarks('')
       message.success('兑换码生成成功！')
     } catch (error) {
+      console.error('生成兑换码失败:', error)
       message.error('生成失败，请重试')
     } finally {
       setLoading(false)
@@ -158,9 +205,9 @@ export default function AdminDashboard() {
       key: 'status',
       render: (status) => {
         const config = {
-          unused: { color: 'green', text: '未使用' },
+          active: { color: 'green', text: '未使用' },
           used: { color: 'blue', text: '已使用' },
-          disabled: { color: 'red', text: '已禁用' }
+          expired: { color: 'red', text: '已过期' }
         }
         return <Tag color={config[status]?.color}>
           {config[status]?.text}
@@ -246,8 +293,8 @@ export default function AdminDashboard() {
         >
           <div className="mb-4">
             <p className="text-gray-600">
-              总计：{codes.length} 个兑换码 | 
-              未使用：{codes.filter(c => c.status === 'unused').length} 个 | 
+              总计：{codes.length} 个兑换码 |
+              未使用：{codes.filter(c => c.status === 'active').length} 个 |
               已使用：{codes.filter(c => c.status === 'used').length} 个
             </p>
           </div>

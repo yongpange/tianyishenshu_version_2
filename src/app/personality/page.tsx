@@ -2,25 +2,34 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { 
-  Button, 
-  Input, 
-  Card, 
-  Typography, 
+import {
+  Button,
+  Input,
+  Card,
+  Typography,
   Space,
   message,
   Divider,
-  Drawer
+  Drawer,
+  Spin,
+  Alert
 } from 'antd'
-import { 
+import {
   ArrowLeftOutlined,
   ArrowRightOutlined,
   SendOutlined,
   PlusOutlined,
   UserOutlined,
   RobotOutlined,
-  MenuOutlined
+  MenuOutlined,
+  LoadingOutlined
 } from '@ant-design/icons'
+import {
+  getUserPhoneNumber,
+  getPersonalityReport,
+  formatUserInfoDisplay
+} from '@/utils/personality-report'
+import { getUserConversations, saveConversation, deleteConversation } from '@/lib/user-manager'
 
 const { TextArea } = Input
 const { Title, Text, Paragraph } = Typography
@@ -48,35 +57,103 @@ export default function PersonalityReportPage() {
   const [currentMessage, setCurrentMessage] = useState('')
   const [loading, setLoading] = useState(false)
   const [drawerVisible, setDrawerVisible] = useState(false)
+  const [reportContent, setReportContent] = useState<string | null>(null)
+  const [reportLoading, setReportLoading] = useState(true)
+  const [reportError, setReportError] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
 
-  // 性格报告内容
-  const personalityReport = {
-    title: '性格分析报告',
-    summary: `您好，${userInfo?.nickname || '用户'}！根据您提供的出生信息（${userInfo?.year}年${userInfo?.month}月${userInfo?.day}日 ${userInfo?.hour}时${userInfo?.minute}分，${userInfo?.area?.province}${userInfo?.area?.city}${userInfo?.area?.district}），经过天乙神数系统的综合分析，为您生成以下性格特征报告。`,
-    sections: [
-      {
-        title: '基本性格特征',
-        content: '您的性格温和而坚定，具有很强的责任感和使命感。在处理事情时，您倾向于深思熟虑，不轻易做决定，但一旦决定就会坚持到底。您天生具有敏锐的洞察力，能够快速理解他人的情感和需求，这使您在人际交往中颇受欢迎。'
-      },
-      {
-        title: '情感表达方式',
-        content: '您在情感表达上相对内敛，不喜欢过于张扬，但内心深处有着丰富的情感世界。您重视与他人的深层次交流，善于倾听，也愿意为重要的人付出。在爱情中，您是忠诚而专一的伴侣，但可能需要时间来完全敞开心扉。'
-      },
-      {
-        title: '处事风格',
-        content: '您做事认真负责，注重细节，有很强的完美主义倾向。您喜欢按计划行事，不喜欢突发状况，但当面临挑战时，您的适应能力超乎想象。您擅长分析问题的本质，能够找到创新的解决方案。'
-      },
-      {
-        title: '人际关系',
-        content: '您在社交场合中表现得体，但更倾向于与少数知心朋友保持深度联系，而非广泛的社交网络。您是一个值得信赖的朋友，朋友们经常向您寻求建议和支持。您的真诚和善良让您在团队中起到润滑剂的作用。'
-      },
-      {
-        title: '优势与潜力',
-        content: '您的主要优势在于强大的执行力和持续的学习能力。您能够在压力下保持冷静，具有出色的判断力。您的创造力和想象力丰富，适合从事需要创新思维的工作。建议您多相信自己的直觉，它往往能为您指引正确的方向。'
+  // 加载性格报告
+  const loadPersonalityReport = async () => {
+    try {
+      setReportLoading(true)
+      setReportError(null)
+
+      const userId = getUserPhoneNumber()
+      if (!userId) {
+        setReportError('未找到用户信息，请重新登录')
+        return
       }
-    ]
+
+      const report = await getPersonalityReport(userId)
+
+      if (report && report.content) {
+        setReportContent(report.content)
+      } else {
+        setReportError('性格报告未生成，请返回信息填写页重新生成')
+      }
+    } catch (error) {
+      console.error('加载性格报告失败:', error)
+      setReportError('加载报告失败，请稍后重试')
+    } finally {
+      setReportLoading(false)
+    }
+  }
+
+  // 重新生成报告
+  const regenerateReport = () => {
+    router.push('/profile')
+  }
+
+  // 加载对话历史
+  const loadConversations = async () => {
+    try {
+      const userId = getUserPhoneNumber()
+      if (!userId) return
+
+      // 从Supabase加载对话历史
+      const supabaseConversations = await getUserConversations(userId)
+
+      if (supabaseConversations.length > 0) {
+        const formattedConversations = supabaseConversations.map((conv: any) => ({
+          ...conv,
+          createdAt: new Date(conv.created_at),
+          messages: conv.messages.map((msg: any) => ({
+            ...msg,
+            timestamp: new Date(msg.timestamp)
+          }))
+        }))
+        setConversations(formattedConversations)
+        setActiveConversationId(formattedConversations[0].id)
+      } else {
+        // 如果Supabase没有数据，尝试从localStorage加载
+        const savedConversations = localStorage.getItem('personality_conversations')
+        if (savedConversations) {
+          const conversations = JSON.parse(savedConversations)
+          const fixedConversations = conversations.map((conv: any) => ({
+            ...conv,
+            createdAt: new Date(conv.createdAt),
+            messages: conv.messages.map((msg: any) => ({
+              ...msg,
+              timestamp: new Date(msg.timestamp)
+            }))
+          }))
+          setConversations(fixedConversations)
+          if (fixedConversations.length > 0) {
+            setActiveConversationId(fixedConversations[0].id)
+          }
+        }
+      }
+    } catch (error) {
+      console.error('加载对话历史失败:', error)
+      // 降级到localStorage
+      const savedConversations = localStorage.getItem('personality_conversations')
+      if (savedConversations) {
+        const conversations = JSON.parse(savedConversations)
+        const fixedConversations = conversations.map((conv: any) => ({
+          ...conv,
+          createdAt: new Date(conv.createdAt),
+          messages: conv.messages.map((msg: any) => ({
+            ...msg,
+            timestamp: new Date(msg.timestamp)
+          }))
+        }))
+        setConversations(fixedConversations)
+        if (fixedConversations.length > 0) {
+          setActiveConversationId(fixedConversations[0].id)
+        }
+      }
+    }
   }
 
   useEffect(() => {
@@ -89,24 +166,11 @@ export default function PersonalityReportPage() {
       return
     }
 
+    // 加载性格报告
+    loadPersonalityReport()
+
     // 加载对话历史
-    const savedConversations = localStorage.getItem('personality_conversations')
-    if (savedConversations) {
-      const conversations = JSON.parse(savedConversations)
-      // 修复日期对象
-      const fixedConversations = conversations.map((conv: any) => ({
-        ...conv,
-        createdAt: new Date(conv.createdAt),
-        messages: conv.messages.map((msg: any) => ({
-          ...msg,
-          timestamp: new Date(msg.timestamp)
-        }))
-      }))
-      setConversations(fixedConversations)
-      if (fixedConversations.length > 0) {
-        setActiveConversationId(fixedConversations[0].id)
-      }
-    }
+    loadConversations()
   }, [router])
 
   // 滚动到消息底部
@@ -197,6 +261,19 @@ export default function PersonalityReportPage() {
         })
 
         setConversations(finalConversations)
+
+        // 保存到Supabase和localStorage
+        const currentConv = finalConversations.find(conv => conv.id === activeConversationId)
+        if (currentConv) {
+          try {
+            const userId = getUserPhoneNumber()
+            if (userId) {
+              await saveConversation(userId, currentConv)
+            }
+          } catch (error) {
+            console.error('保存对话到Supabase失败:', error)
+          }
+        }
         localStorage.setItem('personality_conversations', JSON.stringify(finalConversations))
       } else {
         throw new Error(data.error || 'AI服务响应失败')
@@ -223,6 +300,19 @@ export default function PersonalityReportPage() {
       })
 
       setConversations(finalConversations)
+
+      // 保存到Supabase和localStorage
+      const currentConv = finalConversations.find(conv => conv.id === activeConversationId)
+      if (currentConv) {
+        try {
+          const userId = getUserPhoneNumber()
+          if (userId) {
+            await saveConversation(userId, currentConv)
+          }
+        } catch (error) {
+          console.error('保存对话到Supabase失败:', error)
+        }
+      }
       localStorage.setItem('personality_conversations', JSON.stringify(finalConversations))
     } finally {
       setLoading(false)
@@ -420,23 +510,68 @@ export default function PersonalityReportPage() {
         <div className="flex-1 xl:flex-none xl:w-1/2 p-4 md:p-6 bg-red-50">
           <Card className="h-full">
             <div className="mb-4">
-              <Title level={3}>{personalityReport.title}</Title>
-              <Paragraph className="text-gray-600 mb-6">
-                {personalityReport.summary}
-              </Paragraph>
+              <Title level={3}>性格分析报告</Title>
+              {userInfo && (
+                <Paragraph className="text-gray-600 mb-6">
+                  您好，{userInfo.nickname || '用户'}！根据您提供的出生信息（{formatUserInfoDisplay(userInfo)}），经过天乙神数系统的综合分析，为您生成以下性格特征报告。
+                </Paragraph>
+              )}
             </div>
 
-            <div className="space-y-6">
-              {personalityReport.sections.map((section, index) => (
-                <div key={index}>
-                  <Title level={5} className="!mb-3">{section.title}</Title>
-                  <Paragraph className="text-gray-700">
-                    {section.content}
-                  </Paragraph>
-                  {index < personalityReport.sections.length - 1 && <Divider />}
+            {reportLoading ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <Spin
+                  indicator={<LoadingOutlined style={{ fontSize: 48 }} spin />}
+                  className="mb-4"
+                />
+                <p className="text-gray-600">正在加载性格报告...</p>
+              </div>
+            ) : reportError ? (
+              <div className="text-center py-12">
+                <Alert
+                  message="报告加载失败"
+                  description={reportError}
+                  type="warning"
+                  showIcon
+                  className="mb-4"
+                />
+                <Button
+                  type="primary"
+                  onClick={regenerateReport}
+                  className="mr-2"
+                >
+                  重新生成报告
+                </Button>
+                <Button onClick={loadPersonalityReport}>
+                  重新加载
+                </Button>
+              </div>
+            ) : reportContent ? (
+              <div className="space-y-4">
+                <div className="prose prose-gray max-w-none">
+                  {reportContent.split('\n').map((paragraph, index) => (
+                    paragraph.trim() && (
+                      <Paragraph key={index} className="text-gray-700 mb-4">
+                        {paragraph.trim()}
+                      </Paragraph>
+                    )
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <Alert
+                  message="暂无报告"
+                  description="性格报告尚未生成，请返回信息填写页生成报告"
+                  type="info"
+                  showIcon
+                  className="mb-4"
+                />
+                <Button type="primary" onClick={regenerateReport}>
+                  去生成报告
+                </Button>
+              </div>
+            )}
           </Card>
         </div>
 
