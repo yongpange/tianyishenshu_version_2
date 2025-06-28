@@ -5,6 +5,8 @@ const nextConfig = {
   },
   // 优化编译性能
   swcMinify: true,
+  // Docker 支持 - 启用 standalone 输出
+  output: 'standalone',
   // 减少编译时间
   typescript: {
     // 在生产构建时忽略类型错误（开发时仍会显示）

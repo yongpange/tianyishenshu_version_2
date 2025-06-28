@@ -56,14 +56,16 @@ enum GenerationStep {
   IDLE = 0,
   ANALYZING = 1,
   GENERATING = 2,
-  COMPLETED = 3
+  SAVING = 3,
+  COMPLETED = 4
 }
 
 const stepMessages = {
   [GenerationStep.IDLE]: '',
   [GenerationStep.ANALYZING]: '正在分析出生信息...',
   [GenerationStep.GENERATING]: '正在生成性格报告...',
-  [GenerationStep.COMPLETED]: '报告生成完成'
+  [GenerationStep.SAVING]: '正在保存报告...',
+  [GenerationStep.COMPLETED]: '报告生成完成，即将跳转...'
 }
 
 export default function ProfilePage() {
@@ -192,32 +194,21 @@ export default function ProfilePage() {
     }
   }
 
-  // 模拟进度更新
-  const updateProgress = async () => {
-    setShowProgress(true)
-    setGenerationStep(GenerationStep.ANALYZING)
-    setProgress(20)
-
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    setProgress(50)
-
-    setGenerationStep(GenerationStep.GENERATING)
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    setProgress(80)
-
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    setGenerationStep(GenerationStep.COMPLETED)
-    setProgress(100)
-
-    await new Promise(resolve => setTimeout(resolve, 500))
-    setShowProgress(false)
+  // 更新进度状态的辅助函数
+  const updateProgressStep = (step: GenerationStep, progress: number) => {
+    setGenerationStep(step)
+    setProgress(progress)
   }
 
   // 表单提交
   const onSubmit = async (data: ProfileFormData) => {
     try {
       setLoading(true)
-      
+      setShowProgress(true)
+
+      // 第一阶段：验证和准备数据 (0-20%)
+      updateProgressStep(GenerationStep.ANALYZING, 10)
+
       const userId = getUserPhoneNumber()
       if (!userId) {
         message.error('未找到登录信息，请重新登录')
@@ -229,6 +220,7 @@ export default function ProfilePage() {
 
       // 保存到 localStorage
       localStorage.setItem('userData', JSON.stringify(data))
+      updateProgressStep(GenerationStep.ANALYZING, 20)
 
       // 转换为 UserInfo 格式
       const userInfo = {
@@ -242,10 +234,9 @@ export default function ProfilePage() {
         area: data.area
       }
 
-      // 开始进度显示
-      await updateProgress()
+      // 第二阶段：调用 API 生成报告 (20-80%)
+      updateProgressStep(GenerationStep.GENERATING, 30)
 
-      // 调用 API 生成报告
       const response = await fetch('/api/personality-report/generate', {
         method: 'POST',
         headers: {
@@ -257,9 +248,26 @@ export default function ProfilePage() {
         })
       })
 
+      // API 调用完成
+      updateProgressStep(GenerationStep.GENERATING, 70)
+
       const result = await response.json()
+      updateProgressStep(GenerationStep.GENERATING, 80)
 
       if (result.success) {
+        // 第三阶段：保存完成 (80-95%)
+        updateProgressStep(GenerationStep.SAVING, 90)
+
+        // 模拟保存处理时间
+        await new Promise(resolve => setTimeout(resolve, 500))
+        updateProgressStep(GenerationStep.SAVING, 95)
+
+        // 第四阶段：准备跳转 (95-100%)
+        updateProgressStep(GenerationStep.COMPLETED, 100)
+
+        // 显示完成状态
+        await new Promise(resolve => setTimeout(resolve, 1000))
+
         message.success('信息保存成功，性格报告已生成！')
         router.push('/dashboard')
       } else {

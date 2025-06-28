@@ -7,29 +7,36 @@ import {
   Input,
   Card,
   Typography,
-  Space,
-  message,
-  Divider,
   Drawer,
   Spin,
-  Alert
+  Alert,
+  Dropdown,
+  Modal,
+  message
 } from 'antd'
 import {
   ArrowLeftOutlined,
-  ArrowRightOutlined,
   SendOutlined,
   PlusOutlined,
   UserOutlined,
   RobotOutlined,
   MenuOutlined,
-  LoadingOutlined
+  LoadingOutlined,
+  FileTextOutlined,
+  MessageOutlined,
+  HomeOutlined,
+  MoreOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  PushpinOutlined,
+  PushpinFilled
 } from '@ant-design/icons'
 import {
   getUserPhoneNumber,
-  getPersonalityReport,
   formatUserInfoDisplay
 } from '@/utils/personality-report'
-import { getUserConversations, saveConversation, deleteConversation } from '@/lib/user-manager'
+import { getUserConversations, saveConversation } from '@/lib/user-manager'
+import { generateConversationTitle } from '@/utils/textrank'
 
 const { TextArea } = Input
 const { Title, Text, Paragraph } = Typography
@@ -47,11 +54,15 @@ interface ConversationHistory {
   messages: ChatMessage[]
   createdAt: Date
   cozeConversationId?: string // Coze对话ID，用于保持对话连续性
+  isPinned?: boolean // 是否置顶
 }
+
+// 内容类型枚举
+type ContentType = 'chat' | 'report'
 
 export default function PersonalityReportPage() {
   const [userInfo, setUserInfo] = useState<any>(null)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [currentContent, setCurrentContent] = useState<ContentType>('chat') // 默认显示聊天界面
   const [conversations, setConversations] = useState<ConversationHistory[]>([])
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [currentMessage, setCurrentMessage] = useState('')
@@ -60,6 +71,12 @@ export default function PersonalityReportPage() {
   const [reportContent, setReportContent] = useState<string | null>(null)
   const [reportLoading, setReportLoading] = useState(true)
   const [reportError, setReportError] = useState<string | null>(null)
+
+  // 对话管理相关状态
+  const [renameModalVisible, setRenameModalVisible] = useState(false)
+  const [renamingConversationId, setRenamingConversationId] = useState<string | null>(null)
+  const [newTitle, setNewTitle] = useState('')
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
 
@@ -75,12 +92,28 @@ export default function PersonalityReportPage() {
         return
       }
 
-      const report = await getPersonalityReport(userId)
+      console.log('📖 开始获取性格报告:', { userId })
 
-      if (report && report.content) {
-        setReportContent(report.content)
+      // 使用 API 路由获取报告
+      const response = await fetch('/api/personality-report/get', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId })
+      })
+
+      const result = await response.json()
+
+      if (result.success && result.report) {
+        console.log('✅ 成功获取报告:', {
+          contentLength: result.report.content?.length || 0,
+          generatedAt: result.report.generatedAt
+        })
+        setReportContent(result.report.content)
       } else {
-        setReportError('性格报告未生成，请返回信息填写页重新生成')
+        console.log('❌ 获取报告失败:', result.error)
+        setReportError(result.error || '性格报告未生成，请返回信息填写页重新生成')
       }
     } catch (error) {
       console.error('加载性格报告失败:', error)
@@ -186,16 +219,152 @@ export default function PersonalityReportPage() {
   const createNewConversation = () => {
     const newConversation: ConversationHistory = {
       id: Date.now().toString(),
-      title: '性格分析对话',
+      title: '新对话',
       messages: [],
       createdAt: new Date()
     }
-    
+
     const updatedConversations = [newConversation, ...conversations]
     setConversations(updatedConversations)
     setActiveConversationId(newConversation.id)
     // 保存时确保日期正确序列化
     localStorage.setItem('personality_conversations', JSON.stringify(updatedConversations))
+  }
+
+  // 更新对话标题（使用TextRank算法）
+  const updateConversationTitle = (conversationId: string, messages: ChatMessage[]) => {
+    if (messages.length >= 2) { // 至少有一轮对话才更新标题
+      const title = generateConversationTitle(messages)
+
+      const updatedConversations = conversations.map(conv => {
+        if (conv.id === conversationId) {
+          return { ...conv, title }
+        }
+        return conv
+      })
+
+      setConversations(updatedConversations)
+      localStorage.setItem('personality_conversations', JSON.stringify(updatedConversations))
+
+      // 同时更新到Supabase
+      const updatedConv = updatedConversations.find(conv => conv.id === conversationId)
+      if (updatedConv) {
+        const userId = getUserPhoneNumber()
+        if (userId) {
+          saveConversation(userId, updatedConv).catch(error => {
+            console.error('更新对话标题到Supabase失败:', error)
+          })
+        }
+      }
+    }
+  }
+
+  // 置顶对话
+  const pinConversation = async (conversationId: string) => {
+    const updatedConversations = conversations.map(conv => {
+      if (conv.id === conversationId) {
+        return { ...conv, isPinned: !conv.isPinned }
+      }
+      return conv
+    })
+
+    setConversations(updatedConversations)
+    localStorage.setItem('personality_conversations', JSON.stringify(updatedConversations))
+
+    // 更新到Supabase
+    const updatedConv = updatedConversations.find(conv => conv.id === conversationId)
+    if (updatedConv) {
+      try {
+        const userId = getUserPhoneNumber()
+        if (userId) {
+          await saveConversation(userId, updatedConv)
+        }
+      } catch (error) {
+        console.error('更新置顶状态到Supabase失败:', error)
+      }
+    }
+
+    message.success(updatedConv?.isPinned ? '已置顶' : '已取消置顶')
+  }
+
+  // 开始重命名对话
+  const startRenameConversation = (conversationId: string, currentTitle: string) => {
+    setRenamingConversationId(conversationId)
+    setNewTitle(currentTitle)
+    setRenameModalVisible(true)
+  }
+
+  // 确认重命名对话
+  const confirmRenameConversation = async () => {
+    if (!renamingConversationId || !newTitle.trim()) {
+      return
+    }
+
+    const updatedConversations = conversations.map(conv => {
+      if (conv.id === renamingConversationId) {
+        return { ...conv, title: newTitle.trim() }
+      }
+      return conv
+    })
+
+    setConversations(updatedConversations)
+    localStorage.setItem('personality_conversations', JSON.stringify(updatedConversations))
+
+    // 更新到Supabase
+    const updatedConv = updatedConversations.find(conv => conv.id === renamingConversationId)
+    if (updatedConv) {
+      try {
+        const userId = getUserPhoneNumber()
+        if (userId) {
+          await saveConversation(userId, updatedConv)
+        }
+      } catch (error) {
+        console.error('更新对话标题到Supabase失败:', error)
+      }
+    }
+
+    setRenameModalVisible(false)
+    setRenamingConversationId(null)
+    setNewTitle('')
+    message.success('重命名成功')
+  }
+
+  // 删除对话
+  const deleteConversation = async (conversationId: string) => {
+    Modal.confirm({
+      title: '确认删除',
+      content: '确定要删除这个对话吗？删除后无法恢复。',
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        const updatedConversations = conversations.filter(conv => conv.id !== conversationId)
+        setConversations(updatedConversations)
+        localStorage.setItem('personality_conversations', JSON.stringify(updatedConversations))
+
+        // 如果删除的是当前活跃对话，切换到第一个对话或清空
+        if (activeConversationId === conversationId) {
+          if (updatedConversations.length > 0) {
+            setActiveConversationId(updatedConversations[0].id)
+          } else {
+            setActiveConversationId(null)
+          }
+        }
+
+        // 从Supabase删除
+        try {
+          const userId = getUserPhoneNumber()
+          if (userId) {
+            // 这里需要实现deleteConversation函数，暂时跳过
+            console.log('需要从Supabase删除对话:', conversationId)
+          }
+        } catch (error) {
+          console.error('从Supabase删除对话失败:', error)
+        }
+
+        message.success('删除成功')
+      }
+    })
   }
 
   // 发送消息
@@ -262,9 +431,12 @@ export default function PersonalityReportPage() {
 
         setConversations(finalConversations)
 
-        // 保存到Supabase和localStorage
+        // 更新对话标题
         const currentConv = finalConversations.find(conv => conv.id === activeConversationId)
         if (currentConv) {
+          updateConversationTitle(activeConversationId, currentConv.messages)
+
+          // 保存到Supabase
           try {
             const userId = getUserPhoneNumber()
             if (userId) {
@@ -301,9 +473,12 @@ export default function PersonalityReportPage() {
 
       setConversations(finalConversations)
 
-      // 保存到Supabase和localStorage
+      // 更新对话标题（错误情况下也要更新）
       const currentConv = finalConversations.find(conv => conv.id === activeConversationId)
       if (currentConv) {
+        updateConversationTitle(activeConversationId, currentConv.messages)
+
+        // 保存到Supabase
         try {
           const userId = getUserPhoneNumber()
           if (userId) {
@@ -324,13 +499,7 @@ export default function PersonalityReportPage() {
     return conversations.find(conv => conv.id === activeConversationId)
   }
 
-  // 处理键盘事件
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      sendMessage()
-    }
-  }
+
 
   // 安全的日期格式化函数
   const formatDate = (date: any) => {
@@ -361,9 +530,33 @@ export default function PersonalityReportPage() {
     }
   }
 
+  // 渲染左侧导航菜单项
+  const renderNavItem = (
+    key: string,
+    icon: React.ReactNode,
+    label: string,
+    onClick: () => void,
+    isActive: boolean = false
+  ) => (
+    <div
+      key={key}
+      onClick={onClick}
+      className={`flex items-center space-x-3 p-3 rounded-lg cursor-pointer transition-all duration-200 ${
+        isActive
+          ? 'bg-blue-50 border border-blue-200 text-blue-600'
+          : 'hover:bg-gray-50 text-gray-700'
+      }`}
+    >
+      <div className={`text-lg ${isActive ? 'text-blue-600' : 'text-gray-500'}`}>
+        {icon}
+      </div>
+      <span className="font-medium">{label}</span>
+    </div>
+  )
+
   if (!userInfo) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
           <p className="text-gray-600">加载中...</p>
@@ -373,28 +566,30 @@ export default function PersonalityReportPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex overflow-hidden">
       {/* 移动端顶部导航 */}
-      <div className="md:hidden fixed top-0 left-0 right-0 bg-white shadow-sm border-b border-gray-200 p-4 z-20">
+      <div className="md:hidden fixed top-0 left-0 right-0 bg-white shadow-lg border-b border-gray-200 p-4 z-20">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-sm">天</span>
             </div>
-            <span className="font-bold text-gray-900">性格报告</span>
+            <span className="font-bold text-gray-900">天乙神数</span>
           </div>
           <div className="flex items-center space-x-2">
-            <Button 
+            <Button
               icon={<MenuOutlined />}
               onClick={() => setDrawerVisible(true)}
               size="small"
+              type="text"
             >
-              对话
+              菜单
             </Button>
-            <Button 
+            <Button
               icon={<ArrowLeftOutlined />}
               onClick={() => router.push('/dashboard')}
               size="small"
+              type="text"
             >
               返回
             </Button>
@@ -402,335 +597,577 @@ export default function PersonalityReportPage() {
         </div>
       </div>
 
-      {/* 左侧工具栏 */}
-      <div className={`bg-white shadow-sm border-r border-gray-200 transition-all duration-300 hidden md:flex flex-col ${
-        sidebarCollapsed ? 'w-16' : 'w-64'
-      }`}>
-        {/* 顶部区域 */}
-        <div className="p-4 border-b border-gray-100">
-          {!sidebarCollapsed && (
-            <>
-              <div className="flex items-center space-x-3 mb-4">
-                <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">天</span>
-                </div>
-                <span className="font-bold text-gray-900">天乙神数</span>
-              </div>
-              
-              <div className="mb-4">
-                <Title level={4} className="!mb-2">性格报告</Title>
-              </div>
+      {/* 左侧导航栏 */}
+      <div className="bg-white shadow-lg border-r border-gray-200 w-80 hidden md:flex flex-col h-screen overflow-hidden">
+        {/* 顶部品牌区域 */}
+        <div className="p-6 border-b border-gray-100">
+          <div className="flex items-center space-x-3 mb-6">
+            <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
+              <span className="text-white font-bold text-lg">天</span>
+            </div>
+            <div>
+              <div className="font-bold text-gray-900 text-lg">天乙神数</div>
+              <div className="text-xs text-gray-500">AI命理分析平台</div>
+            </div>
+          </div>
 
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                  <span className="text-green-600 text-xs">欢</span>
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-gray-900">欢迎，</div>
-                  <div className="text-xs text-gray-500">{userInfo.nickname || '用户'}</div>
-                </div>
+          {/* 用户欢迎区域 */}
+          <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-gradient-to-r from-green-400 to-blue-500 rounded-full flex items-center justify-center">
+                <UserOutlined className="text-white" />
               </div>
-            </>
-          )}
-          
-          {sidebarCollapsed && (
-            <div className="flex flex-col items-center space-y-3">
-              <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">天</span>
-              </div>
-              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                <span className="text-green-600 text-xs">欢</span>
+              <div>
+                <div className="text-sm font-medium text-gray-900">欢迎，{userInfo.nickname || '用户'}</div>
+                <div className="text-xs text-gray-500">专属命理分析师</div>
               </div>
             </div>
-          )}
+          </div>
         </div>
 
-        {/* 对话记录区域 */}
-        <div className="flex-1 p-4">
-          {!sidebarCollapsed && (
-            <>
+        {/* 功能菜单区域 */}
+        <div className="flex-1 p-6 overflow-y-auto">
+          <div className="space-y-3">
+            {renderNavItem(
+              'report',
+              <FileTextOutlined />,
+              '性格报告',
+              () => setCurrentContent('report'),
+              currentContent === 'report'
+            )}
+            {renderNavItem(
+              'chat',
+              <MessageOutlined />,
+              '开启新对话',
+              () => {
+                setCurrentContent('chat')
+                if (conversations.length === 0) {
+                  createNewConversation()
+                }
+              },
+              currentContent === 'chat'
+            )}
+          </div>
+
+          {/* 对话历史区域 */}
+          {currentContent === 'chat' && conversations.length > 0 && (
+            <div className="mt-8">
               <div className="flex items-center justify-between mb-4">
-                <Text strong>对话记录</Text>
-                <Button 
-                  type="text" 
-                  icon={<PlusOutlined />} 
+                <Text strong className="text-gray-700">对话历史</Text>
+                <Button
+                  type="text"
+                  icon={<PlusOutlined />}
                   size="small"
                   onClick={createNewConversation}
+                  className="text-blue-500 hover:text-blue-600"
                 />
               </div>
 
               <div className="space-y-2">
-                {conversations.map((conversation) => (
+                {conversations
+                  .sort((a, b) => {
+                    // 置顶的对话排在前面
+                    if (a.isPinned && !b.isPinned) return -1
+                    if (!a.isPinned && b.isPinned) return 1
+                    // 其他按创建时间排序
+                    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                  })
+                  .map((conversation) => (
                   <div
                     key={conversation.id}
-                    className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                      activeConversationId === conversation.id 
-                        ? 'bg-blue-50 border border-blue-200' 
-                        : 'hover:bg-gray-50'
+                    className={`group relative p-3 rounded-lg transition-all duration-200 ${
+                      activeConversationId === conversation.id
+                        ? 'bg-blue-50 border border-blue-200 shadow-sm'
+                        : 'hover:bg-gray-50 border border-transparent'
                     }`}
-                    onClick={() => setActiveConversationId(conversation.id)}
                   >
-                    <div className="font-medium text-sm">{conversation.title}</div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      {formatDate(conversation.createdAt)}
+                    <div
+                      className="cursor-pointer"
+                      onClick={() => setActiveConversationId(conversation.id)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2 flex-1 min-w-0">
+                          {conversation.isPinned && (
+                            <PushpinFilled className="text-blue-500 text-xs flex-shrink-0" />
+                          )}
+                          <div className="font-medium text-sm text-gray-900 truncate">
+                            {conversation.title}
+                          </div>
+                        </div>
+                        <Dropdown
+                          menu={{
+                            items: [
+                              {
+                                key: 'pin',
+                                label: conversation.isPinned ? '取消置顶' : '置顶',
+                                icon: conversation.isPinned ? <PushpinOutlined /> : <PushpinFilled />,
+                                onClick: () => pinConversation(conversation.id)
+                              },
+                              {
+                                key: 'rename',
+                                label: '重命名',
+                                icon: <EditOutlined />,
+                                onClick: () => startRenameConversation(conversation.id, conversation.title)
+                              },
+                              {
+                                type: 'divider'
+                              },
+                              {
+                                key: 'delete',
+                                label: '删除',
+                                icon: <DeleteOutlined />,
+                                danger: true,
+                                onClick: () => deleteConversation(conversation.id)
+                              }
+                            ]
+                          }}
+                          trigger={['click']}
+                          placement="bottomRight"
+                        >
+                          <Button
+                            type="text"
+                            size="small"
+                            icon={<MoreOutlined />}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </Dropdown>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {formatDate(conversation.createdAt)}
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
-            </>
+            </div>
           )}
         </div>
 
-        {/* 返回按钮 */}
-        <div className="p-4 border-t border-gray-100">
-          <Button 
-            icon={<ArrowLeftOutlined />}
+        {/* 底部返回按钮 */}
+        <div className="p-6 border-t border-gray-100">
+          <Button
+            icon={<HomeOutlined />}
             onClick={() => router.push('/dashboard')}
-            className={sidebarCollapsed ? 'w-full' : ''}
+            className="w-full h-10 bg-gray-50 hover:bg-gray-100 border-gray-200"
+            size="large"
           >
-            {!sidebarCollapsed && '返回'}
+            返回仪表板
           </Button>
         </div>
-      </div>
-
-      {/* 隐藏/显示侧边栏按钮 */}
-      <div className="relative hidden md:block">
-        <Button
-          type="text"
-          icon={sidebarCollapsed ? <ArrowRightOutlined /> : <ArrowLeftOutlined />}
-          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className="absolute top-4 -right-4 z-10 bg-white shadow-md border rounded-full w-8 h-8 flex items-center justify-center"
-          size="small"
-        />
       </div>
 
       {/* 右侧内容区域 */}
-      <div className="flex-1 flex flex-col xl:flex-row pt-16 md:pt-0">
-        {/* 性格报告区域 */}
-        <div className="flex-1 xl:flex-none xl:w-1/2 p-4 md:p-6 bg-red-50">
-          <Card className="h-full">
-            <div className="mb-4">
-              <Title level={3}>性格分析报告</Title>
-              {userInfo && (
-                <Paragraph className="text-gray-600 mb-6">
-                  您好，{userInfo.nickname || '用户'}！根据您提供的出生信息（{formatUserInfoDisplay(userInfo)}），经过天乙神数系统的综合分析，为您生成以下性格特征报告。
-                </Paragraph>
-              )}
-            </div>
-
-            {reportLoading ? (
-              <div className="flex flex-col items-center justify-center py-12">
-                <Spin
-                  indicator={<LoadingOutlined style={{ fontSize: 48 }} spin />}
-                  className="mb-4"
-                />
-                <p className="text-gray-600">正在加载性格报告...</p>
-              </div>
-            ) : reportError ? (
-              <div className="text-center py-12">
-                <Alert
-                  message="报告加载失败"
-                  description={reportError}
-                  type="warning"
-                  showIcon
-                  className="mb-4"
-                />
-                <Button
-                  type="primary"
-                  onClick={regenerateReport}
-                  className="mr-2"
-                >
-                  重新生成报告
-                </Button>
-                <Button onClick={loadPersonalityReport}>
-                  重新加载
-                </Button>
-              </div>
-            ) : reportContent ? (
-              <div className="space-y-4">
-                <div className="prose prose-gray max-w-none">
-                  {reportContent.split('\n').map((paragraph, index) => (
-                    paragraph.trim() && (
-                      <Paragraph key={index} className="text-gray-700 mb-4">
-                        {paragraph.trim()}
-                      </Paragraph>
-                    )
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <Alert
-                  message="暂无报告"
-                  description="性格报告尚未生成，请返回信息填写页生成报告"
-                  type="info"
-                  showIcon
-                  className="mb-4"
-                />
-                <Button type="primary" onClick={regenerateReport}>
-                  去生成报告
-                </Button>
-              </div>
-            )}
-          </Card>
-        </div>
-
-        {/* 对话区域 */}
-        <div className="flex-1 xl:w-1/2 p-4 md:p-6 flex flex-col">
-          <Card className="flex-1 flex flex-col">
-            {/* 对话消息 */}
-            <div className="flex-1 overflow-y-auto mb-4 p-4 bg-gray-50 rounded-lg min-h-[300px]">
-              {!activeConversationId ? (
-                <div className="text-center text-gray-500 py-8">
-                  <RobotOutlined className="text-4xl mb-4" />
-                  <p>请先创建一个对话开始聊天</p>
-                  <Button 
-                    type="primary" 
-                    icon={<PlusOutlined />}
-                    onClick={createNewConversation}
-                    className="mt-4"
-                  >
-                    创建新对话
-                  </Button>
-                </div>
-              ) : getCurrentConversation()?.messages.length === 0 ? (
-                <div className="text-center text-gray-500 py-8">
-                  <RobotOutlined className="text-4xl mb-4" />
-                  <p>开始与AI助手对话，了解更多关于您的性格特征</p>
-                  <div className="mt-4 text-sm text-gray-400">
-                    <p>您可以问一些问题，比如：</p>
-                    <p>"我的性格优势是什么？"</p>
-                    <p>"我在人际关系中的表现如何？"</p>
+      <div className="flex-1 pt-16 md:pt-0 h-screen overflow-hidden">
+        {currentContent === 'report' ? (
+          /* 性格报告展示区域 */
+          <div className="h-full p-6 overflow-y-auto">
+            <Card className="shadow-lg border-0">
+              <div className="mb-6">
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
+                    <FileTextOutlined className="text-white" />
                   </div>
+                  <Title level={2} className="!mb-0 !text-gray-800">性格分析报告</Title>
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {getCurrentConversation()?.messages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+                {userInfo && (
+                  <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4">
+                    <Paragraph className="text-gray-700 mb-0">
+                      您好，<span className="font-semibold text-blue-600">{userInfo.nickname || '用户'}</span>！
+                      根据您提供的出生信息（{formatUserInfoDisplay(userInfo)}），
+                      经过天乙神数系统的综合分析，为您生成以下性格特征报告。
+                    </Paragraph>
+                  </div>
+                )}
+              </div>
+
+              <div className="h-full overflow-y-auto">
+                {reportLoading ? (
+                  <div className="flex flex-col items-center justify-center py-20">
+                    <Spin
+                      indicator={<LoadingOutlined style={{ fontSize: 48 }} spin />}
+                      className="mb-4"
+                    />
+                    <p className="text-gray-600">正在加载性格报告...</p>
+                  </div>
+                ) : reportError ? (
+                  <div className="text-center py-20">
+                    <Alert
+                      message="报告加载失败"
+                      description={reportError}
+                      type="warning"
+                      showIcon
+                      className="mb-6"
+                    />
+                    <div className="space-x-3">
+                      <Button
+                        type="primary"
+                        onClick={regenerateReport}
+                        size="large"
+                        className="bg-gradient-to-r from-blue-500 to-purple-600 border-0"
+                      >
+                        重新生成报告
+                      </Button>
+                      <Button onClick={loadPersonalityReport} size="large">
+                        重新加载
+                      </Button>
+                    </div>
+                  </div>
+                ) : reportContent ? (
+                  <div className="space-y-6">
+                    <div className="prose prose-lg max-w-none">
+                      {reportContent.split('\n').map((paragraph, index) => (
+                        paragraph.trim() && (
+                          <div key={index} className="bg-white rounded-lg p-4 shadow-sm border border-gray-100 mb-4">
+                            <Paragraph className="text-gray-700 mb-0 leading-relaxed">
+                              {paragraph.trim()}
+                            </Paragraph>
+                          </div>
+                        )
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-20">
+                    <Alert
+                      message="暂无报告"
+                      description="性格报告尚未生成，请返回信息填写页生成报告"
+                      type="info"
+                      showIcon
+                      className="mb-6"
+                    />
+                    <Button
+                      type="primary"
+                      onClick={regenerateReport}
+                      size="large"
+                      className="bg-gradient-to-r from-blue-500 to-purple-600 border-0"
                     >
-                      <div className={`flex items-start space-x-2 max-w-[80%] ${
-                        message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''
-                      }`}>
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                          message.type === 'user' 
-                            ? 'bg-blue-500 text-white' 
-                            : 'bg-gray-300 text-gray-600'
-                        }`}>
-                          {message.type === 'user' ? <UserOutlined /> : <RobotOutlined />}
-                        </div>
-                        <div className={`p-3 rounded-lg ${
-                          message.type === 'user'
-                            ? 'bg-blue-500 text-white'
-                            : 'bg-white border border-gray-200'
-                        }`}>
-                          <p className="text-sm">{message.content}</p>
-                          <p className={`text-xs mt-1 ${
-                            message.type === 'user' ? 'text-blue-100' : 'text-gray-500'
-                          }`}>
-                            {formatTime(message.timestamp)}
-                          </p>
-                        </div>
+                      去生成报告
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </Card>
+          </div>
+        ) : (
+          /* 聊天界面区域 */
+          <div className="h-full p-6 overflow-hidden">
+            <Card className="h-full shadow-lg border-0 flex flex-col overflow-hidden">
+              {/* 聊天标题区域 */}
+              <div className="mb-4 pb-4 border-b border-gray-100">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 bg-gradient-to-r from-green-500 to-blue-500 rounded-lg flex items-center justify-center">
+                    <MessageOutlined className="text-white" />
+                  </div>
+                  <Title level={2} className="!mb-0 !text-gray-800">AI智能对话</Title>
+                </div>
+                <Text className="text-gray-500 text-sm">与AI助手深入探讨您的性格特征</Text>
+              </div>
+
+              {/* 对话消息区域 */}
+              <div className="flex-1 overflow-y-auto mb-4 p-4 bg-gradient-to-b from-gray-50 to-white rounded-lg">
+                {!activeConversationId ? (
+                  <div className="text-center text-gray-500 py-12">
+                    <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <RobotOutlined className="text-2xl text-white" />
+                    </div>
+                    <p className="text-lg mb-4">开始您的AI对话之旅</p>
+                    <Button
+                      type="primary"
+                      icon={<PlusOutlined />}
+                      onClick={createNewConversation}
+                      size="large"
+                      className="bg-gradient-to-r from-blue-500 to-purple-600 border-0"
+                    >
+                      创建新对话
+                    </Button>
+                  </div>
+                ) : getCurrentConversation()?.messages.length === 0 ? (
+                  <div className="text-center text-gray-500 py-12">
+                    <div className="w-16 h-16 bg-gradient-to-r from-green-500 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <RobotOutlined className="text-2xl text-white" />
+                    </div>
+                    <p className="text-lg mb-4">开始与AI助手对话，了解更多关于您的性格特征</p>
+                    <div className="bg-blue-50 rounded-lg p-4 text-sm text-gray-600 max-w-md mx-auto">
+                      <p className="font-medium mb-2">您可以问一些问题，比如：</p>
+                      <div className="space-y-1">
+                        <p>"我的性格优势是什么？"</p>
+                        <p>"我在人际关系中的表现如何？"</p>
+                        <p>"如何发挥我的潜力？"</p>
                       </div>
                     </div>
-                  ))}
-                  {loading && (
-                    <div className="flex justify-start">
-                      <div className="flex items-start space-x-2">
-                        <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center">
-                          <RobotOutlined />
-                        </div>
-                        <div className="bg-white border border-gray-200 p-3 rounded-lg">
-                          <div className="flex space-x-1">
-                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {getCurrentConversation()?.messages.map((message) => (
+                      <div
+                        key={message.id}
+                        className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <div className={`flex items-start space-x-3 max-w-[80%] ${
+                          message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''
+                        }`}>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                            message.type === 'user'
+                              ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white'
+                              : 'bg-gradient-to-r from-gray-400 to-gray-500 text-white'
+                          }`}>
+                            {message.type === 'user' ? <UserOutlined /> : <RobotOutlined />}
+                          </div>
+                          <div className={`p-4 rounded-2xl shadow-sm ${
+                            message.type === 'user'
+                              ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white'
+                              : 'bg-white border border-gray-200'
+                          }`}>
+                            <p className="text-sm leading-relaxed">{message.content}</p>
+                            <p className={`text-xs mt-2 ${
+                              message.type === 'user' ? 'text-blue-100' : 'text-gray-500'
+                            }`}>
+                              {formatTime(message.timestamp)}
+                            </p>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  )}
-                  <div ref={messagesEndRef} />
-                </div>
-              )}
-            </div>
-
-            {/* 输入区域 */}
-            <div className="border-t border-gray-200 pt-4">
-              <div className="flex space-x-2">
-                <TextArea
-                  value={currentMessage}
-                  onChange={(e) => setCurrentMessage(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="输入你想要了解的性格问题..."
-                  autoSize={{ minRows: 1, maxRows: 4 }}
-                  disabled={!activeConversationId}
-                />
-                <Button
-                  type="primary"
-                  icon={<SendOutlined />}
-                  onClick={sendMessage}
-                  loading={loading}
-                  disabled={!currentMessage.trim() || !activeConversationId}
-                  className="bg-green-500 hover:bg-green-600 border-green-500"
-                />
+                    ))}
+                    {loading && (
+                      <div className="flex justify-start">
+                        <div className="flex items-start space-x-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-r from-gray-400 to-gray-500 flex items-center justify-center">
+                            <RobotOutlined className="text-white" />
+                          </div>
+                          <div className="bg-white border border-gray-200 p-4 rounded-2xl shadow-sm">
+                            <div className="flex space-x-1">
+                              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    <div ref={messagesEndRef} />
+                  </div>
+                )}
               </div>
-              {!activeConversationId && (
-                <p className="text-sm text-gray-500 mt-2">
-                  请先创建一个新对话开始聊天
-                </p>
-              )}
-            </div>
-          </Card>
-        </div>
+
+              {/* 输入区域 */}
+              <div className="border-t border-gray-100 pt-4">
+                <div className="flex space-x-3">
+                  <TextArea
+                    value={currentMessage}
+                    onChange={(e) => setCurrentMessage(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        sendMessage()
+                      }
+                    }}
+                    placeholder="输入你想要了解的性格问题..."
+                    autoSize={{ minRows: 1, maxRows: 4 }}
+                    disabled={!activeConversationId}
+                    className="flex-1"
+                  />
+                  <Button
+                    type="primary"
+                    icon={<SendOutlined />}
+                    onClick={sendMessage}
+                    loading={loading}
+                    disabled={!currentMessage.trim() || !activeConversationId}
+                    className="bg-gradient-to-r from-blue-500 to-purple-600 border-0 h-auto px-6"
+                    size="large"
+                  >
+                    发送
+                  </Button>
+                </div>
+                {!activeConversationId && (
+                  <p className="text-sm text-gray-500 mt-2">
+                    请先创建一个新对话开始聊天
+                  </p>
+                )}
+              </div>
+            </Card>
+          </div>
+        )}
       </div>
 
-      {/* 移动端对话历史抽屉 */}
+      {/* 移动端功能抽屉 */}
       <Drawer
-        title="对话记录"
+        title={
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold text-sm">天</span>
+            </div>
+            <span>天乙神数</span>
+          </div>
+        }
         placement="left"
         onClose={() => setDrawerVisible(false)}
         open={drawerVisible}
-        width={280}
+        width={320}
         className="md:hidden"
       >
-        <div className="mb-4">
-          <Button 
-            type="primary"
-            icon={<PlusOutlined />} 
-            block
-            onClick={() => {
-              createNewConversation()
-              setDrawerVisible(false)
-            }}
-          >
-            新建对话
-          </Button>
+        {/* 用户欢迎区域 */}
+        <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4 mb-6">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-gradient-to-r from-green-400 to-blue-500 rounded-full flex items-center justify-center">
+              <UserOutlined className="text-white" />
+            </div>
+            <div>
+              <div className="text-sm font-medium text-gray-900">欢迎，{userInfo.nickname || '用户'}</div>
+              <div className="text-xs text-gray-500">专属命理分析师</div>
+            </div>
+          </div>
         </div>
 
-        <div className="space-y-2">
-          {conversations.map((conversation) => (
-            <div
-              key={conversation.id}
-              className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                activeConversationId === conversation.id 
-                  ? 'bg-blue-50 border border-blue-200' 
-                  : 'hover:bg-gray-50'
-              }`}
-              onClick={() => {
-                setActiveConversationId(conversation.id)
-                setDrawerVisible(false)
-              }}
-            >
-                             <div className="font-medium text-sm">{conversation.title}</div>
-               <div className="text-xs text-gray-500 mt-1">
-                 {formatDate(conversation.createdAt)}
-               </div>
-            </div>
-          ))}
+        {/* 功能菜单 */}
+        <div className="space-y-3 mb-6">
+          {renderNavItem(
+            'report',
+            <FileTextOutlined />,
+            '性格报告',
+            () => {
+              setCurrentContent('report')
+              setDrawerVisible(false)
+            },
+            currentContent === 'report'
+          )}
+          {renderNavItem(
+            'chat',
+            <MessageOutlined />,
+            '开启新对话',
+            () => {
+              setCurrentContent('chat')
+              if (conversations.length === 0) {
+                createNewConversation()
+              }
+              setDrawerVisible(false)
+            },
+            currentContent === 'chat'
+          )}
         </div>
+
+        {/* 对话历史 */}
+        {currentContent === 'chat' && conversations.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <Text strong className="text-gray-700">对话历史</Text>
+              <Button
+                type="text"
+                icon={<PlusOutlined />}
+                size="small"
+                onClick={() => {
+                  createNewConversation()
+                  setDrawerVisible(false)
+                }}
+                className="text-blue-500 hover:text-blue-600"
+              />
+            </div>
+
+            <div className="space-y-2">
+              {conversations
+                .sort((a, b) => {
+                  // 置顶的对话排在前面
+                  if (a.isPinned && !b.isPinned) return -1
+                  if (!a.isPinned && b.isPinned) return 1
+                  // 其他按创建时间排序
+                  return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                })
+                .map((conversation) => (
+                <div
+                  key={conversation.id}
+                  className={`group relative p-3 rounded-lg transition-all duration-200 ${
+                    activeConversationId === conversation.id
+                      ? 'bg-blue-50 border border-blue-200 shadow-sm'
+                      : 'hover:bg-gray-50 border border-transparent'
+                  }`}
+                >
+                  <div
+                    className="cursor-pointer"
+                    onClick={() => {
+                      setActiveConversationId(conversation.id)
+                      setDrawerVisible(false)
+                    }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2 flex-1 min-w-0">
+                        {conversation.isPinned && (
+                          <PushpinFilled className="text-blue-500 text-xs flex-shrink-0" />
+                        )}
+                        <div className="font-medium text-sm text-gray-900 truncate">
+                          {conversation.title}
+                        </div>
+                      </div>
+                      <Dropdown
+                        menu={{
+                          items: [
+                            {
+                              key: 'pin',
+                              label: conversation.isPinned ? '取消置顶' : '置顶',
+                              icon: conversation.isPinned ? <PushpinOutlined /> : <PushpinFilled />,
+                              onClick: () => pinConversation(conversation.id)
+                            },
+                            {
+                              key: 'rename',
+                              label: '重命名',
+                              icon: <EditOutlined />,
+                              onClick: () => startRenameConversation(conversation.id, conversation.title)
+                            },
+                            {
+                              type: 'divider'
+                            },
+                            {
+                              key: 'delete',
+                              label: '删除',
+                              icon: <DeleteOutlined />,
+                              danger: true,
+                              onClick: () => deleteConversation(conversation.id)
+                            }
+                          ]
+                        }}
+                        trigger={['click']}
+                        placement="bottomRight"
+                      >
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<MoreOutlined />}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </Dropdown>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {formatDate(conversation.createdAt)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </Drawer>
+
+      {/* 重命名对话Modal */}
+      <Modal
+        title="重命名对话"
+        open={renameModalVisible}
+        onOk={confirmRenameConversation}
+        onCancel={() => {
+          setRenameModalVisible(false)
+          setRenamingConversationId(null)
+          setNewTitle('')
+        }}
+        okText="确认"
+        cancelText="取消"
+      >
+        <Input
+          value={newTitle}
+          onChange={(e) => setNewTitle(e.target.value)}
+          placeholder="请输入新的对话标题"
+          maxLength={50}
+          onPressEnter={confirmRenameConversation}
+        />
+      </Modal>
     </div>
   )
-} 
+}

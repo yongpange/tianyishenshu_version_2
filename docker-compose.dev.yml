@@ -1,0 +1,52 @@
+# 天乙神数 开发环境 Docker Compose 配置
+# 用于本地开发，支持热重载
+
+version: '3.8'
+
+services:
+  # 开发环境应用服务
+  tianyishenshu-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: tianyishenshu-dev
+    ports:
+      - "3001:3000"  # 避免与本地开发冲突
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    env_file:
+      - .env.local  # 开发环境变量文件
+    volumes:
+      # 挂载源代码，支持热重载
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    restart: unless-stopped
+    networks:
+      - tianyishenshu-dev-network
+    depends_on:
+      - redis-dev
+
+  # 开发环境Redis
+  redis-dev:
+    image: redis:7-alpine
+    container_name: tianyishenshu-redis-dev
+    ports:
+      - "6380:6379"  # 避免与生产Redis冲突
+    volumes:
+      - redis-dev-data:/data
+    restart: unless-stopped
+    networks:
+      - tianyishenshu-dev-network
+
+# 开发网络
+networks:
+  tianyishenshu-dev-network:
+    driver: bridge
+
+# 开发数据卷
+volumes:
+  redis-dev-data:
+    driver: local
