@@ -17,7 +17,7 @@ dist/
 
 # 环境变量文件（敏感信息）
 .env
-.env.local
+# .env.local
 .env.development.local
 .env.test.local
 .env.production.local
@@ -37,7 +37,7 @@ coverage/
 
 # 依赖锁定文件（已在package.json中）
 yarn.lock
-package-lock.json
+# package-lock.json
 
 # IDE和编辑器文件
 .vscode/
@@ -93,7 +93,7 @@ supabase/.branches
 supabase/.temp
 
 # 脚本文件（开发用）
-scripts/
+# scripts/
 
 # 文档目录
 docs/

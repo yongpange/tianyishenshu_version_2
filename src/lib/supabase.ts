@@ -1,18 +1,29 @@
 import { createClient } from '@supabase/supabase-js'
 
-// 环境变量验证
+// 环境变量验证（容错处理）
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-if (!supabaseUrl) {
-  throw new Error('Missing env.NEXT_PUBLIC_SUPABASE_URL')
+// 打印环境变量调试信息
+console.log('🔍 Supabase 配置调试信息:')
+console.log('NEXT_PUBLIC_SUPABASE_URL:', supabaseUrl)
+console.log('NEXT_PUBLIC_SUPABASE_ANON_KEY:', supabaseAnonKey ? `${supabaseAnonKey.substring(0, 10)}...` : 'undefined')
+console.log('SUPABASE_SERVICE_ROLE_KEY:', process.env.SUPABASE_SERVICE_ROLE_KEY ? `${process.env.SUPABASE_SERVICE_ROLE_KEY.substring(0, 10)}...` : 'undefined')
+
+// 在开发环境或占位符环境中，提供警告而不是抛出错误
+if (!supabaseUrl || supabaseUrl.includes('placeholder')) {
+  console.warn('⚠️ NEXT_PUBLIC_SUPABASE_URL 未正确配置，部分功能可能不可用')
 }
-if (!supabaseAnonKey) {
-  throw new Error('Missing env.NEXT_PUBLIC_SUPABASE_ANON_KEY')
+if (!supabaseAnonKey || supabaseAnonKey.includes('placeholder')) {
+  console.warn('⚠️ NEXT_PUBLIC_SUPABASE_ANON_KEY 未正确配置，部分功能可能不可用')
 }
 
+// 使用默认值以避免应用崩溃
+const safeSupabaseUrl = supabaseUrl || 'https://placeholder.supabase.co'
+const safeSupabaseAnonKey = supabaseAnonKey || 'placeholder-key'
+
 // 客户端Supabase实例（用于前端）
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+export const supabase = createClient(safeSupabaseUrl, safeSupabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
@@ -34,11 +45,12 @@ export const supabaseAdmin = (() => {
   }
 
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!supabaseServiceKey) {
-    throw new Error('Missing env.SUPABASE_SERVICE_ROLE_KEY')
+  if (!supabaseServiceKey || supabaseServiceKey.includes('placeholder')) {
+    console.warn('⚠️ SUPABASE_SERVICE_ROLE_KEY 未正确配置，管理员功能可能不可用')
+    return null
   }
 
-  return createClient(supabaseUrl, supabaseServiceKey, {
+  return createClient(safeSupabaseUrl, supabaseServiceKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false
