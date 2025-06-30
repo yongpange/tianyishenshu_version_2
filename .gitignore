@@ -175,4 +175,7 @@ test-sms.js
 # 备份文件
 *.bak
 *.backup
-*.orig 
+*.orig
+
+# docker镜像
+*.tar
