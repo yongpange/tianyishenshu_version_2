@@ -14,6 +14,8 @@ import {
   Modal,
   message
 } from 'antd'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import {
   ArrowLeftOutlined,
   SendOutlined,
@@ -29,7 +31,9 @@ import {
   EditOutlined,
   DeleteOutlined,
   PushpinOutlined,
-  PushpinFilled
+  PushpinFilled,
+  CopyOutlined,
+  CheckOutlined
 } from '@ant-design/icons'
 import {
   getUserPhoneNumber,
@@ -71,6 +75,7 @@ export default function PersonalityReportPage() {
   const [reportContent, setReportContent] = useState<string | null>(null)
   const [reportLoading, setReportLoading] = useState(true)
   const [reportError, setReportError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
 
   // 对话管理相关状态
   const [renameModalVisible, setRenameModalVisible] = useState(false)
@@ -120,6 +125,20 @@ export default function PersonalityReportPage() {
       setReportError('加载报告失败，请稍后重试')
     } finally {
       setReportLoading(false)
+    }
+  }
+
+  // 复制报告内容
+  const copyReport = async () => {
+    if (!reportContent) return
+
+    try {
+      await navigator.clipboard.writeText(reportContent)
+      setCopied(true)
+      message.success('报告已复制到剪贴板')
+      setTimeout(() => setCopied(false), 2000)
+    } catch (error) {
+      message.error('复制失败，请手动选择文本复制')
     }
   }
 
@@ -764,11 +783,23 @@ export default function PersonalityReportPage() {
           <div className="h-full p-6 overflow-y-auto">
             <Card className="shadow-lg border-0">
               <div className="mb-6">
-                <div className="flex items-center space-x-3 mb-4">
-                  <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
-                    <FileTextOutlined className="text-white" />
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
+                      <FileTextOutlined className="text-white" />
+                    </div>
+                    <Title level={2} className="!mb-0 !text-gray-800">性格分析报告</Title>
                   </div>
-                  <Title level={2} className="!mb-0 !text-gray-800">性格分析报告</Title>
+                  {reportContent && (
+                    <Button
+                      icon={copied ? <CheckOutlined /> : <CopyOutlined />}
+                      onClick={copyReport}
+                      className={`${copied ? 'border-green-500 text-green-500' : 'border-purple-500 text-purple-500'} hover:bg-purple-50`}
+                      size="small"
+                    >
+                      {copied ? '已复制' : '复制报告'}
+                    </Button>
+                  )}
                 </div>
                 {userInfo && (
                   <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4">
@@ -815,16 +846,71 @@ export default function PersonalityReportPage() {
                   </div>
                 ) : reportContent ? (
                   <div className="space-y-6">
-                    <div className="prose prose-lg max-w-none">
-                      {reportContent.split('\n').map((paragraph, index) => (
-                        paragraph.trim() && (
-                          <div key={index} className="bg-white rounded-lg p-4 shadow-sm border border-gray-100 mb-4">
-                            <Paragraph className="text-gray-700 mb-0 leading-relaxed">
-                              {paragraph.trim()}
-                            </Paragraph>
-                          </div>
-                        )
-                      ))}
+                    {/* Markdown渲染的性格报告 */}
+                    <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl p-4 md:p-8 shadow-lg border border-gray-100 overflow-hidden">
+                      <div className="prose prose-sm md:prose-lg prose-gray max-w-none">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                          // 自定义标题样式
+                          h1: ({children}) => (
+                            <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent mb-6 pb-2 border-b-2 border-purple-200">
+                              {children}
+                            </h1>
+                          ),
+                          h2: ({children}) => (
+                            <h2 className="text-2xl font-semibold text-gray-800 mt-8 mb-4 flex items-center">
+                              <span className="w-1 h-6 bg-gradient-to-b from-purple-500 to-blue-500 rounded-full mr-3"></span>
+                              {children}
+                            </h2>
+                          ),
+                          h3: ({children}) => (
+                            <h3 className="text-xl font-semibold text-gray-700 mt-6 mb-3 flex items-center">
+                              <span className="w-2 h-2 bg-gradient-to-r from-purple-400 to-blue-400 rounded-full mr-2"></span>
+                              {children}
+                            </h3>
+                          ),
+                          // 自定义段落样式
+                          p: ({children}) => (
+                            <p className="text-gray-700 leading-relaxed mb-4 text-base">
+                              {children}
+                            </p>
+                          ),
+                          // 自定义列表样式
+                          ul: ({children}) => (
+                            <ul className="space-y-2 mb-4">
+                              {children}
+                            </ul>
+                          ),
+                          li: ({children}) => (
+                            <li className="flex items-start">
+                              <span className="w-1.5 h-1.5 bg-gradient-to-r from-purple-400 to-blue-400 rounded-full mt-2 mr-3 flex-shrink-0"></span>
+                              <span className="text-gray-700">{children}</span>
+                            </li>
+                          ),
+                          // 自定义强调文本
+                          strong: ({children}) => (
+                            <strong className="font-semibold text-gray-800 bg-gradient-to-r from-purple-100 to-blue-100 px-1 py-0.5 rounded">
+                              {children}
+                            </strong>
+                          ),
+                          // 自定义代码块（如果有）
+                          code: ({children}) => (
+                            <code className="bg-gray-100 text-purple-600 px-2 py-1 rounded text-sm font-mono">
+                              {children}
+                            </code>
+                          ),
+                          // 自定义引用块
+                          blockquote: ({children}) => (
+                            <blockquote className="border-l-4 border-purple-400 pl-4 py-2 bg-gradient-to-r from-purple-50 to-blue-50 rounded-r-lg my-4">
+                              {children}
+                            </blockquote>
+                          )
+                        }}
+                      >
+                          {reportContent}
+                        </ReactMarkdown>
+                      </div>
                     </div>
                   </div>
                 ) : (

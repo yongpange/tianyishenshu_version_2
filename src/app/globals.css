@@ -98,4 +98,68 @@ a {
   .section-padding {
     padding: 60px 0;
   }
-} 
+}
+
+/* 性格报告Markdown样式优化 */
+.prose {
+  line-height: 1.7;
+}
+
+.prose h1 {
+  border-image: linear-gradient(to right, #8b5cf6, #3b82f6) 1;
+}
+
+.prose h2::before {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 24px;
+  background: linear-gradient(to bottom, #8b5cf6, #3b82f6);
+  border-radius: 2px;
+  margin-right: 12px;
+  vertical-align: middle;
+}
+
+.prose blockquote {
+  border-left: 4px solid;
+  border-image: linear-gradient(to bottom, #8b5cf6, #3b82f6) 1;
+  background: linear-gradient(to right, #f3f4f6, #e5e7eb);
+}
+
+/* 响应式优化 */
+@media (max-width: 768px) {
+  .prose {
+    font-size: 14px;
+  }
+
+  .prose h1 {
+    font-size: 1.5rem;
+  }
+
+  .prose h2 {
+    font-size: 1.25rem;
+  }
+
+  .prose h3 {
+    font-size: 1.125rem;
+  }
+}
+
+/* 滚动条美化 */
+.prose::-webkit-scrollbar {
+  width: 6px;
+}
+
+.prose::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.prose::-webkit-scrollbar-thumb {
+  background: linear-gradient(to bottom, #8b5cf6, #3b82f6);
+  border-radius: 3px;
+}
+
+.prose::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(to bottom, #7c3aed, #2563eb);
+}

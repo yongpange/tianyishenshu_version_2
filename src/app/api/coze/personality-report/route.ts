@@ -37,22 +37,11 @@ function formatPersonalityPrompt(userInfo: UserInfo): string {
   const location = `${area.province}${area.city}${area.district}`
   const birthInfo = `${year}年${month}月${day}日${hour}时${minute}分，${location}`
 
-  return `
-请根据以下出生信息生成详细的性格分析报告：
+  return `请根据出生信息：${birthInfo}，性别：${gender === 'male' ? '男' : '女'}，生成详细的性格分析报告。
 
-出生信息：${birthInfo}
-性别：${gender === 'male' ? '男' : '女'}
+请自由发挥，生成丰富全面的性格分析内容，可以包含但不限于：八字排盘、五行分析、性格特征、情感表达、处事风格、人际关系、优势潜力、发展建议等方面。
 
-请按照以下结构返回详细的性格分析：
-
-1. 基本性格特征
-2. 情感表达方式
-3. 处事风格
-4. 人际关系
-5. 优势与潜力
-
-每个部分请提供深入的分析，字数控制在100-200字之间。请确保分析内容专业、准确且具有指导意义。
-`
+请使用markdown格式，合理组织内容结构，让报告既专业又易读。`
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse<PersonalityReportResponse>> {
@@ -96,22 +85,32 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
     // 生成性格报告prompt
     const prompt = formatPersonalityPrompt(userInfo)
 
-    // 尝试调用 Coze 智能体
-    try {
-      console.log('🚀 开始调用Coze智能体')
-      console.log('📝 Prompt:', prompt.substring(0, 200) + '...')
+    // 尝试调用 Coze 智能体（带重试机制）
+    let lastError: Error | null = null
+    const maxRetries = 2
 
-      const result = await coze.chat.createAndPoll({
-        bot_id: COZE_BOT_ID,
-        user_id: 'user_' + Date.now(),
-        additional_messages: [
-          {
-            role: RoleType.User,
-            content: prompt,
-            content_type: 'text',
-          },
-        ],
-      })
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🚀 开始调用Coze智能体 (尝试 ${attempt}/${maxRetries})`)
+        console.log('📝 Prompt:', prompt.substring(0, 200) + '...')
+
+        // 设置更长的超时时间
+        const result = await Promise.race([
+          coze.chat.createAndPoll({
+            bot_id: COZE_BOT_ID,
+            user_id: 'user_' + Date.now(),
+            additional_messages: [
+              {
+                role: RoleType.User,
+                content: prompt,
+                content_type: 'text',
+              },
+            ],
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Coze API调用超时，请稍后重试')), 300000) // 5分钟超时
+          )
+        ]) as any
 
       console.log('📡 Chat完成:', {
         status: result.chat.status,
@@ -143,22 +142,34 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
             type: m.type,
             content_preview: m.content?.substring(0, 50) + '...'
           })))
+          throw new Error('未找到AI回复消息')
         }
       } else {
         console.log('❌ Chat未完成，状态:', result.chat.status)
         console.log('❌ 消息数量:', result.messages?.length || 0)
+        throw new Error(`Chat未完成，状态: ${result.chat.status}`)
       }
 
-    } catch (cozeError: any) {
-      console.error('❌ Coze API调用失败:', cozeError.message)
-      console.error('❌ 错误详情:', cozeError)
+      } catch (cozeError: any) {
+        console.error(`❌ Coze API调用失败 (尝试 ${attempt}/${maxRetries}):`, cozeError.message)
+        lastError = cozeError
+
+        // 如果不是最后一次尝试，等待一下再重试
+        if (attempt < maxRetries) {
+          console.log(`⏳ 等待 ${attempt * 2} 秒后重试...`)
+          await new Promise(resolve => setTimeout(resolve, attempt * 2000))
+        }
+      }
     }
 
-    // 如果所有尝试都失败，返回错误而不是fallback
+    // 如果所有尝试都失败，返回详细错误信息
     console.log('💥 所有尝试都失败，返回错误')
+    const errorMessage = lastError?.message || 'AI服务暂时不可用'
+
     return NextResponse.json({
       success: false,
-      error: 'AI服务暂时不可用，请稍后重试'
+      error: `生成失败：${errorMessage}。请稍后重试，或联系客服获取帮助。`,
+      details: lastError?.message
     }, { status: 500 })
 
   } catch (error) {

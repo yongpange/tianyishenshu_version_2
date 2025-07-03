@@ -38,23 +38,12 @@ export class CozeClient {
     const { year, month, day, hour, minute, gender, area } = userInfo
     const location = `${area.province}${area.city}${area.district}`
     const birthInfo = `${year}年${month}月${day}日${hour}时${minute}分，${location}`
-    
-    return `
-请根据以下出生信息生成详细的性格分析报告：
 
-出生信息：${birthInfo}
-性别：${gender}
+    return `请根据出生信息：${birthInfo}，性别：${gender}，生成详细的性格分析报告。
 
-请按照以下结构返回详细的性格分析：
+请自由发挥，生成丰富全面的性格分析内容，可以包含但不限于：八字排盘、五行分析、性格特征、情感表达、处事风格、人际关系、优势潜力、发展建议等方面。
 
-1. 基本性格特征
-2. 情感表达方式
-3. 处事风格
-4. 人际关系
-5. 优势与潜力
-
-每个部分请提供深入的分析，字数控制在100-200字之间。请确保分析内容专业、准确且具有指导意义。
-`
+请使用markdown格式，合理组织内容结构，让报告既专业又易读。`
   }
 
   // 调用Coze API生成性格报告

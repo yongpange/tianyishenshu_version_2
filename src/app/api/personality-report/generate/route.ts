@@ -39,22 +39,11 @@ function formatPersonalityPrompt(userInfo: UserInfo): string {
   const location = `${area.province}${area.city}${area.district}`
   const birthInfo = `${year}年${month}月${day}日${hour}时${minute}分，${location}`
 
-  return `
-请根据以下出生信息生成详细的性格分析报告：
+  return `请根据出生信息：${birthInfo}，性别：${gender === 'male' || gender === '男' ? '男' : '女'}，生成详细的性格分析报告。
 
-出生信息：${birthInfo}
-性别：${gender === 'male' || gender === '男' ? '男' : '女'}
+请自由发挥，生成丰富全面的性格分析内容，可以包含但不限于：八字排盘、五行分析、性格特征、情感表达、处事风格、人际关系、优势潜力、发展建议等方面。
 
-请按照以下结构返回详细的性格分析：
-
-1. 基本性格特征
-2. 情感表达方式
-3. 处事风格
-4. 人际关系
-5. 优势与潜力
-
-每个部分请提供深入的分析，字数控制在100-200字之间。请确保分析内容专业、准确且具有指导意义。
-`
+请使用markdown格式，合理组织内容结构，让报告既专业又易读。`
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse<PersonalityReportResponse>> {
@@ -99,17 +88,23 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
     try {
       console.log('📡 调用 Coze API...')
       
-      const result = await coze.chat.createAndPoll({
-        bot_id: COZE_BOT_ID,
-        user_id: `user_${userId}_${Date.now()}`,
-        additional_messages: [
-          {
-            role: RoleType.User,
-            content: prompt,
-            content_type: 'text',
-          },
-        ],
-      })
+      // 设置更长的超时时间，并添加重试机制
+      const result = await Promise.race([
+        coze.chat.createAndPoll({
+          bot_id: COZE_BOT_ID,
+          user_id: `user_${userId}_${Date.now()}`,
+          additional_messages: [
+            {
+              role: RoleType.User,
+              content: prompt,
+              content_type: 'text',
+            },
+          ],
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Coze API调用超时，请稍后重试')), 300000) // 5分钟超时
+        )
+      ]) as any
 
       console.log('📋 Coze API 响应:', {
         status: result.chat.status,
