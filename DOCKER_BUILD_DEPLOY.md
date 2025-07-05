@@ -24,24 +24,13 @@ nano .env.production
 npm run docker:build
 
 # 方式2: 直接使用Docker命令
-docker build -t tianyishenshu:v1.0 .
+docker build  --network=host -t tianyishenshu:v1.0 .
 
-# 方式3: 使用部署脚本
-./scripts/docker-deploy.sh build
-```
-
-### 3. 服务启动
-```bash
-# 启动所有服务
-docker-compose up -d
-
-# 或使用部署脚本
-./scripts/docker-deploy.sh deploy
 ```
 
 ## 📦 镜像打包与传输
 
-### 完整部署流程（适用于远程服务器）
+### 完整部署流程（适用于腾讯云/阿里云远程服务器）
 
 **第一步：本地构建镜像**
 ```bash
@@ -87,31 +76,9 @@ docker run -d \
   tianyishenshu:v1.0
 ```
 
-## 📦 部署选项
-
-### 生产环境部署
-```bash
-# 方式1: 使用部署脚本
-./scripts/docker-deploy.sh full
-
-# 方式2: 手动部署
-docker build -t tianyishenshu:latest .
-docker-compose up -d
-```
-
-### 开发环境部署
-```bash
-# 开发环境（支持热重载）
-./scripts/docker-deploy.sh dev
-
-# 或直接使用 docker-compose
-docker-compose -f docker-compose.dev.yml up -d
-```
-
 ### 服务访问地址
 - **应用主页**: http://localhost:3000
-- **开发环境**: http://localhost:3001
-- **健康检查**: http://localhost:3000/api/health
+- **管理页面**: http://localhost:3000/admin
 
 ## 🔧 常用命令
 
@@ -246,39 +213,7 @@ docker-compose logs -f nginx
 docker-compose logs --tail=100 tianyishenshu-app
 ```
 
-### 健康检查
-```bash
-# 检查应用健康状态
-curl http://localhost:3000/api/health
 
-# 检查容器资源使用
-docker stats tianyishenshu-app
-```
-
-## 🧹 清理操作
-
-### 停止和清理
-```bash
-# 停止并删除容器
-docker-compose down
-
-# 停止并删除容器和数据卷
-docker-compose down -v
-
-# 清理无用的镜像和容器
-docker system prune -f
-
-# 使用脚本清理
-./scripts/docker-deploy.sh clean
-```
-
-### 重新部署
-```bash
-# 完全重新部署
-docker-compose down
-docker rmi tianyishenshu:latest
-./scripts/docker-deploy.sh full
-```
 
 ## ⚠️ 故障排除
 
@@ -419,7 +354,4 @@ deploy:
 - `Dockerfile` - 生产环境镜像配置
 - `Dockerfile.dev` - 开发环境镜像配置
 - `docker-compose.yml` - 生产环境服务编排
-- `docker-compose.dev.yml` - 开发环境服务编排
-- `scripts/docker-deploy.sh` - Linux/macOS部署脚本
-- `scripts/docker-deploy.bat` - Windows部署脚本
 - `nginx/nginx.conf` - Nginx反向代理配置 

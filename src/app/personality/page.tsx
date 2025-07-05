@@ -428,7 +428,7 @@ export default function PersonalityReportPage() {
       })
 
       const data = await response.json()
-
+      console.log('🔑 聊天页面AI返回的data: ', data)
       if (data.success) {
         const botMessage: ChatMessage = {
           id: (Date.now() + 1).toString(),

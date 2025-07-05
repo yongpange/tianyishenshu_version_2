@@ -6,7 +6,8 @@ import {
   createPersonalityReport, 
   savePersonalityReport,
   validateUserInfo,
-  calculateUserDataHash
+  calculateUserDataHash,
+  formatUserInfoDisplay
 } from '@/utils/personality-report'
 
 // 请求接口
@@ -18,20 +19,78 @@ interface PersonalityReportRequest {
 // 响应接口
 interface PersonalityReportResponse {
   success: boolean
-  report?: string
-  conversationId?: string
+  reportId?: string
+  content?: string
   error?: string
+  authMethod?: string
 }
 
 // 环境变量配置
 const COZE_API_TOKEN = process.env.COZE_API_TOKEN || ''
 const COZE_BOT_ID = process.env.BOT_ID || ''
+// OAuth JWT认证配置
+const COZE_CLIENT_ID = process.env.COZE_CLIENT_ID || ''
+const COZE_PRIVATE_KEY = process.env.COZE_PRIVATE_KEY || ''
+
+// JWT认证函数
+async function createJWTToken(): Promise<string> {
+  if (!COZE_CLIENT_ID || !COZE_PRIVATE_KEY) {
+    throw new Error('JWT认证配置缺失')
+  }
+  
+  try {
+    // 使用jsonwebtoken库生成JWT
+    const jwt = require('jsonwebtoken')
+    const now = Math.floor(Date.now() / 1000)
+    
+    // 清理私钥格式（处理环境变量中的换行符）
+    const privateKey = COZE_PRIVATE_KEY.replace(/\\n/g, '\n')
+    
+    const payload = {
+      iss: COZE_CLIENT_ID, // 应用ID
+      aud: 'api.coze.cn', // Coze API域名
+      iat: now, // 签发时间
+      exp: now + 3600, // 过期时间（1小时）
+      jti: `jwt_${Date.now()}` // JWT ID
+    }
+    
+    const token = jwt.sign(payload, privateKey, { algorithm: 'RS256' })
+    return token
+  } catch (error) {
+    console.error('JWT生成失败:', error)
+    throw new Error('JWT认证失败')
+  }
+}
 
 // 初始化 Coze API 客户端
-const coze = new CozeAPI({
-  token: COZE_API_TOKEN,
-  baseURL: COZE_CN_BASE_URL,
-})
+async function createCozeClient() {
+  let authToken = ''
+  let authMethod = 'PAT'
+  
+  // 优先使用JWT认证，降级到PAT认证
+  if (COZE_CLIENT_ID && COZE_PRIVATE_KEY) {
+    console.log('🔐 使用JWT OAuth认证')
+    try {
+      authToken = await createJWTToken()
+      authMethod = 'JWT'
+    } catch (error) {
+      console.warn('JWT认证失败，降级到PAT认证:', error)
+      authToken = COZE_API_TOKEN
+      authMethod = 'PAT'
+    }
+  } else {
+    console.log('🔑 使用PAT Token认证')
+    authToken = COZE_API_TOKEN
+  }
+  
+  return {
+    client: new CozeAPI({
+      token: authToken,
+      baseURL: COZE_CN_BASE_URL,
+    }),
+    authMethod
+  }
+}
 
 // 格式化用户信息为性格报告prompt
 function formatPersonalityPrompt(userInfo: UserInfo): string {
@@ -70,15 +129,23 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
       }, { status: 400 })
     }
 
-    // 验证环境变量
-    if (!COZE_API_TOKEN || !COZE_BOT_ID) {
-      console.error('❌ 环境变量检查失败:', {
-        COZE_API_TOKEN: COZE_API_TOKEN ? '已设置' : '未设置',
-        COZE_BOT_ID: COZE_BOT_ID ? '已设置' : '未设置'
-      })
+    // 检查认证配置
+    const hasJWTConfig = COZE_CLIENT_ID && COZE_PRIVATE_KEY
+    const hasPATConfig = COZE_API_TOKEN && COZE_BOT_ID
+    
+    if (!hasJWTConfig && !hasPATConfig) {
+      console.error('❌ 认证配置检查失败: 既没有JWT也没有PAT配置')
       return NextResponse.json({
         success: false,
-        error: 'Coze API配置缺失，请检查环境变量'
+        error: 'Coze API认证配置缺失，请检查JWT或PAT配置'
+      }, { status: 500 })
+    }
+
+    if (!COZE_BOT_ID) {
+      console.error('❌ Bot ID未配置')
+      return NextResponse.json({
+        success: false,
+        error: 'Bot ID配置缺失'
       }, { status: 500 })
     }
 
@@ -87,6 +154,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
 
     try {
       console.log('📡 调用 Coze API...')
+      
+      // 创建Coze客户端（支持JWT和PAT认证）
+      const { client: coze, authMethod } = await createCozeClient()
       
       // 设置更长的超时时间，并添加重试机制
       const result = await Promise.race([
@@ -109,62 +179,124 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
       console.log('📋 Coze API 响应:', {
         status: result.chat.status,
         conversation_id: result.chat.conversation_id,
-        messages_count: result.messages?.length || 0
+        messages_count: result.messages?.length || 0,
+        authMethod: authMethod
       })
 
       if (result.chat.status === ChatStatus.COMPLETED && result.messages) {
-        // 找到AI的回复
-        const aiMessage = result.messages.find(
-          (msg: any) => msg.role === RoleType.Assistant && msg.type === 'answer'
-        )
-
-        if (aiMessage && aiMessage.content) {
-          console.log('✅ 成功获取AI生成的报告，长度:', aiMessage.content.length)
-
-          // 创建性格报告对象
-          const report = createPersonalityReport(
-            userId,
-            aiMessage.content,
-            userInfo,
-            result.chat.conversation_id
+                  // 找到AI的回复
+          const aiMessage = result.messages.find(
+            (msg: any) => msg.role === RoleType.Assistant && msg.type === 'answer'
           )
 
-          // 保存到 Supabase
-          try {
-            await savePersonalityReport(report)
-            console.log('✅ 报告已保存到 Supabase')
-          } catch (saveError) {
-            console.error('⚠️ 保存报告失败，但生成成功:', saveError)
-            // 即使保存失败，也返回生成的报告
-          }
+          if (aiMessage && aiMessage.content) {
+            const reportContent = aiMessage.content
 
-          return NextResponse.json({
-            success: true,
-            report: aiMessage.content,
-            conversationId: result.chat.conversation_id
-          })
+            console.log('✅ 获取到AI生成的性格报告:', {
+              length: reportContent.length,
+              preview: reportContent.substring(0, 100) + '...'
+            })
+
+            try {
+              // 保存到Supabase
+              console.log('💾 保存性格报告到数据库...')
+              const reportData = createPersonalityReport(
+                userId,
+                reportContent,
+                userInfo,
+                result.chat.conversation_id
+              )
+              await savePersonalityReport(reportData)
+
+              console.log('✅ 性格报告保存成功:', { reportId: reportData.id })
+
+              return NextResponse.json({
+                success: true,
+                reportId: reportData.id,
+                content: reportContent,
+                authMethod: authMethod
+              })
+
+            } catch (saveError) {
+              console.error('❌ 保存性格报告失败:', saveError)
+              
+              // 即使保存失败，也返回生成的内容
+              return NextResponse.json({
+                success: true,
+                content: reportContent,
+                error: '报告生成成功，但保存失败',
+                authMethod: authMethod
+              })
+            }
+
         } else {
-          console.error('❌ 未找到AI回复消息')
+          console.error('❌ AI响应中没有找到有效内容')
+          throw new Error('AI生成的报告内容为空')
         }
+
       } else {
-        console.error('❌ Coze API 调用未完成:', result.chat.status)
+        console.error('❌ Coze API调用失败:', {
+          status: result.chat.status,
+          result: result
+        })
+        throw new Error(`智能体响应失败: ${result.chat.status}`)
       }
 
-    } catch (cozeError: any) {
-      console.error('❌ Coze API调用失败:', cozeError)
+    } catch (cozeError) {
+      console.error('❌ Coze API调用异常:', cozeError)
+      
+             // 生成fallback内容
+       const fallbackContent = `# 性格分析报告
+
+基于您的出生信息：${formatUserInfoDisplay(userInfo)}
+
+## 基础分析
+
+由于AI服务暂时不可用，这里提供基础的性格分析框架。您可以稍后重新生成完整的报告。
+
+## 出生信息
+- 出生年份：${userInfo.year}年
+- 出生月日：${userInfo.month}月${userInfo.day}日  
+- 出生时辰：${userInfo.hour}时${userInfo.minute}分
+- 出生地区：${userInfo.area.province} ${userInfo.area.city} ${userInfo.area.district}
+- 性别：${userInfo.gender === 'male' || userInfo.gender === '男' ? '男' : '女'}
+
+请稍后重试以获取完整的AI分析报告。`
+
+       try {
+         // 尝试保存fallback内容
+         const reportData = createPersonalityReport(
+           userId,
+           fallbackContent,
+           userInfo
+         )
+         await savePersonalityReport(reportData)
+
+         return NextResponse.json({
+           success: true,
+           reportId: reportData.id,
+           content: fallbackContent,
+           error: 'AI服务暂时不可用，使用了备用分析',
+           authMethod: 'fallback'
+         })
+
+      } catch (fallbackError) {
+        console.error('❌ Fallback保存也失败:', fallbackError)
+        
+        return NextResponse.json({
+          success: false,
+          error: 'AI服务暂时不可用，请稍后重试',
+          details: cozeError instanceof Error ? cozeError.message : String(cozeError)
+        }, { status: 500 })
+      }
     }
 
-    // 如果 Coze API 失败，返回错误
-    return NextResponse.json({
-      success: false,
-      error: 'AI服务暂时不可用，请稍后重试'
-    }, { status: 500 })
-
   } catch (error) {
-    console.error('❌ 生成性格报告API错误:', error)
+    console.error('❌ 性格报告生成失败:', error)
     return NextResponse.json({
       success: false,
-      error: 'AI服务暂时不可用，请稍后重试'
+      error: '报告生成失败，请稍后重试',
+      details: error instanceof Error ? error.message : String(error)
     }, { status: 500 })
   }
 }

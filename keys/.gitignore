@@ -1,0 +1,8 @@
+# 忽略所有私钥文件
+*.pem
+*.key
+*.p8
+*.json
+
+# 仅保留README文件
+!README.md 
