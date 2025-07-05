@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { CozeAPI, COZE_CN_BASE_URL, ChatStatus, RoleType } from '@coze/api'
+import { ChatStatus, RoleType } from '@coze/api'
 import { supabaseAdmin } from '@/lib/supabase'
 import { UserInfo } from '@/lib/coze-client'
+import { createCozeClient, validateBotId, checkAuthConfig } from '@/lib/coze-auth'
 import { 
   createPersonalityReport, 
   savePersonalityReport,
@@ -25,72 +26,8 @@ interface PersonalityReportResponse {
   authMethod?: string
 }
 
-// 环境变量配置
-const COZE_API_TOKEN = process.env.COZE_API_TOKEN || ''
-const COZE_BOT_ID = process.env.BOT_ID || ''
-// OAuth JWT认证配置
-const COZE_CLIENT_ID = process.env.COZE_CLIENT_ID || ''
-const COZE_PRIVATE_KEY = process.env.COZE_PRIVATE_KEY || ''
-
-// JWT认证函数
-async function createJWTToken(): Promise<string> {
-  if (!COZE_CLIENT_ID || !COZE_PRIVATE_KEY) {
-    throw new Error('JWT认证配置缺失')
-  }
-  
-  try {
-    // 使用jsonwebtoken库生成JWT
-    const jwt = require('jsonwebtoken')
-    const now = Math.floor(Date.now() / 1000)
-    
-    // 清理私钥格式（处理环境变量中的换行符）
-    const privateKey = COZE_PRIVATE_KEY.replace(/\\n/g, '\n')
-    
-    const payload = {
-      iss: COZE_CLIENT_ID, // 应用ID
-      aud: 'api.coze.cn', // Coze API域名
-      iat: now, // 签发时间
-      exp: now + 3600, // 过期时间（1小时）
-      jti: `jwt_${Date.now()}` // JWT ID
-    }
-    
-    const token = jwt.sign(payload, privateKey, { algorithm: 'RS256' })
-    return token
-  } catch (error) {
-    console.error('JWT生成失败:', error)
-    throw new Error('JWT认证失败')
-  }
-}
-
-// 初始化 Coze API 客户端
-async function createCozeClient() {
-  let authToken = ''
-  let authMethod = 'PAT'
-  
-  // 优先使用JWT认证，降级到PAT认证
-  if (COZE_CLIENT_ID && COZE_PRIVATE_KEY) {
-    console.log('🔐 使用JWT OAuth认证')
-    try {
-      authToken = await createJWTToken()
-      authMethod = 'JWT'
-    } catch (error) {
-      console.warn('JWT认证失败，降级到PAT认证:', error)
-      authToken = COZE_API_TOKEN
-      authMethod = 'PAT'
-    }
-  } else {
-    console.log('🔑 使用PAT Token认证')
-    authToken = COZE_API_TOKEN
-  }
-  
-  return {
-    client: new CozeAPI({
-      token: authToken,
-      baseURL: COZE_CN_BASE_URL,
-    }),
-    authMethod
-  }
-}
+// 环境变量配置（可能需要特定的Bot ID）
+const PERSONALITY_BOT_ID = process.env.PERSONALITY_BOT_ID || process.env.BOT_ID || ''
 
 // 格式化用户信息为性格报告prompt
 function formatPersonalityPrompt(userInfo: UserInfo): string {
@@ -130,22 +67,25 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
     }
 
     // 检查认证配置
-    const hasJWTConfig = COZE_CLIENT_ID && COZE_PRIVATE_KEY
-    const hasPATConfig = COZE_API_TOKEN && COZE_BOT_ID
-    
-    if (!hasJWTConfig && !hasPATConfig) {
-      console.error('❌ 认证配置检查失败: 既没有JWT也没有PAT配置')
+    try {
+      checkAuthConfig()
+    } catch (configError) {
+      console.error('❌ 认证配置检查失败:', configError)
       return NextResponse.json({
         success: false,
-        error: 'Coze API认证配置缺失，请检查JWT或PAT配置'
+        error: configError instanceof Error ? configError.message : '认证配置缺失'
       }, { status: 500 })
     }
 
-    if (!COZE_BOT_ID) {
-      console.error('❌ Bot ID未配置')
+    // 验证Bot ID
+    let botId: string
+    try {
+      botId = validateBotId(PERSONALITY_BOT_ID)
+    } catch (botError) {
+      console.error('❌ Bot ID验证失败:', botError)
       return NextResponse.json({
         success: false,
-        error: 'Bot ID配置缺失'
+        error: botError instanceof Error ? botError.message : 'Bot ID配置缺失'
       }, { status: 500 })
     }
 
@@ -161,7 +101,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
       // 设置更长的超时时间，并添加重试机制
       const result = await Promise.race([
         coze.chat.createAndPoll({
-          bot_id: COZE_BOT_ID,
+          bot_id: botId,
           user_id: `user_${userId}_${Date.now()}`,
           additional_messages: [
             {
