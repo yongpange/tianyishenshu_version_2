@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, Avatar, Button, message } from 'antd'
-import { 
+import {
   UserOutlined,
   BarChartOutlined,
   WechatOutlined,
@@ -30,59 +30,45 @@ export default function DashboardPage() {
   const reportModules = [
     {
       id: 'astrology',
-      title: '排盘分析',
-      icon: '🎯',
-      color: '#4F46E5',
-      bgColor: 'from-blue-50 to-indigo-50'
+      title: '八字排盘',
+      icon: '☯',
+      color: '#374151',
+      bgColor: 'from-gray-50 to-gray-100'
     },
     {
-      id: 'personality', 
-      title: '性格报告',
-      icon: '👤',
-      color: '#059669',
-      bgColor: 'from-green-50 to-emerald-50'
+      id: 'personality',
+      title: '性格内观',
+      icon: '◐',
+      color: '#1F2937',
+      bgColor: 'from-gray-100 to-gray-150'
     },
     {
       id: 'wealth',
-      title: '财富报告', 
-      icon: '💰',
-      color: '#D97706',
-      bgColor: 'from-yellow-50 to-orange-50'
-    },
-    {
-      id: 'career',
-      title: '事业报告',
-      icon: '💼',
-      color: '#7C3AED',
-      bgColor: 'from-purple-50 to-violet-50'
+      title: '事业财富',
+      icon: '◉',
+      color: '#111827',
+      bgColor: 'from-gray-50 to-gray-100'
     },
     {
       id: 'marriage',
-      title: '婚恋报告',
-      icon: '❤️',
-      color: '#DC2626',
-      bgColor: 'from-red-50 to-pink-50'
+      title: '婚恋感情',
+      icon: '◎',
+      color: '#374151',
+      bgColor: 'from-gray-100 to-gray-150'
     },
     {
       id: 'health',
-      title: '健康报告',
-      icon: '🏥',
-      color: '#0891B2',
-      bgColor: 'from-cyan-50 to-blue-50'
+      title: '身体健康',
+      icon: '○',
+      color: '#1F2937',
+      bgColor: 'from-gray-50 to-gray-100'
     },
     {
       id: 'fortune',
-      title: '运势报告',
-      icon: '⭐',
-      color: '#CA8A04',
-      bgColor: 'from-amber-50 to-yellow-50'
-    },
-    {
-      id: 'social',
-      title: '旺运商城',
-      icon: '🛍️',
-      color: '#9333EA',
-      bgColor: 'from-violet-50 to-purple-50'
+      title: '2025年运',
+      icon: '●',
+      color: '#111827',
+      bgColor: 'from-gray-100 to-gray-150'
     }
   ]
 
@@ -91,6 +77,10 @@ export default function DashboardPage() {
     switch (reportId) {
       case 'personality':
         router.push('/personality')
+        break
+      case 'astrology':
+        message.info(`即将为您生成${reportTitle}...`)
+        // 这里后续可以集成八字排盘功能
         break
       default:
         message.info(`即将为您生成${reportTitle}...`)
@@ -161,37 +151,37 @@ export default function DashboardPage() {
 
         {/* 导航菜单 */}
         <div className="flex-1 p-4">
-          <div className="space-y-2">
-            <div className="flex items-center space-x-3 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg">
-              <BarChartOutlined />
-              <span className="text-sm font-medium">天乙神数</span>
+          <div className="space-y-3">
+            <div className="flex items-center space-x-3 px-4 py-3 bg-gradient-to-r from-gray-100 to-gray-200 text-gray-900 rounded-xl border border-gray-300">
+              <span className="text-lg">◉</span>
+              <span className="text-sm font-medium tracking-wide">命书</span>
             </div>
-            <div className="flex items-center space-x-3 px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer">
-              <BarChartOutlined />
-              <span className="text-sm">排盘分析</span>
+            <div className="flex items-center space-x-3 px-4 py-3 text-gray-600 hover:bg-gradient-to-r hover:from-gray-50 hover:to-gray-100 hover:text-gray-900 rounded-xl cursor-pointer transition-all duration-300">
+              <span className="text-lg">◐</span>
+              <span className="text-sm font-medium tracking-wide">召灵</span>
             </div>
-            <div className="flex items-center space-x-3 px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer">
-              <WechatOutlined />
-              <span className="text-sm">旺运商城</span>
+            <div className="flex items-center space-x-3 px-4 py-3 text-gray-600 hover:bg-gradient-to-r hover:from-gray-50 hover:to-gray-100 hover:text-gray-900 rounded-xl cursor-pointer transition-all duration-300">
+              <span className="text-lg">○</span>
+              <span className="text-sm font-medium tracking-wide">疗愈</span>
             </div>
-            <div className="flex items-center space-x-3 px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer">
-              <UsergroupAddOutlined />
-              <span className="text-sm">我的</span>
+            <div className="flex items-center space-x-3 px-4 py-3 text-gray-600 hover:bg-gradient-to-r hover:from-gray-50 hover:to-gray-100 hover:text-gray-900 rounded-xl cursor-pointer transition-all duration-300">
+              <span className="text-lg">◎</span>
+              <span className="text-sm font-medium tracking-wide">宝阁</span>
             </div>
           </div>
         </div>
 
-        {/* 底部1对1咨询按钮 */}
+        {/* 底部问道1v1按钮 */}
         <div className="p-4 border-t border-gray-100">
-          <Button 
-            type="primary" 
-            block 
+          <Button
+            type="primary"
+            block
             size="large"
             onClick={handleConsultation}
-            className="bg-blue-500 hover:bg-blue-600 border-none"
-            icon={<MessageOutlined />}
+            className="bg-gradient-to-r from-gray-700 to-gray-900 hover:from-gray-800 hover:to-black border-none shadow-lg hover:shadow-xl transition-all duration-300"
+            icon={<span className="text-base">●</span>}
           >
-            1对1咨询
+            <span className="font-medium tracking-wide text-white">问道1v1</span>
           </Button>
         </div>
       </div>
@@ -199,60 +189,79 @@ export default function DashboardPage() {
       {/* 主内容区域 */}
       <div className="flex-1 p-4 md:p-8 pb-20 md:pb-8">
         <div className="max-w-6xl mx-auto">
-          {/* 页面标题 */}
-          <div className="mb-8">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">天乙神数 命理报告</h1>
-            <p className="text-gray-600">
-              在天乙神数报告后可以查看你命理报告的各个报告，如性格报告、财富报告等。此外，您还可以针对不同类型进行
-              询问，查至你所朝日为止，如果AI问答无法完全解决你的问题，欢迎联系明师进行1对1深度咨询。
-            </p>
+          {/* 哲学文案区域 */}
+          <div className="mb-12">
+            <div className="relative">
+              {/* 背景纹理 */}
+              <div className="absolute inset-0 opacity-3">
+                <div className="w-full h-full" style={{
+                  backgroundImage: `radial-gradient(circle at 25% 25%, #374151 2px, transparent 2px),
+                                   radial-gradient(circle at 75% 75%, #1F2937 1px, transparent 1px)`,
+                  backgroundSize: '60px 60px, 40px 40px'
+                }}></div>
+              </div>
+
+              {/* 主要内容 */}
+              <div className="relative text-center py-12 px-8">
+                <div className="max-w-4xl mx-auto">
+                  {/* 装饰线 */}
+                  <div className="flex items-center justify-center mb-8">
+                    <div className="h-px bg-gradient-to-r from-transparent via-gray-400 to-transparent w-24"></div>
+                    <div className="mx-4 w-2 h-2 bg-gray-600 rounded-full"></div>
+                    <div className="h-px bg-gradient-to-r from-transparent via-gray-400 to-transparent w-24"></div>
+                  </div>
+
+                  {/* 哲学文案 */}
+                  <h1 className="text-3xl md:text-4xl font-semibold text-gray-900 leading-relaxed tracking-wider">
+                    人立于命 命行运中 命由心敕 运掌中天 心御乾坤
+                  </h1>
+
+                  {/* 装饰线 */}
+                  <div className="flex items-center justify-center mt-8">
+                    <div className="h-px bg-gradient-to-r from-transparent via-gray-400 to-transparent w-24"></div>
+                    <div className="mx-4 w-2 h-2 bg-gray-600 rounded-full"></div>
+                    <div className="h-px bg-gradient-to-r from-transparent via-gray-400 to-transparent w-24"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* 报告选择标题 */}
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold text-gray-900">你想查阅和了解的报告是什么？</h2>
-          </div>
-
-          {/* 8个报告模块 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-8">
+          {/* 6个报告模块 - 3×2布局 */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 mb-8">
             {reportModules.map((module) => (
               <Card
                 key={module.id}
-                className="hover:shadow-lg transition-all duration-300 cursor-pointer border-gray-200"
-                bodyStyle={{ padding: '24px 16px' }}
+                className="hover:shadow-xl hover:scale-105 transition-all duration-300 cursor-pointer border-gray-200 hover:border-gray-300"
+                bodyStyle={{ padding: '32px 20px' }}
                 onClick={() => handleReportClick(module.id, module.title)}
               >
                 <div className="text-center">
-                  <div className={`w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-r ${module.bgColor} flex items-center justify-center`}>
-                    <span className="text-2xl">{module.icon}</span>
+                  <div className={`w-20 h-20 mx-auto mb-5 rounded-3xl bg-gradient-to-br ${module.bgColor} flex items-center justify-center shadow-lg`}>
+                    <span className="text-3xl">{module.icon}</span>
                   </div>
-                  <h3 className="font-semibold text-gray-900 text-sm">{module.title}</h3>
+                  <h3 className="font-bold text-gray-900 text-base mb-1">{module.title}</h3>
+                  <div className="w-8 h-1 bg-gradient-to-r from-gray-400 to-gray-600 rounded-full mx-auto opacity-60"></div>
                 </div>
               </Card>
             ))}
           </div>
 
-          {/* 免责声明 */}
-          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg">
-            <p className="text-yellow-800 text-sm">
-              <span className="font-medium">免责声明：</span>
-              以上命理结果仅供娱乐，对于报告中产生的任何问题，只代表本人观点，不具法律效力等。
-            </p>
-          </div>
+
         </div>
       </div>
 
-      {/* 移动端底部1对1咨询按钮 */}
+      {/* 移动端底部问道1v1按钮 */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200">
-        <Button 
-          type="primary" 
-          block 
+        <Button
+          type="primary"
+          block
           size="large"
           onClick={handleConsultation}
-          className="bg-blue-500 hover:bg-blue-600 border-none"
-          icon={<MessageOutlined />}
+          className="bg-gradient-to-r from-gray-700 to-gray-900 hover:from-gray-800 hover:to-black border-none shadow-lg"
+          icon={<span className="text-base">●</span>}
         >
-          1对1咨询
+          <span className="font-medium tracking-wide text-white">问道1v1</span>
         </Button>
       </div>
     </div>
