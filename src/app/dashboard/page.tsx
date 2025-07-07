@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, Avatar, Button, message } from 'antd'
-import { 
+import {
   UserOutlined,
   BarChartOutlined,
   WechatOutlined,
@@ -30,59 +30,45 @@ export default function DashboardPage() {
   const reportModules = [
     {
       id: 'astrology',
-      title: '排盘分析',
-      icon: '🎯',
-      color: '#4F46E5',
-      bgColor: 'from-blue-50 to-indigo-50'
+      title: '八字排盘',
+      icon: '☯️',
+      subtitle: '解读您的生辰八字，揭示命运轨迹',
+      status: '推荐'
     },
     {
-      id: 'personality', 
-      title: '性格报告',
-      icon: '👤',
-      color: '#059669',
-      bgColor: 'from-green-50 to-emerald-50'
+      id: 'personality',
+      title: '性格内观',
+      icon: '🧠',
+      subtitle: '深入灵魂深处，发现真实的自己',
+      status: '已完成'
     },
     {
       id: 'wealth',
-      title: '财富报告', 
+      title: '事业财富',
       icon: '💰',
-      color: '#D97706',
-      bgColor: 'from-yellow-50 to-orange-50'
-    },
-    {
-      id: 'career',
-      title: '事业报告',
-      icon: '💼',
-      color: '#7C3AED',
-      bgColor: 'from-purple-50 to-violet-50'
+      subtitle: '洞察事业走向，把握财富机遇',
+      status: null
     },
     {
       id: 'marriage',
-      title: '婚恋报告',
-      icon: '❤️',
-      color: '#DC2626',
-      bgColor: 'from-red-50 to-pink-50'
+      title: '婚恋感情',
+      icon: '💕',
+      subtitle: '探寻情感密码，指引爱情方向',
+      status: null
     },
     {
       id: 'health',
-      title: '健康报告',
+      title: '身体健康',
       icon: '🏥',
-      color: '#0891B2',
-      bgColor: 'from-cyan-50 to-blue-50'
+      subtitle: '感知身心状态，守护健康之源',
+      status: '新功能'
     },
     {
       id: 'fortune',
-      title: '运势报告',
-      icon: '⭐',
-      color: '#CA8A04',
-      bgColor: 'from-amber-50 to-yellow-50'
-    },
-    {
-      id: 'social',
-      title: '旺运商城',
-      icon: '🛍️',
-      color: '#9333EA',
-      bgColor: 'from-violet-50 to-purple-50'
+      title: '2025年运',
+      icon: '🔮',
+      subtitle: '预见蛇年运势，掌控人生航向',
+      status: null
     }
   ]
 
@@ -94,6 +80,10 @@ export default function DashboardPage() {
         break
       case 'personality':
         router.push('/personality')
+        break
+      case 'astrology':
+        message.info(`即将为您生成${reportTitle}...`)
+        // 这里后续可以集成八字排盘功能
         break
       default:
         message.info(`即将为您生成${reportTitle}...`)
@@ -117,19 +107,22 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-100">
       {/* 移动端顶部导航栏 */}
       <div className="md:hidden bg-white shadow-sm border-b border-gray-200 p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">天</span>
+            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center">
+              <span className="text-white font-bold text-sm">乙</span>
             </div>
-            <span className="font-bold text-gray-900">天乙神数</span>
+            <div className="text-sm font-bold text-gray-900">
+              <div>天乙</div>
+              <div>神算</div>
+            </div>
           </div>
           <div className="flex items-center space-x-2">
             <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
-              <span className="text-green-600 text-xs">小</span>
+              <span className="text-green-600 text-xs">{userInfo.nickname ? userInfo.nickname.charAt(0) : '用'}</span>
             </div>
             <span className="text-sm text-gray-700">{userInfo.nickname || '用户'}</span>
           </div>
@@ -140,12 +133,16 @@ export default function DashboardPage() {
         {/* 左侧导航栏 */}
         <div className="w-48 bg-white shadow-sm border-r border-gray-200 flex flex-col hidden md:flex">
         {/* Logo区域 */}
-        <div className="p-6 border-b border-gray-100">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">天</span>
+        <div className="p-6 border-b border-gray-100 text-center">
+          <div className="flex flex-col items-center space-y-3">
+            <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center">
+              <span className="text-white font-bold text-2xl">乙</span>
             </div>
-            <span className="font-bold text-gray-900">天乙神数</span>
+            <div className="text-center">
+              <div className="text-lg font-bold text-gray-800">天乙</div>
+              <div className="text-lg font-bold text-gray-800">神算</div>
+              <div className="text-xs text-gray-500 mt-2 italic">洞察命运 · 智慧人生</div>
+            </div>
           </div>
         </div>
 
@@ -153,21 +150,20 @@ export default function DashboardPage() {
         <div className="p-4 border-b border-gray-100">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-              <span className="text-green-600 text-xs">小</span>
+              <span className="text-green-600 text-xs">{userInfo.nickname ? userInfo.nickname.charAt(0) : '用'}</span>
             </div>
             <div>
-              <div className="text-sm font-medium text-gray-900">欢迎，</div>
-              <div className="text-xs text-gray-500">{userInfo.nickname || '用户'}</div>
+              <div className="text-sm font-medium text-gray-900">{userInfo.nickname || '用户'}</div>
+              <div className="text-xs text-gray-500">您的专属命理师</div>
             </div>
           </div>
         </div>
 
         {/* 导航菜单 */}
         <div className="flex-1 p-4">
-          <div className="space-y-2">
-            <div className="flex items-center space-x-3 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg">
-              <BarChartOutlined />
-              <span className="text-sm font-medium">天乙神数</span>
+          <div className="space-y-6">
+            <div className="px-4 py-4 bg-white text-gray-900 border border-gray-300 rounded-lg text-center shadow-sm">
+              <span className="text-lg font-medium tracking-wide">命书</span>
             </div>
             <div 
               className="flex items-center space-x-3 px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer"
@@ -176,28 +172,25 @@ export default function DashboardPage() {
               <BarChartOutlined />
               <span className="text-sm">排盘分析</span>
             </div>
-            <div className="flex items-center space-x-3 px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer">
-              <WechatOutlined />
-              <span className="text-sm">旺运商城</span>
+            <div className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center">
+              <span className="text-lg font-medium tracking-wide">疗愈</span>
             </div>
-            <div className="flex items-center space-x-3 px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer">
-              <UsergroupAddOutlined />
-              <span className="text-sm">我的</span>
+            <div className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center">
+              <span className="text-lg font-medium tracking-wide">宝阁</span>
             </div>
           </div>
         </div>
 
-        {/* 底部1对1咨询按钮 */}
+        {/* 底部问道1v1按钮 */}
         <div className="p-4 border-t border-gray-100">
-          <Button 
-            type="primary" 
-            block 
+          <Button
+            type="primary"
+            block
             size="large"
             onClick={handleConsultation}
-            className="bg-blue-500 hover:bg-blue-600 border-none"
-            icon={<MessageOutlined />}
+            className="bg-black hover:bg-gray-800 border-none shadow-lg hover:shadow-xl transition-all duration-300"
           >
-            1对1咨询
+            <span className="font-medium tracking-wide text-white">问道1v1</span>
           </Button>
         </div>
       </div>
@@ -205,60 +198,105 @@ export default function DashboardPage() {
       {/* 主内容区域 */}
       <div className="flex-1 p-4 md:p-8 pb-20 md:pb-8">
         <div className="max-w-6xl mx-auto">
-          {/* 页面标题 */}
+          {/* 欢迎区域 */}
           <div className="mb-8">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">天乙神数 命理报告</h1>
-            <p className="text-gray-600">
-              在天乙神数报告后可以查看你命理报告的各个报告，如性格报告、财富报告等。此外，您还可以针对不同类型进行
-              询问，查至你所朝日为止，如果AI问答无法完全解决你的问题，欢迎联系明师进行1对1深度咨询。
+            <div className="text-center py-8 px-8">
+              <div className="max-w-4xl mx-auto">
+                <h2 className="text-xl md:text-2xl font-medium text-gray-700 mb-2">
+                  欢迎回来，{userInfo.nickname || '用户'}
+                </h2>
+                <p className="text-sm md:text-base text-gray-500 mb-8">
+                  您的专属命理空间已为您准备就绪
+                </p>
+
+                {/* 装饰线 */}
+                <div className="flex items-center justify-center mb-8">
+                  <div className="h-px bg-gradient-to-r from-transparent via-gray-400 to-transparent w-24"></div>
+                  <div className="mx-4 w-2 h-2 bg-gray-600 rounded-full"></div>
+                  <div className="h-px bg-gradient-to-r from-transparent via-gray-400 to-transparent w-24"></div>
+                </div>
+
+                {/* 哲学文案 */}
+                <h1 className="text-3xl md:text-4xl font-semibold text-gray-900 leading-relaxed tracking-wider mb-8">
+                  人立于命 命行运中 命由心敕 运掌中天 心御乾坤
+                </h1>
+
+                {/* 装饰线 */}
+                <div className="flex items-center justify-center">
+                  <div className="h-px bg-gradient-to-r from-transparent via-gray-400 to-transparent w-24"></div>
+                  <div className="mx-4 w-2 h-2 bg-gray-600 rounded-full"></div>
+                  <div className="h-px bg-gradient-to-r from-transparent via-gray-400 to-transparent w-24"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 功能引导 */}
+          <div className="mb-8 text-center">
+            <p className="text-lg text-gray-600 font-medium">
+              选择您想要探索的领域，开启专属的命理之旅
             </p>
           </div>
 
-          {/* 报告选择标题 */}
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold text-gray-900">你想查阅和了解的报告是什么？</h2>
-          </div>
-
-          {/* 8个报告模块 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-8">
+          {/* 6个报告模块 - 3×2布局 */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 mb-12">
             {reportModules.map((module) => (
               <Card
                 key={module.id}
-                className="hover:shadow-lg transition-all duration-300 cursor-pointer border-gray-200"
-                bodyStyle={{ padding: '24px 16px' }}
+                className="hover:shadow-lg hover:scale-[1.02] transition-all duration-300 cursor-pointer border-gray-200 hover:border-gray-300 bg-white relative"
+                bodyStyle={{ padding: '32px 20px' }}
                 onClick={() => handleReportClick(module.id, module.title)}
               >
-                <div className="text-center">
-                  <div className={`w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-r ${module.bgColor} flex items-center justify-center`}>
-                    <span className="text-2xl">{module.icon}</span>
+                {/* 状态标签 */}
+                {module.status && (
+                  <div className={`absolute top-3 right-3 px-2 py-1 rounded-full text-xs font-medium ${
+                    module.status === '推荐' ? 'bg-blue-100 text-blue-600' :
+                    module.status === '已完成' ? 'bg-green-100 text-green-600' :
+                    module.status === '新功能' ? 'bg-orange-100 text-orange-600' : ''
+                  }`}>
+                    {module.status}
                   </div>
-                  <h3 className="font-semibold text-gray-900 text-sm">{module.title}</h3>
+                )}
+
+                <div className="text-center">
+                  <div className="flex items-center justify-center space-x-2 mb-3">
+                    <span className="text-xl">{module.icon}</span>
+                    <h3 className="font-medium text-gray-900 text-lg">{module.title}</h3>
+                  </div>
+                  <p className="text-sm text-gray-500 leading-relaxed italic">
+                    {module.subtitle}
+                  </p>
                 </div>
               </Card>
             ))}
           </div>
 
-          {/* 免责声明 */}
-          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg">
-            <p className="text-yellow-800 text-sm">
-              <span className="font-medium">免责声明：</span>
-              以上命理结果仅供娱乐，对于报告中产生的任何问题，只代表本人观点，不具法律效力等。
-            </p>
+          {/* 底部激励文案 */}
+          <div className="text-center py-8 border-t border-gray-100">
+            <div className="max-w-2xl mx-auto">
+              <p className="text-lg text-gray-600 leading-relaxed mb-2">
+                每一次探索，都是与命运的深度对话
+              </p>
+              <p className="text-base text-gray-500">
+                您的人生答案，就在这里等待发现
+              </p>
+            </div>
           </div>
+
+
         </div>
       </div>
 
-      {/* 移动端底部1对1咨询按钮 */}
+      {/* 移动端底部问道1v1按钮 */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200">
-        <Button 
-          type="primary" 
-          block 
+        <Button
+          type="primary"
+          block
           size="large"
           onClick={handleConsultation}
-          className="bg-blue-500 hover:bg-blue-600 border-none"
-          icon={<MessageOutlined />}
+          className="bg-black hover:bg-gray-800 border-none shadow-lg"
         >
-          1对1咨询
+          <span className="font-medium tracking-wide text-white">问道1v1</span>
         </Button>
       </div>
     </div>

@@ -36,20 +36,31 @@ export const supabase = createClient(safeSupabaseUrl, safeSupabaseAnonKey, {
 })
 
 // 服务端Supabase实例（用于API路由，具有管理员权限）
-// 只在服务端环境中创建
+// 在客户端环境中，我们将使用普通客户端进行操作
 export const supabaseAdmin = (() => {
-  // 检查是否在服务端环境
-  if (typeof window !== 'undefined') {
-    // 客户端环境，返回 null
-    return null
-  }
-
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!supabaseServiceKey || supabaseServiceKey.includes('placeholder')) {
-    console.warn('⚠️ SUPABASE_SERVICE_ROLE_KEY 未正确配置，管理员功能可能不可用')
-    return null
+
+  // 如果在客户端环境或没有服务密钥，使用普通客户端
+  if (typeof window !== 'undefined' || !supabaseServiceKey || supabaseServiceKey.includes('placeholder')) {
+    if (typeof window !== 'undefined') {
+      console.log('🔄 客户端环境，使用普通 Supabase 客户端')
+    } else {
+      console.warn('⚠️ SUPABASE_SERVICE_ROLE_KEY 未正确配置，使用普通客户端')
+    }
+    return createClient(safeSupabaseUrl, safeSupabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+      },
+      global: {
+        headers: {
+          'X-Client-Info': 'tianyishenshu-client-fallback'
+        }
+      }
+    })
   }
 
+  // 服务端环境，使用管理员权限
   return createClient(safeSupabaseUrl, supabaseServiceKey, {
     auth: {
       autoRefreshToken: false,

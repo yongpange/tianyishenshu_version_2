@@ -32,7 +32,7 @@ export interface UserProfile {
 // 创建或获取用户
 export async function createOrGetUser(phoneNumber: string, inviteCode?: string): Promise<User> {
   try {
-    // 首先尝试获取现有用户（使用管理员权限）
+    // 首先尝试获取现有用户
     const { data: existingUser, error: selectError } = await supabaseAdmin
       .from('users')
       .select('*')
@@ -167,22 +167,48 @@ export async function saveConversation(phoneNumber: string, conversation: any): 
   try {
     const user = await createOrGetUser(phoneNumber)
 
-    // 使用管理员权限保存对话
-    const { error } = await supabaseAdmin
+    // 检查对话是否已存在（通过前端ID查找）
+    const { data: existingConversation } = await supabaseAdmin
       .from('conversations')
-      .upsert({
-        id: conversation.id,
-        user_id: user.id,
-        title: conversation.title,
-        messages: conversation.messages
-      })
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('title', conversation.title)
+      .eq('created_at', conversation.createdAt?.toISOString() || new Date().toISOString())
+      .single()
 
-    if (error) {
-      console.error('保存对话失败:', error)
-      throw error
+    if (existingConversation) {
+      // 更新现有对话
+      const { error } = await supabaseAdmin
+        .from('conversations')
+        .update({
+          title: conversation.title,
+          messages: conversation.messages
+        })
+        .eq('id', existingConversation.id)
+
+      if (error) {
+        console.error('更新对话失败:', error)
+        throw error
+      }
+      console.log('✅ 对话更新成功:', existingConversation.id)
+    } else {
+      // 创建新对话（让数据库自动生成UUID）
+      const { data, error } = await supabaseAdmin
+        .from('conversations')
+        .insert({
+          user_id: user.id,
+          title: conversation.title,
+          messages: conversation.messages
+        })
+        .select('id')
+        .single()
+
+      if (error) {
+        console.error('创建对话失败:', error)
+        throw error
+      }
+      console.log('✅ 对话创建成功:', data.id)
     }
-
-    console.log('✅ 对话保存成功:', conversation.id)
   } catch (error) {
     console.error('保存对话失败:', error)
     throw new Error('保存对话失败')
@@ -192,7 +218,7 @@ export async function saveConversation(phoneNumber: string, conversation: any): 
 // 获取用户对话历史
 export async function getUserConversations(phoneNumber: string): Promise<any[]> {
   try {
-    // 使用管理员权限查询用户
+    // 查询用户
     const { data: user, error: userError } = await supabaseAdmin
       .from('users')
       .select('id')
@@ -221,6 +247,40 @@ export async function getUserConversations(phoneNumber: string): Promise<any[]> 
   } catch (error) {
     console.error('获取对话历史失败:', error)
     return []
+  }
+}
+
+// 删除对话
+export async function deleteConversationFromSupabase(phoneNumber: string, conversationId: string): Promise<void> {
+  try {
+    // 查询用户
+    const { data: user, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('phone_number', phoneNumber)
+      .single()
+
+    if (userError) {
+      console.error('查询用户失败:', userError)
+      throw userError
+    }
+
+    // 删除对话
+    const { error } = await supabaseAdmin
+      .from('conversations')
+      .delete()
+      .eq('id', conversationId)
+      .eq('user_id', user.id)
+
+    if (error) {
+      console.error('删除对话失败:', error)
+      throw error
+    }
+
+    console.log('✅ 对话删除成功:', conversationId)
+  } catch (error) {
+    console.error('删除对话失败:', error)
+    throw new Error('删除对话失败')
   }
 }
 
