@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { CozeAPI, COZE_CN_BASE_URL, ChatStatus, RoleType } from '@coze/api'
+import { getAstrologyContext } from '@/utils/personality-report'
 
 // 环境变量配置
 const COZE_API_TOKEN = process.env.COZE_API_TOKEN || ''
@@ -213,14 +214,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 获取八字排盘上下文
+    let astrologyContext = ''
+    if (userInfo) {
+      try {
+        astrologyContext = await getAstrologyContext(userInfo)
+        console.log('✅ 成功获取八字排盘上下文')
+      } catch (error) {
+        console.warn('⚠️ 获取八字排盘上下文失败，将使用基础用户信息:', error)
+        astrologyContext = ''
+      }
+    }
+
     // 构建用户上下文信息
     const contextMessage = userInfo ? `
-用户信息：
+${astrologyContext ? astrologyContext : `用户信息：
 - 昵称：${userInfo.nickname}
 - 性别：${userInfo.gender === 'male' ? '男' : '女'}
 - 出生日期：${userInfo.year}年${userInfo.month}月${userInfo.day}日
 - 出生时间：${userInfo.hour}时${userInfo.minute}分
-- 出生地区：${userInfo.area?.province} ${userInfo.area?.city} ${userInfo.area?.county}
+- 出生地区：${userInfo.area?.province} ${userInfo.area?.city} ${userInfo.area?.county}`}
 
 用户问题：${message}
 ` : message

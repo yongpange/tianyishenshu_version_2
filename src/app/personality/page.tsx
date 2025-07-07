@@ -38,7 +38,7 @@ import {
 import {
   getUserPhoneNumber,
   formatUserInfoDisplay
-} from '@/utils/personality-report'
+} from '@/utils/client-utils'
 import { getUserConversations, saveConversation } from '@/lib/user-manager'
 import { generateConversationTitle } from '@/utils/textrank'
 

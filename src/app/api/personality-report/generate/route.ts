@@ -3,12 +3,15 @@ import { ChatStatus, RoleType } from '@coze/api'
 import { supabaseAdmin } from '@/lib/supabase'
 import { UserInfo } from '@/lib/coze-client'
 import { createCozeClient, validateBotId, checkAuthConfig } from '@/lib/coze-auth'
-import { 
-  createPersonalityReport, 
-  savePersonalityReport,
+import {
   validateUserInfo,
   calculateUserDataHash,
   formatUserInfoDisplay
+} from '@/utils/client-utils'
+import { 
+  createPersonalityReport, 
+  savePersonalityReport,
+  getAstrologyContext
 } from '@/utils/personality-report'
 
 // 请求接口
@@ -30,16 +33,31 @@ interface PersonalityReportResponse {
 const PERSONALITY_BOT_ID = process.env.PERSONALITY_BOT_ID || process.env.BOT_ID || ''
 
 // 格式化用户信息为性格报告prompt
-function formatPersonalityPrompt(userInfo: UserInfo): string {
+function formatPersonalityPrompt(userInfo: UserInfo, astrologyContext?: string): string {
   const { year, month, day, hour, minute, gender, area } = userInfo
   const location = `${area.province}${area.city}${area.district}`
   const birthInfo = `${year}年${month}月${day}日${hour}时${minute}分，${location}`
 
-  return `请根据出生信息：${birthInfo}，性别：${gender === 'male' || gender === '男' ? '男' : '女'}，生成详细的性格分析报告。
+  let prompt = `请根据出生信息：${birthInfo}，性别：${gender === 'male' || gender === '男' ? '男' : '女'}，生成详细的性格分析报告。
 
-请自由发挥，生成丰富全面的性格分析内容，可以包含但不限于：八字排盘、五行分析、性格特征、情感表达、处事风格、人际关系、优势潜力、发展建议等方面。
+`
+
+  // 如果有八字排盘信息，加入上下文
+  if (astrologyContext) {
+    prompt += `**八字排盘分析数据：**
+
+${astrologyContext}
+
+**请基于以上八字排盘信息，结合传统命理学知识，生成深度的性格分析报告。**
+
+`
+  }
+
+  prompt += `请自由发挥，生成丰富全面的性格分析内容，可以包含但不限于：八字排盘、五行分析、性格特征、情感表达、处事风格、人际关系、优势潜力、发展建议等方面。
 
 请使用markdown格式，合理组织内容结构，让报告既专业又易读。`
+
+  return prompt
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse<PersonalityReportResponse>> {
@@ -89,8 +107,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
       }, { status: 500 })
     }
 
+    // 获取八字排盘上下文信息
+    console.log('🔮 获取八字排盘数据...')
+    const astrologyContext = await getAstrologyContext(userInfo)
+    console.log('✅ 八字排盘数据获取完成')
+
     // 生成性格报告prompt
-    const prompt = formatPersonalityPrompt(userInfo)
+    const prompt = formatPersonalityPrompt(userInfo, astrologyContext)
 
     try {
       console.log('📡 调用 Coze API...')

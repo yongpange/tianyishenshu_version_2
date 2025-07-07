@@ -14,7 +14,7 @@ import {
   testSupabaseConnection,
   MigrationResult 
 } from '@/utils/migrate-to-supabase'
-import { getUserPhoneNumber } from '@/utils/personality-report'
+import { getUserPhoneNumber } from '@/utils/client-utils'
 
 export default function SupabaseMigration() {
   const [migrating, setMigrating] = useState(false)
