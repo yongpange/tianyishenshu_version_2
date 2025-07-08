@@ -41,10 +41,48 @@ export function saveUserPhoneNumber(phoneNumber: string): void {
   }
 }
 
+// 格式化地区信息为纯汉字显示
+export function formatAreaDisplay(area: any): string {
+  if (!area) return '未知地区'
+  
+  // 提取地区名称，过滤数字和编码
+  const getAreaName = (areaItem: any): string => {
+    if (typeof areaItem === 'string') {
+      // 如果是字符串，移除数字和特殊字符，只保留汉字
+      return areaItem.replace(/[\d\s\-\_\(\)]/g, '').trim()
+    }
+    if (areaItem && typeof areaItem === 'object') {
+      // 如果是对象，优先使用name属性
+      if (areaItem.name) {
+        return areaItem.name.replace(/[\d\s\-\_\(\)]/g, '').trim()
+      }
+      if (areaItem.label) {
+        return areaItem.label.replace(/[\d\s\-\_\(\)]/g, '').trim()
+      }
+    }
+    return ''
+  }
+
+  const province = getAreaName(area.province)
+  const city = getAreaName(area.city) 
+  const district = getAreaName(area.district)
+
+  // 组合地区信息，去重复
+  let result = province
+  if (city && city !== province) {
+    result += city
+  }
+  if (district && district !== city && district !== province) {
+    result += district
+  }
+
+  return result || '未知地区'
+}
+
 // 格式化用户信息为显示文本
 export function formatUserInfoDisplay(userInfo: UserInfo): string {
   const { year, month, day, hour, minute, area } = userInfo
-  const location = `${area.province}${area.city}${area.district}`
+  const location = formatAreaDisplay(area)
   return `${year}年${month}月${day}日${hour}时${minute}分，${location}`
 }
 

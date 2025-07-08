@@ -1,6 +1,6 @@
 import { UserInfo } from '@/lib/coze-client'
 import { PersonalityReport, storageManager } from '@/lib/storage-adapter'
-import { calculateUserDataHash, generateReportId } from '@/utils/client-utils'
+import { calculateUserDataHash, generateReportId, formatAreaDisplay } from '@/utils/client-utils'
 import fs from 'fs'
 import path from 'path'
 
@@ -125,14 +125,14 @@ function loadShishenTable(): ShishenTable {
     
     // 缓存数据
     shishenTableCache = table
-    console.log(`✅ 成功加载十神表数据，共 ${Object.keys(table).length} 个日主`)
+    // console.log(`✅ 成功加载十神表数据，共 ${Object.keys(table).length} 个日主`)
     
     // 调试：检查己的关系
-    if (table['己']) {
-      console.log('🔍 己的关系表:', table['己'])
-      console.log('🔍 己-丑关系:', table['己']['丑'])
-      console.log('🔍 己-卯关系:', table['己']['卯'])
-    }
+    // if (table['己']) {
+    //   console.log('🔍 己的关系表:', table['己'])
+    //   console.log('🔍 己-丑关系:', table['己']['丑'])
+    //   console.log('🔍 己-卯关系:', table['己']['卯'])
+    // }
     
     return table
   } catch (error) {
@@ -178,7 +178,7 @@ function loadCangGanTable(): CangGanTable {
     
     // 缓存数据
     cangganTableCache = table
-    console.log(`✅ 成功加载藏干表数据，共 ${Object.keys(table).length} 个地支`)
+    // console.log(`✅ 成功加载藏干表数据，共 ${Object.keys(table).length} 个地支`)
     
     return table
   } catch (error) {
@@ -197,7 +197,7 @@ function getCangGanByDiZhi(dizhi: string) {
 function getShishenByTianGan(rizhu: string, tiangan: string): string {
   try {
     const shishenTable = loadShishenTable()
-    console.log(`🔍 计算天干十神 - 日主:${rizhu}, 天干:${tiangan}`)
+    // console.log(`🔍 计算天干十神 - 日主:${rizhu}, 天干:${tiangan}`)
     
     if (shishenTable[rizhu]) {
       const shishen = shishenTable[rizhu][tiangan]
@@ -221,12 +221,12 @@ function getShishenByTianGan(rizhu: string, tiangan: string): string {
 function getShishenByDiZhi(rizhu: string, dizhi: string): string {
   try {
     const shishenTable = loadShishenTable()
-    console.log(`🔍 计算十神 - 日主:${rizhu}, 地支:${dizhi}`)
-    console.log(`🔍 十神表中日主${rizhu}存在:`, !!shishenTable[rizhu])
+    // console.log(`🔍 计算十神 - 日主:${rizhu}, 地支:${dizhi}`)
+    // console.log(`🔍 十神表中日主${rizhu}存在:`, !!shishenTable[rizhu])
     
     if (shishenTable[rizhu]) {
-      console.log(`🔍 日主${rizhu}的所有关系:`, Object.keys(shishenTable[rizhu]))
-      console.log(`🔍 地支${dizhi}对应的十神:`, shishenTable[rizhu][dizhi])
+      // console.log(`🔍 日主${rizhu}的所有关系:`, Object.keys(shishenTable[rizhu]))
+      // console.log(`🔍 地支${dizhi}对应的十神:`, shishenTable[rizhu][dizhi])
       
       if (shishenTable[rizhu][dizhi]) {
         return shishenTable[rizhu][dizhi]
@@ -376,14 +376,14 @@ function formatAstrologyPrompt(astrologyData: any, userInfo: UserInfo): string {
   const context = []
   
   // 调试信息
-  console.log('🔍 formatAstrologyPrompt - astrologyData keys:', Object.keys(astrologyData))
-  console.log('🔍 astrologyData.paipan 存在:', !!astrologyData.paipan)
-  console.log('🔍 astrologyData.bazi 存在:', !!astrologyData.bazi)
-  console.log('🔍 astrologyData.bazi 内容:', astrologyData.bazi)
-  if (astrologyData.bazi) {
-    console.log('🔍 astrologyData.bazi[2] 存在:', !!astrologyData.bazi[2])
-    console.log('🔍 astrologyData.bazi[2] 内容:', astrologyData.bazi[2])
-  }
+  // console.log('🔍 formatAstrologyPrompt - astrologyData keys:', Object.keys(astrologyData))
+  // console.log('🔍 astrologyData.paipan 存在:', !!astrologyData.paipan)
+  // console.log('🔍 astrologyData.bazi 存在:', !!astrologyData.bazi)
+  // console.log('🔍 astrologyData.bazi 内容:', astrologyData.bazi)
+  // if (astrologyData.bazi) {
+  //   console.log('🔍 astrologyData.bazi[2] 存在:', !!astrologyData.bazi[2])
+  //   console.log('🔍 astrologyData.bazi[2] 内容:', astrologyData.bazi[2])
+  // }
   
   // 八字排盘
   context.push(`**八字排盘：**`)
@@ -417,12 +417,12 @@ function formatAstrologyPrompt(astrologyData: any, userInfo: UserInfo): string {
   // 方法1：从bazi数组获取
   if (astrologyData.bazi && astrologyData.bazi[2]) {
     rizhu = astrologyData.bazi[2].charAt(0)
-    console.log('🔍 从bazi获取日主:', rizhu)
+    // console.log('🔍 从bazi获取日主:', rizhu)
   }
   // 方法2：从paipan的dayPillar获取
   else if (astrologyData.paipan?.dayPillar && astrologyData.paipan.dayPillar.heavenly) {
     rizhu = astrologyData.paipan.dayPillar.heavenly
-    console.log('🔍 从dayPillar获取日主:', rizhu)
+    // console.log('🔍 从dayPillar获取日主:', rizhu)
   }
 
   // 地支部分（添加十神信息）
@@ -437,7 +437,7 @@ function formatAstrologyPrompt(astrologyData: any, userInfo: UserInfo): string {
       const dayShishen = getShishenByDiZhi(rizhu, dayPillar.earthly)
       const hourShishen = getShishenByDiZhi(rizhu, hourPillar.earthly)
       
-      console.log('🔍 地支十神结果:', { yearShishen, monthShishen, dayShishen, hourShishen })
+      // console.log('🔍 地支十神结果:', { yearShishen, monthShishen, dayShishen, hourShishen })
       
       context.push(`- 年：${yearPillar.earthly}${yearShishen ? ' ' + yearShishen : ''}`)
       context.push(`- 月：${monthPillar.earthly}${monthShishen ? ' ' + monthShishen : ''}`)
@@ -445,7 +445,7 @@ function formatAstrologyPrompt(astrologyData: any, userInfo: UserInfo): string {
       context.push(`- 时：${hourPillar.earthly}${hourShishen ? ' ' + hourShishen : ''}`)
     } else {
       // 如果无法获取日主，只显示地支
-      console.log('🔍 无法获取日主信息，只显示地支')
+      // console.log('🔍 无法获取日主信息，只显示地支')
       context.push(`- 年：${yearPillar.earthly}`)
       context.push(`- 月：${monthPillar.earthly}`)
       context.push(`- 日：${dayPillar.earthly}`)
@@ -453,7 +453,7 @@ function formatAstrologyPrompt(astrologyData: any, userInfo: UserInfo): string {
     }
     context.push('')
   } else {
-    console.log('🔍 没有paipan数据，无法显示地支')
+    // console.log('🔍 没有paipan数据，无法显示地支')
   }
 
   // 藏干部分（使用canggan-table.csv数据）
@@ -565,7 +565,7 @@ function formatAstrologyPrompt(astrologyData: any, userInfo: UserInfo): string {
 
 // 格式化基础八字信息（当API失败时使用）
 function formatBasicAstrologyInfo(userInfo: UserInfo): string {
-  const location = `${userInfo.area.province}${userInfo.area.city}${userInfo.area.district}`
+  const location = formatAreaDisplay(userInfo.area)
   const birthInfo = `${userInfo.year}年${userInfo.month}月${userInfo.day}日${userInfo.hour}时${userInfo.minute}分`
   
   return `**出生信息：**

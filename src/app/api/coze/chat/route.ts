@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { CozeAPI, COZE_CN_BASE_URL, ChatStatus, RoleType } from '@coze/api'
 import { getAstrologyContext } from '@/utils/personality-report'
+import { createCozeClient } from '@/lib/coze-auth'
+import { formatAreaDisplay } from '@/utils/client-utils'
 
 // 环境变量配置
 const COZE_BOT_ID = process.env.BOT_ID || ''
@@ -45,7 +47,7 @@ ${astrologyContext ? astrologyContext : `用户信息：
 - 性别：${userInfo.gender === 'male' ? '男' : '女'}
 - 出生日期：${userInfo.year}年${userInfo.month}月${userInfo.day}日
 - 出生时间：${userInfo.hour}时${userInfo.minute}分
-- 出生地区：${userInfo.area?.province} ${userInfo.area?.city} ${userInfo.area?.county}`}
+- 出生地区：${formatAreaDisplay(userInfo.area)}`}
 
 用户问题：${message}
 ` : message
