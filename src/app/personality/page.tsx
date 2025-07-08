@@ -36,8 +36,9 @@ import {
 } from '@ant-design/icons'
 import {
   getUserPhoneNumber,
-  formatUserInfoDisplay
-} from '@/utils/personality-report'
+  formatUserInfoDisplay,
+  formatAreaDisplay
+} from '@/utils/client-utils'
 import { getUserConversations, saveConversation, deleteConversationFromSupabase } from '@/lib/user-manager'
 import { generateConversationTitle } from '@/utils/textrank'
 
@@ -58,6 +59,7 @@ interface ConversationHistory {
   createdAt: Date
   cozeConversationId?: string // Coze对话ID，用于保持对话连续性
   isPinned?: boolean // 是否置顶
+  isManualTitle?: boolean // 是否为用户手动设置的标题
 }
 
 // 内容类型枚举
@@ -399,7 +401,7 @@ export default function PersonalityReportPage() {
     const welcomeMessage: ChatMessage = {
       id: (Date.now() + 1).toString(),
       type: 'bot',
-      content: `您好 ${userInfo.nickname}！我已了解您的基本信息：\n\n📅 出生时间：${userInfo.year}年${userInfo.month}月${userInfo.day}日 ${userInfo.hour}:${String(userInfo.minute).padStart(2, '0')}\n📍 出生地点：${userInfo.area?.province} ${userInfo.area?.city} ${userInfo.area?.county}\n👤 性别：${userInfo.gender === 'male' ? '男' : '女'}\n\n我将基于这些信息为您提供专业的命理分析和人生指导。请问您想了解什么方面的内容呢？`,
+      content: `您好 ${userInfo.nickname}！我已了解您的基本信息：\n\n📅 出生时间：${userInfo.year}年${userInfo.month}月${userInfo.day}日 ${userInfo.hour}:${String(userInfo.minute).padStart(2, '0')}\n📍 出生地点：${formatAreaDisplay(userInfo.area)}\n👤 性别：${userInfo.gender === 'male' ? '男' : '女'}\n\n我将基于这些信息为您提供专业的命理分析和人生指导。请问您想了解什么方面的内容呢？`,
       timestamp: new Date()
     }
 
@@ -421,22 +423,30 @@ export default function PersonalityReportPage() {
     localStorage.setItem('personality_conversations', JSON.stringify(updatedConversations))
 
     // 保存到Supabase
-    try {
-      const userId = getUserPhoneNumber()
-      if (userId) {
-        await saveConversation(userId, newConversation)
-      }
-    } catch (error) {
-      console.warn('⚠️ 保存新对话到Supabase失败，但不影响聊天功能:', error)
-    }
+    // 暂时注释掉，避免重复创建对话问题
+    // try {
+    //   const userId = getUserPhoneNumber()
+    //   if (userId) {
+    //     await saveConversation(userId, newConversation)
+    //   }
+    // } catch (error) {
+    //   console.warn('⚠️ 保存新对话到Supabase失败，但不影响聊天功能:', error)
+    // }
   }
 
   // 更新对话标题（使用TextRank算法）
-  const updateConversationTitle = (conversationId: string, messages: ChatMessage[]) => {
+  const updateConversationTitle = (conversationId: string, messages: ChatMessage[], currentConversations: ConversationHistory[]) => {
     if (messages.length >= 2) { // 至少有一轮对话才更新标题
+      // 检查是否为用户手动设置的标题，如果是则不自动更新
+      const currentConv = currentConversations.find(conv => conv.id === conversationId)
+      if (currentConv?.isManualTitle) {
+        console.log('🏷️ 跳过自动更新标题，因为用户已手动设置:', currentConv.title)
+        return
+      }
+
       const title = generateConversationTitle(messages)
 
-      const updatedConversations = conversations.map(conv => {
+      const updatedConversations = currentConversations.map(conv => {
         if (conv.id === conversationId) {
           return { ...conv, title }
         }
@@ -446,16 +456,17 @@ export default function PersonalityReportPage() {
       setConversations(updatedConversations)
       localStorage.setItem('personality_conversations', JSON.stringify(updatedConversations))
 
+      // 暂时注释掉Supabase保存，避免重复创建对话
       // 同时更新到Supabase
-      const updatedConv = updatedConversations.find(conv => conv.id === conversationId)
-      if (updatedConv) {
-        const userId = getUserPhoneNumber()
-        if (userId) {
-          saveConversation(userId, updatedConv).catch(error => {
-            console.warn('⚠️ 更新对话标题到Supabase失败，但不影响聊天功能:', error)
-          })
-        }
-      }
+      // const updatedConv = updatedConversations.find(conv => conv.id === conversationId)
+      // if (updatedConv) {
+      //   const userId = getUserPhoneNumber()
+      //   if (userId) {
+      //     saveConversation(userId, updatedConv).catch(error => {
+      //       console.warn('⚠️ 更新对话标题到Supabase失败，但不影响聊天功能:', error)
+      //     })
+      //   }
+      // }
     }
   }
 
@@ -472,24 +483,22 @@ export default function PersonalityReportPage() {
     localStorage.setItem('personality_conversations', JSON.stringify(updatedConversations))
 
     // 更新到Supabase
-    const updatedConv = updatedConversations.find(conv => conv.id === conversationId)
-    if (updatedConv) {
-      try {
-        const userId = getUserPhoneNumber()
-        if (userId) {
-          await saveConversation(userId, updatedConv)
-        }
-      } catch (error) {
-        console.error('更新置顶状态到Supabase失败:', error)
-      }
-    }
+    // 暂时注释掉，避免重复创建对话问题
+    // const updatedConv = updatedConversations.find(conv => conv.id === conversationId)
+    // if (updatedConv) {
+    //   try {
+    //     const userId = getUserPhoneNumber()
+    //     if (userId) {
+    //       await saveConversation(userId, updatedConv)
+    //     }
+    //   } catch (error) {
+    //     console.error('更新置顶状态到Supabase失败:', error)
+    //   }
+    // }
 
+    const updatedConv = updatedConversations.find(conv => conv.id === conversationId)
     message.success(updatedConv?.isPinned ? '已置顶' : '已取消置顶')
   }
-
-
-
-
 
   // 开始重命名对话
   const startRenameConversation = (conversationId: string, currentTitle: string) => {
@@ -506,7 +515,11 @@ export default function PersonalityReportPage() {
 
     const updatedConversations = conversations.map(conv => {
       if (conv.id === renamingConversationId) {
-        return { ...conv, title: newTitle.trim() }
+        return { 
+          ...conv, 
+          title: newTitle.trim(),
+          isManualTitle: true // 标记为用户手动设置的标题
+        }
       }
       return conv
     })
@@ -515,17 +528,18 @@ export default function PersonalityReportPage() {
     localStorage.setItem('personality_conversations', JSON.stringify(updatedConversations))
 
     // 更新到Supabase
-    const updatedConv = updatedConversations.find(conv => conv.id === renamingConversationId)
-    if (updatedConv) {
-      try {
-        const userId = getUserPhoneNumber()
-        if (userId) {
-          await saveConversation(userId, updatedConv)
-        }
-      } catch (error) {
-        console.error('更新对话标题到Supabase失败:', error)
-      }
-    }
+    // 暂时注释掉，避免重复创建对话问题
+    // const updatedConv = updatedConversations.find(conv => conv.id === renamingConversationId)
+    // if (updatedConv) {
+    //   try {
+    //     const userId = getUserPhoneNumber()
+    //     if (userId) {
+    //       await saveConversation(userId, updatedConv)
+    //     }
+    //   } catch (error) {
+    //     console.error('更新对话标题到Supabase失败:', error)
+    //   }
+    // }
 
     setRenameModalVisible(false)
     setRenamingConversationId(null)
@@ -618,7 +632,8 @@ export default function PersonalityReportPage() {
       }
       return conv
     })
-
+    console.log('🔄 更新后的对话列表:', updatedConversations)
+    // 保存到本地存储
     setConversations(updatedConversations)
     setCurrentMessage('') // 清空输入框
 
@@ -626,7 +641,8 @@ export default function PersonalityReportPage() {
     try {
       console.log('🚀 调用 Coze API...')
 
-      const currentConv = getCurrentConversation()
+      // 直接从updatedConversations中获取当前对话，而不是使用可能过时的conversations状态
+      const currentConv = updatedConversations.find(conv => conv.id === activeConversationId)
       const isFirstMessage = !currentConv?.cozeConversationId
 
       // 确保用户信息存在
@@ -655,9 +671,23 @@ export default function PersonalityReportPage() {
         body: JSON.stringify(requestBody),
       })
 
+      // 伪造一个response用于调试
+      // const response = {
+      //   status: 200,
+      //   json: async () => ({
+      //     success: true,
+      //     response: '你好，我是天乙神算，很高兴为你服务。',
+      //     conversationId: currentConv?.cozeConversationId || ('fake_conversation_' + Date.now()), // 如果已有conversationId则使用现有的，否则生成新的
+      //     chatId: 'fake_chat_' + Date.now(),
+      //     authMethod: 'fake_auth',
+      //     error: null // 添加error属性避免linter错误
+      //   }),
+      // }
+
       console.log('📡 API响应状态:', response.status)
       const data = await response.json()
       console.log('🔑 聊天页面AI返回的data: ', data)
+      
       if (data.success) {
         const botMessage: ChatMessage = {
           id: (Date.now() + 1).toString(),
@@ -673,28 +703,29 @@ export default function PersonalityReportPage() {
             return {
               ...conv,
               messages: [...conv.messages, botMessage],
-              cozeConversationId: data.conversationId, // 保存 Coze 对话ID
+              cozeConversationId: conv.cozeConversationId || data.conversationId, // 只在首次消息时设置conversationId，后续保持不变
             }
           }
           return conv
         })
-
+        console.log('🔄 更新后的对话列表:', finalConversations)
         setConversations(finalConversations)
 
         // 更新对话标题
         const currentConv = finalConversations.find(conv => conv.id === activeConversationId)
         if (currentConv) {
-          updateConversationTitle(activeConversationId, currentConv.messages)
+          updateConversationTitle(activeConversationId, currentConv.messages, finalConversations)
 
           // 保存到Supabase（可选，失败不影响主功能）
-          try {
-            const userId = getUserPhoneNumber()
-            if (userId) {
-              await saveConversation(userId, currentConv)
-            }
-          } catch (error) {
-            console.warn('⚠️ 保存对话到Supabase失败，但不影响聊天功能:', error)
-          }
+          // 暂时注释掉，避免重复创建对话问题
+          // try {
+          //   const userId = getUserPhoneNumber()
+          //   if (userId) {
+          //     await saveConversation(userId, currentConv)
+          //   }
+          // } catch (error) {
+          //   console.warn('⚠️ 保存对话到Supabase失败，但不影响聊天功能:', error)
+          // }
         }
         localStorage.setItem('personality_conversations', JSON.stringify(finalConversations))
         console.log('✅ 消息发送成功')
@@ -708,7 +739,8 @@ export default function PersonalityReportPage() {
       setCurrentMessage(messageContent)
 
       // 从对话中移除用户消息（因为发送失败）
-      const revertedConversations = conversations.map(conv => {
+      // 注意：这里应该使用 updatedConversations 而不是原始的 conversations
+      const revertedConversations = updatedConversations.map(conv => {
         if (conv.id === activeConversationId) {
           return {
             ...conv,
@@ -734,8 +766,6 @@ export default function PersonalityReportPage() {
   const getCurrentConversation = () => {
     return conversations.find(conv => conv.id === activeConversationId)
   }
-
-
 
   // 安全的日期格式化函数
   const formatDate = (date: any) => {
@@ -765,8 +795,6 @@ export default function PersonalityReportPage() {
       return '未知时间'
     }
   }
-
-
 
   if (!userInfo) {
     return (
@@ -1284,9 +1312,9 @@ export default function PersonalityReportPage() {
                   <div className="bg-white rounded-lg p-4 text-sm text-gray-600 max-w-md mx-auto border border-gray-200">
                     <p className="font-medium mb-2">您可以问一些问题，比如：</p>
                     <div className="space-y-1">
-                      <p>"我的性格优势是什么？"</p>
-                      <p>"我在人际关系中的表现如何？"</p>
-                      <p>"如何发挥我的潜力？"</p>
+                      <p>&ldquo;我的性格优势是什么？&rdquo;</p>
+                      <p>&ldquo;我在人际关系中的表现如何？&rdquo;</p>
+                      <p>&ldquo;如何发挥我的潜力？&rdquo;</p>
                     </div>
                   </div>
                 </div>
@@ -1310,7 +1338,7 @@ export default function PersonalityReportPage() {
                         <div className={`p-4 rounded-2xl shadow-sm ${
                           message.type === 'user'
                             ? 'bg-black text-white'
-                            : 'bg-white border border-gray-200'
+                            : 'bg-white border border-gray-200 text-gray-900'
                         }`}>
                           <p className="text-sm leading-relaxed">{message.content}</p>
                           <p className={`text-xs mt-2 ${

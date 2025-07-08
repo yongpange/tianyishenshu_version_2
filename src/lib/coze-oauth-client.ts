@@ -2,6 +2,7 @@ import { CozeAPI, COZE_CN_BASE_URL, ChatStatus, RoleType } from '@coze/api'
 import * as jwt from 'jsonwebtoken'
 import * as fs from 'fs'
 import * as path from 'path'
+import { formatAreaDisplay } from '@/utils/client-utils'
 
 // OAuth配置接口
 interface CozeOAuthConfig {
@@ -212,7 +213,7 @@ export class CozeOAuthClient {
 - 性别：${userInfo.gender === 'male' ? '男' : '女'}
 - 出生日期：${userInfo.year}年${userInfo.month}月${userInfo.day}日
 - 出生时间：${userInfo.hour}时${userInfo.minute}分
-- 出生地区：${userInfo.area?.province} ${userInfo.area?.city} ${userInfo.area?.county}
+- 出生地区：${formatAreaDisplay(userInfo.area)}
 
 用户问题：${message}
 ` : message
@@ -284,7 +285,7 @@ export class CozeOAuthClient {
       }
 
       // 构建性格分析prompt
-      const prompt = `请根据出生信息：${userInfo.year}年${userInfo.month}月${userInfo.day}日${userInfo.hour}时${userInfo.minute}分，${userInfo.area?.province}${userInfo.area?.city}${userInfo.area?.county}，性别：${userInfo.gender === 'male' ? '男' : '女'}，生成详细的性格分析报告。`
+      const prompt = `请根据出生信息：${userInfo.year}年${userInfo.month}月${userInfo.day}日${userInfo.hour}时${userInfo.minute}分，${formatAreaDisplay(userInfo.area)}，性别：${userInfo.gender === 'male' ? '男' : '女'}，生成详细的性格分析报告。`
 
       console.log(`🔮 生成性格报告，智能体: ${botId}`)
       

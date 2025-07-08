@@ -75,6 +75,9 @@ export default function DashboardPage() {
   const handleReportClick = (reportId: string, reportTitle: string) => {
     // 根据不同的报告类型跳转到对应页面
     switch (reportId) {
+      case 'astrology':
+        router.push('/astrology')
+        break
       case 'personality':
         router.push('/personality')
         break
@@ -162,8 +165,12 @@ export default function DashboardPage() {
             <div className="px-4 py-4 bg-white text-gray-900 border border-gray-300 rounded-lg text-center shadow-sm">
               <span className="text-lg font-medium tracking-wide">命书</span>
             </div>
-            <div className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center">
-              <span className="text-lg font-medium tracking-wide">召灵</span>
+            <div 
+              className="flex items-center space-x-3 px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer"
+              onClick={() => router.push('/astrology')}
+            >
+              <BarChartOutlined />
+              <span className="text-sm">排盘分析</span>
             </div>
             <div className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center">
               <span className="text-lg font-medium tracking-wide">疗愈</span>
