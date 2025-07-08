@@ -3,35 +3,41 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 
-interface WechatQRModalProps {
+interface PhoneNotRegisteredModalProps {
   isOpen: boolean
   onClose: () => void
+  phoneNumber: string
 }
 
-function WechatQRModal({ isOpen, onClose }: WechatQRModalProps) {
+function PhoneNotRegisteredModal({ isOpen, onClose, phoneNumber }: PhoneNotRegisteredModalProps) {
   if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white rounded-2xl p-8 max-w-sm mx-4" onClick={e => e.stopPropagation()}>
         <div className="text-center">
-          <h3 className="text-xl font-bold text-gray-900 mb-4">添加客服微信</h3>
-          <div className="w-48 h-48 bg-gray-100 rounded-lg mx-auto mb-4 flex items-center justify-center">
-            <div className="text-gray-500">
-              <div className="text-4xl mb-2">📱</div>
-              <div className="text-sm">微信二维码</div>
-              <div className="text-xs text-gray-400 mt-1">请扫码添加客服</div>
-            </div>
+          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="text-blue-600 text-2xl">📱</div>
           </div>
-          <div className="text-sm text-gray-600 mb-4">
-            微信号：tianyishenshu_kefu
+          <h3 className="text-xl font-bold text-gray-900 mb-2">手机号未注册</h3>
+          <p className="text-gray-600 text-sm mb-6">
+            该手机号尚未注册天乙神算账户<br />
+            请先完成注册，开启您的命理探索之旅
+          </p>
+          <div className="space-y-3">
+            <Link
+              href={`/register?phone=${phoneNumber}`}
+              className="block w-full py-3 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors"
+            >
+              立即注册
+            </Link>
+            <button
+              onClick={onClose}
+              className="w-full py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              重新输入
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="w-full py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-          >
-            关闭
-          </button>
         </div>
       </div>
     </div>
@@ -39,14 +45,12 @@ function WechatQRModal({ isOpen, onClose }: WechatQRModalProps) {
 }
 
 export default function LoginPage() {
-  const [currentStep, setCurrentStep] = useState(1)
   const [phoneNumber, setPhoneNumber] = useState('')
   const [smsCode, setSmsCode] = useState('')
-  const [inviteCode, setInviteCode] = useState('')
-  const [rememberMe, setRememberMe] = useState(false)
   const [countdown, setCountdown] = useState(0)
   const [loading, setLoading] = useState(false)
-  const [showWechatModal, setShowWechatModal] = useState(false)
+  const [showPhoneNotRegisteredModal, setShowPhoneNotRegisteredModal] = useState(false)
+  const [codeSent, setCodeSent] = useState(false)
 
   // 倒计时逻辑
   useEffect(() => {
@@ -68,15 +72,35 @@ export default function LoginPage() {
 
     try {
       setLoading(true)
-      // 这里调用发送短信API
-      const response = await fetch('/api/sms/send', {
+      // 先检查手机号是否已注册
+      const checkResponse = await fetch('/api/auth/check-phone', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: phoneNumber })
       })
 
+      const checkResult = await checkResponse.json()
+
+      if (!checkResponse.ok) {
+        throw new Error(checkResult.message || '检查手机号失败')
+      }
+
+      // 如果手机号未注册，显示提示
+      if (!checkResult.exists) {
+        setShowPhoneNotRegisteredModal(true)
+        return
+      }
+
+      // 手机号已注册，发送验证码
+      const response = await fetch('/api/sms/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phoneNumber, type: 'login' })
+      })
+
       if (response.ok) {
         setCountdown(60)
+        setCodeSent(true)
         alert('验证码已发送')
       } else {
         throw new Error('发送失败')
@@ -85,19 +109,6 @@ export default function LoginPage() {
       alert('发送验证码失败，请重试')
     } finally {
       setLoading(false)
-    }
-  }
-
-  // 验证兑换码格式
-  const validateInviteCode = (code: string) => {
-    return /^[A-Z0-9]{16}$/.test(code)
-  }
-
-  // 处理兑换码输入
-  const handleInviteCodeChange = (value: string) => {
-    const upperValue = value.toUpperCase().replace(/[^A-Z0-9]/g, '')
-    if (upperValue.length <= 16) {
-      setInviteCode(upperValue)
     }
   }
 
@@ -115,31 +126,51 @@ export default function LoginPage() {
 
     try {
       setLoading(true)
-      // 验证短信验证码
-      const response = await fetch('/api/sms/verify', {
+      // 验证短信验证码并登录
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          phone: phoneNumber, 
-          code: smsCode,
-          inviteCode: inviteCode 
+        body: JSON.stringify({
+          phone: phoneNumber,
+          code: smsCode
         })
       })
 
       if (response.ok) {
-        // 保存手机号到localStorage
+        const result = await response.json()
+        // 保存登录信息到localStorage
         const loginData = {
           phoneNumber,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          user: result.user
         }
         localStorage.setItem('loginData', JSON.stringify(loginData))
 
         alert('登录成功!')
-        // 跳转到信息填写页面
-        window.location.href = '/profile'
+
+        // 根据API返回的跳转指示决定跳转
+        const redirectTo = result.user?.redirect_to || 'profile'
+
+        console.log('🚀 登录成功，用户状态:', {
+          hasProfile: result.user?.has_profile,
+          hasReport: result.user?.has_report,
+          redirectTo: redirectTo
+        })
+
+        if (redirectTo === 'dashboard') {
+          console.log('✅ 用户数据完整，跳转到dashboard')
+          window.location.href = '/dashboard'
+        } else {
+          console.log('⚠️ 用户数据不完整，跳转到profile页面')
+          window.location.href = '/profile'
+        }
       } else {
         const error = await response.json()
-        alert(error.message || '登录失败')
+        if (error.error === 'PHONE_NOT_REGISTERED') {
+          setShowPhoneNotRegisteredModal(true)
+        } else {
+          alert(error.message || '登录失败')
+        }
       }
     } catch (error) {
       alert('登录失败，请重试')
@@ -158,7 +189,7 @@ export default function LoginPage() {
               <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center">
                 <span className="text-white text-sm font-bold">天</span>
               </div>
-              <span className="text-xl font-bold text-gray-900">天乙神数</span>
+              <span className="text-xl font-bold text-gray-900">天乙神算</span>
             </Link>
           </div>
         </div>
@@ -172,41 +203,15 @@ export default function LoginPage() {
               <span className="text-white text-lg font-bold">天</span>
             </div>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">天乙神数</h1>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">天乙神算</h1>
           <h2 className="text-xl font-semibold text-gray-800 mb-2">欢迎回来</h2>
-          <p className="text-gray-600 text-sm">验证身份，开启命理探索之旅</p>
-        </div>
-
-        {/* Steps Indicator */}
-        <div className="flex items-center justify-center mb-8">
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center">
-              <div className="w-8 h-8 bg-black text-white rounded-full flex items-center justify-center text-sm font-semibold">
-                1
-              </div>
-              <span className="ml-2 text-sm font-medium text-gray-900">身份验证</span>
-            </div>
-            <div className="w-8 h-px bg-gray-300"></div>
-            <div className="flex items-center">
-              <div className="w-8 h-8 bg-gray-200 text-gray-500 rounded-full flex items-center justify-center text-sm font-semibold">
-                2
-              </div>
-              <span className="ml-2 text-sm text-gray-500">完善信息</span>
-            </div>
-            <div className="w-8 h-px bg-gray-300"></div>
-            <div className="flex items-center">
-              <div className="w-8 h-8 bg-gray-200 text-gray-500 rounded-full flex items-center justify-center text-sm font-semibold">
-                3
-              </div>
-              <span className="ml-2 text-sm text-gray-500">进入应用</span>
-            </div>
-          </div>
+          <p className="text-gray-600 text-sm">登录您的天乙神算账户</p>
         </div>
 
         {/* Login Form */}
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-6">手机验证码登录</h3>
-          
+
           {/* Phone Number */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -227,90 +232,52 @@ export default function LoginPage() {
           </div>
 
           {/* SMS Code */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              验证码
-            </label>
-            <div className="flex space-x-3">
-              <input
-                type="text"
-                value={smsCode}
-                onChange={(e) => setSmsCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="6位验证码"
-                className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              <button
-                onClick={sendSmsCode}
-                disabled={countdown > 0 || loading}
-                className="px-4 py-3 bg-gray-100 text-gray-700 rounded-lg border border-gray-300 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap text-sm"
-              >
-                {countdown > 0 ? `${countdown}s` : '发送验证码'}
-              </button>
+          {codeSent && (
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                验证码
+              </label>
+              <div className="flex space-x-3">
+                <input
+                  type="text"
+                  value={smsCode}
+                  onChange={(e) => setSmsCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="6位验证码"
+                  className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <button
+                  onClick={sendSmsCode}
+                  disabled={countdown > 0 || loading}
+                  className="px-4 py-3 bg-gray-100 text-gray-700 rounded-lg border border-gray-300 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap text-sm"
+                >
+                  {countdown > 0 ? `${countdown}s` : '重新发送'}
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
+          )}
 
-        {/* Invite Code Section */}
-        <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">兑换码</h3>
-          <p className="text-sm text-gray-600 mb-4">请输入兑换码</p>
-          
-          <div className="mb-4">
-            <input
-              type="text"
-              value={inviteCode}
-              onChange={(e) => handleInviteCodeChange(e.target.value)}
-              placeholder="2406AB8F9E2D4C7K"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-center tracking-wider"
-              maxLength={16}
-            />
-            <div className="flex justify-between items-center mt-2">
-              <span className="text-xs text-gray-500">
-                {inviteCode.length}/16 {validateInviteCode(inviteCode) ? '✓' : ''}
-              </span>
-              <button
-                onClick={() => setShowWechatModal(true)}
-                className="text-xs text-blue-600 hover:text-blue-700"
-              >
-                没有兑换码？联系客服
-              </button>
-            </div>
-          </div>
-
-          {/* Remember Me */}
-          <div className="flex items-center mb-6">
-            <input
-              type="checkbox"
-              id="remember"
-              checked={rememberMe}
-              onChange={(e) => setRememberMe(e.target.checked)}
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-            />
-            <label htmlFor="remember" className="ml-2 text-sm text-gray-600">
-              记住我（30天内免登录）
-            </label>
-          </div>
-
-          {/* WeChat Service Button */}
-          <button
-            onClick={() => setShowWechatModal(true)}
-            className="w-full py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors mb-4"
-          >
-            添加客服微信
-          </button>
-
-          {/* Login Button */}
-          <button
-            onClick={handleLogin}
-            disabled={loading}
-            className="w-full py-3 bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {loading ? '登录中...' : '步入天境'}
-          </button>
+          {/* Action Button */}
+          {!codeSent ? (
+            <button
+              onClick={sendSmsCode}
+              disabled={loading || !phoneNumber || phoneNumber.length !== 11}
+              className="w-full py-3 bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {loading ? '验证中...' : '发送验证码'}
+            </button>
+          ) : (
+            <button
+              onClick={handleLogin}
+              disabled={loading || !smsCode || smsCode.length !== 6}
+              className="w-full py-3 bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {loading ? '登录中...' : '登录'}
+            </button>
+          )}
         </div>
 
         {/* Footer */}
-        <div className="text-center text-xs text-gray-500">
+        <div className="text-center text-xs text-gray-500 mb-4">
           <p>登录即表示您同意我们的</p>
           <div className="space-x-4 mt-1">
             <Link href="/terms" className="text-blue-600 hover:text-blue-700">
@@ -322,12 +289,23 @@ export default function LoginPage() {
             </Link>
           </div>
         </div>
+
+        {/* Register Link */}
+        <div className="text-center">
+          <p className="text-sm text-gray-600">
+            还没有账号？
+            <Link href="/register" className="text-blue-600 hover:text-blue-700 font-medium ml-1">
+              立即注册
+            </Link>
+          </p>
+        </div>
       </div>
 
-      {/* WeChat QR Modal */}
-      <WechatQRModal
-        isOpen={showWechatModal}
-        onClose={() => setShowWechatModal(false)}
+      {/* Phone Not Registered Modal */}
+      <PhoneNotRegisteredModal
+        isOpen={showPhoneNotRegisteredModal}
+        onClose={() => setShowPhoneNotRegisteredModal(false)}
+        phoneNumber={phoneNumber}
       />
     </div>
   )

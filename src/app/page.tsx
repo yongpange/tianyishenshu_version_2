@@ -14,7 +14,7 @@ export default function HomePage() {
               <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center">
                 <span className="text-white text-sm font-bold">F</span>
               </div>
-              <span className="text-xl font-bold text-gray-900">天乙神数</span>
+              <span className="text-xl font-bold text-gray-900">天乙神算</span>
             </div>
             <nav className="hidden md:flex space-x-8">
               <a href="#" className="text-gray-700 hover:text-gray-900 transition-colors">首页</a>
@@ -44,7 +44,7 @@ export default function HomePage() {
             成为自己最好的命理师。
           </p>
           <div>
-            <Link href="/login">
+            <Link href="/register">
               <button className="btn-primary text-lg px-8 py-4 hover:transform hover:scale-105 transition-all duration-300">
                 马上体验
               </button>
@@ -221,7 +221,7 @@ export default function HomePage() {
           <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">解读报告</h2>
           <p className="text-lg text-gray-600 mb-12">根据命盘，阴阳为纲，要重清晰，层层递进，经络万象，天人合一</p>
           
-          <Link href="/login">
+          <Link href="/register">
             <button className="btn-primary text-lg px-8 py-4 hover:transform hover:scale-105 transition-all duration-300 mb-16">
               马上体验
             </button>
@@ -275,10 +275,10 @@ export default function HomePage() {
               <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center">
                 <span className="text-black text-sm font-bold">F</span>
               </div>
-              <span className="text-xl font-bold">天乙神数</span>
+              <span className="text-xl font-bold">天乙神算</span>
             </div>
             <div className="text-sm text-gray-400">
-                              © 2024 天乙神数. 解读命运，策展人生。
+                              © 2024 天乙神算. 解读命运，策展人生。
             </div>
           </div>
         </div>

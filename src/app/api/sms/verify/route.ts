@@ -22,13 +22,21 @@ export async function POST(request: NextRequest) {
   try {
     // 清理过期的验证码
     cleanExpiredCodes()
-    
-    const { phone, code, inviteCode } = await request.json()
+
+    const { phone, code, type = 'register' } = await request.json()
 
     // 验证手机号和验证码
     if (!phone || !code) {
       return NextResponse.json(
         { success: false, message: '请填写完整信息' },
+        { status: 400 }
+      )
+    }
+
+    // 验证类型参数
+    if (!['login', 'register'].includes(type)) {
+      return NextResponse.json(
+        { success: false, message: '无效的验证类型' },
         { status: 400 }
       )
     }
@@ -103,66 +111,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 验证兑换码（如果提供）
-    let inviteCodeValid = false
-    if (inviteCode) {
-      if (!/^[A-Z0-9]{16}$/.test(inviteCode)) {
-        return NextResponse.json(
-          { success: false, message: '兑换码格式不正确' },
-          { status: 400 }
-        )
-      }
-
-      console.log('🎟️ 开始验证兑换码:', inviteCode)
-
-      // 使用Supabase验证兑换码
-      inviteCodeValid = await verifyInviteCode(inviteCode)
-
-      if (!inviteCodeValid) {
-        console.log('❌ 兑换码无效或已使用:', inviteCode)
-        return NextResponse.json(
-          { success: false, message: '兑换码无效或已使用' },
-          { status: 400 }
-        )
-      }
-
-      console.log('✅ 兑换码验证成功:', inviteCode)
-    }
-
     // 验证成功，清除验证码
     smsCodeStore.delete(phone)
 
-    try {
-      // 创建或获取用户
-      const user = await createOrGetUser(phone, inviteCodeValid ? inviteCode : undefined)
-
-      // 如果有兑换码，标记为已使用
-      if (inviteCodeValid && inviteCode) {
-        await markInviteCodeAsUsed(inviteCode, phone)
-        console.log('✅ 兑换码已标记为已使用:', inviteCode)
+    // 简化的验证成功响应，不处理用户创建逻辑
+    // 用户创建和登录逻辑由各自的auth API处理
+    return NextResponse.json({
+      success: true,
+      message: '验证码验证成功',
+      data: {
+        phone,
+        type,
+        verified: true
       }
-
-      // 生成用户token（实际项目中应使用JWT）
-      const userToken = `token_${phone}_${Date.now()}`
-
-      return NextResponse.json({
-        success: true,
-        message: '登录成功',
-        data: {
-          token: userToken,
-          phone,
-          userId: user.id,
-          inviteCodeUsed: inviteCodeValid,
-          permissions: user.permissions
-        }
-      })
-    } catch (error) {
-      console.error('用户创建失败:', error)
-      return NextResponse.json(
-        { success: false, message: '登录失败，请重试' },
-        { status: 500 }
-      )
-    }
+    })
 
   } catch (error) {
     console.error('验证短信验证码失败:', error)

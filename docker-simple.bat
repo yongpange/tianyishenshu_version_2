@@ -2,7 +2,7 @@
 chcp 65001 >nul
 
 echo ========================================
-echo 天乙神数 Docker 简易部署脚本
+echo 天乙神算 Docker 简易部署脚本
 echo ========================================
 
 REM 检查Docker是否安装
@@ -43,7 +43,7 @@ echo [SUCCESS] Environment file check passed
 
 REM 构建镜像
 echo [INFO] Building Docker image...
-docker build -t tianyishenshu:latest .
+docker build -t tianyishensuan:latest .
 if errorlevel 1 (
     echo [ERROR] Docker image build failed
     pause

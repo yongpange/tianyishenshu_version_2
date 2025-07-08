@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-REM 天乙神数 Docker 部署脚本 (Windows)
+REM 天乙神算 Docker 部署脚本 (Windows)
 REM 用于快速构建和部署应用
 
 setlocal enabledelayedexpansion
@@ -56,7 +56,7 @@ goto :eof
 REM 构建镜像
 :build_image
 call :log_info "开始构建 Docker 镜像..."
-docker build -t tianyishenshu:latest .
+docker build -t tianyishensuan:latest .
 if errorlevel 1 (
     call :log_error "Docker 镜像构建失败"
     exit /b 1
@@ -109,7 +109,7 @@ goto :eof
 
 REM 显示帮助信息
 :show_help
-echo 天乙神数 Docker 部署脚本 (Windows)
+echo 天乙神算 Docker 部署脚本 (Windows)
 echo.
 echo 用法: %~nx0 [选项]
 echo.

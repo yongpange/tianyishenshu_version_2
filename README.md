@@ -1,4 +1,4 @@
-# 天乙神数 命理网站
+# 天乙神算 命理网站
 
 这是一个基于 Next.js 的现代命理网站，提供命运解读和人生策展服务。
 
@@ -100,7 +100,7 @@ src/
 TENCENT_SECRET_ID=your_secret_id
 TENCENT_SECRET_KEY=your_secret_key
 TENCENT_SMS_APP_ID=your_app_id
-TENCENT_SMS_SIGN_NAME=天乙神数
+TENCENT_SMS_SIGN_NAME=天乙神算
 TENCENT_SMS_TEMPLATE_ID=your_template_id
 ```
 

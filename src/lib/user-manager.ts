@@ -54,7 +54,9 @@ export async function createOrGetUser(phoneNumber: string, inviteCode?: string):
     // 用户不存在，创建新用户（使用管理员权限）
     const userData: any = {
       phone_number: phoneNumber,
-      permissions: ['basic']
+      permissions: ['basic'],
+      is_profile_completed: false,
+      last_login: new Date().toISOString()
     }
 
     if (inviteCode) {
@@ -86,8 +88,11 @@ export async function createOrGetUser(phoneNumber: string, inviteCode?: string):
 // 保存用户资料
 export async function saveUserProfile(phoneNumber: string, userInfo: UserInfo): Promise<UserProfile> {
   try {
+    console.log('🔄 开始保存用户资料:', { phoneNumber, userInfo })
+
     // 获取用户ID
     const user = await createOrGetUser(phoneNumber)
+    console.log('✅ 获取到用户:', user.id)
 
     const profileData = {
       user_id: user.id,
@@ -104,6 +109,8 @@ export async function saveUserProfile(phoneNumber: string, userInfo: UserInfo): 
       phone_number: phoneNumber
     }
 
+    console.log('📝 准备保存的资料数据:', profileData)
+
     // 使用管理员权限保存用户资料
     const { data, error } = await supabaseAdmin
       .from('user_profiles')
@@ -112,15 +119,25 @@ export async function saveUserProfile(phoneNumber: string, userInfo: UserInfo): 
       .single()
 
     if (error) {
-      console.error('保存用户资料失败:', error)
+      console.error('❌ Supabase保存错误:', error)
+      console.error('错误详情:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      })
       throw error
     }
 
     console.log('✅ 用户资料保存成功:', data.id)
     return data
   } catch (error) {
-    console.error('保存用户资料失败:', error)
-    throw new Error('保存用户资料失败')
+    console.error('❌ 保存用户资料失败:', error)
+    if (error.message) {
+      throw new Error(`保存用户资料失败: ${error.message}`)
+    } else {
+      throw new Error('保存用户资料失败')
+    }
   }
 }
 

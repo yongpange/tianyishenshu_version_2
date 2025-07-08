@@ -1,15 +1,15 @@
-# 天乙神数 Docker Compose 配置
+# 天乙神算 Docker Compose 配置
 # 用于本地开发和生产部署
 
 version: '3.8'
 
 services:
   # 主应用服务
-  tianyishenshu-app:
+  tianyishensuan-app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: tianyishenshu-app
+    container_name: tianyishensuan-app
     ports:
       - "3000:3000"
     environment:
@@ -23,7 +23,7 @@ services:
       - ./logs:/app/logs
     restart: unless-stopped
     networks:
-      - tianyishenshu-network
+      - tianyishensuan-network
     depends_on:
       - redis  # 如果使用Redis缓存
     healthcheck:
@@ -36,20 +36,20 @@ services:
   # Redis缓存服务（可选）
   redis:
     image: redis:7-alpine
-    container_name: tianyishenshu-redis
+    container_name: tianyishensuan-redis
     ports:
       - "6379:6379"
     volumes:
       - redis-data:/data
     restart: unless-stopped
     networks:
-      - tianyishenshu-network
+      - tianyishensuan-network
     command: redis-server --appendonly yes
 
   # Nginx反向代理（生产环境推荐）
   nginx:
     image: nginx:alpine
-    container_name: tianyishenshu-nginx
+    container_name: tianyishensuan-nginx
     ports:
       - "80:80"
       - "443:443"
@@ -59,13 +59,13 @@ services:
       - ./logs/nginx:/var/log/nginx
     restart: unless-stopped
     networks:
-      - tianyishenshu-network
+      - tianyishensuan-network
     depends_on:
-      - tianyishenshu-app
+      - tianyishensuan-app
 
 # 网络配置
 networks:
-  tianyishenshu-network:
+  tianyishensuan-network:
     driver: bridge
 
 # 数据卷配置

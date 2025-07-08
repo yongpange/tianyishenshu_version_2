@@ -1,4 +1,4 @@
-# 天乙神数 Docker Makefile
+# 天乙神算 Docker Makefile
 # 简化 Docker 操作的便捷命令
 
 .PHONY: help build dev prod stop clean logs health
@@ -7,14 +7,14 @@
 .DEFAULT_GOAL := help
 
 # 项目配置
-PROJECT_NAME := tianyishenshu
+PROJECT_NAME := tianyishensuan
 IMAGE_NAME := $(PROJECT_NAME):latest
 COMPOSE_FILE := docker-compose.yml
 COMPOSE_DEV_FILE := docker-compose.dev.yml
 
 # 帮助信息
 help: ## 显示帮助信息
-	@echo "天乙神数 Docker 管理命令"
+	@echo "天乙神算 Docker 管理命令"
 	@echo ""
 	@echo "可用命令:"
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)

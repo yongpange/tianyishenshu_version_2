@@ -16,7 +16,7 @@ function askQuestion(question) {
 }
 
 async function setupEnvironment() {
-  console.log('🚀 天乙神数 - 腾讯云短信服务配置助手\n')
+  console.log('🚀 天乙神算 - 腾讯云短信服务配置助手\n')
   
   console.log('请按照以下步骤配置腾讯云短信服务：\n')
   
@@ -24,7 +24,7 @@ async function setupEnvironment() {
     const secretId = await askQuestion('1. 请输入腾讯云 SecretId: ')
     const secretKey = await askQuestion('2. 请输入腾讯云 SecretKey: ')
     const appId = await askQuestion('3. 请输入短信应用ID (SdkAppId): ')
-    const signName = await askQuestion('4. 请输入短信签名 (默认: 天乙神数): ') || '天乙神数'
+    const signName = await askQuestion('4. 请输入短信签名 (默认: 天乙神算): ') || '天乙神算'
     const templateId = await askQuestion('5. 请输入短信模板ID: ')
     
     const envContent = `# 腾讯云短信服务配置

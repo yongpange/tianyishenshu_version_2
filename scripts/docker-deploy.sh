@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 天乙神数 Docker 部署脚本
+# 天乙神算 Docker 部署脚本
 # 用于快速构建和部署应用
 
 set -e  # 遇到错误立即退出
@@ -61,7 +61,7 @@ check_env_files() {
 # 构建镜像
 build_image() {
     log_info "开始构建 Docker 镜像..."
-    docker build -t tianyishenshu:latest .
+    docker build -t tianyishensuan:latest .
     log_success "Docker 镜像构建完成"
 }
 
@@ -104,7 +104,7 @@ check_health() {
 
 # 显示帮助信息
 show_help() {
-    echo "天乙神数 Docker 部署脚本"
+    echo "天乙神算 Docker 部署脚本"
     echo ""
     echo "用法: $0 [选项]"
     echo ""

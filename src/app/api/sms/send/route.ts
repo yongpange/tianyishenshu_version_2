@@ -6,8 +6,8 @@ export async function POST(request: NextRequest) {
   try {
     // 清理过期验证码
     cleanExpiredCodes()
-    
-    const { phone } = await request.json()
+
+    const { phone, type = 'register' } = await request.json()
 
     // 验证手机号格式
     if (!phone || !validatePhoneNumber(phone)) {
@@ -53,7 +53,8 @@ export async function POST(request: NextRequest) {
     smsCodeStore.set(phone, {
       code,
       timestamp,
-      attempts: 0
+      attempts: 0,
+      type: type // 添加类型标识
     })
 
     console.log('📝 验证码已存储:', {

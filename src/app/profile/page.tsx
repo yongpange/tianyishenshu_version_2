@@ -95,10 +95,10 @@ export default function ProfilePage() {
     defaultValues: {
       nickname: '',
       gender: undefined,
-      year: undefined,
-      month: undefined,
-      day: undefined,
-      hour: 12,
+      year: 2000,
+      month: 1,
+      day: 1,
+      hour: 0,
       minute: 0,
       area: {
         province: '',
@@ -111,7 +111,7 @@ export default function ProfilePage() {
   // 监听表单变化
   const watchedValues = watch()
 
-  // 页面加载时检查登录状态
+  // 页面加载时检查登录状态并预填用户信息
   useEffect(() => {
     try {
       const loginData = localStorage.getItem('loginData')
@@ -121,19 +121,70 @@ export default function ProfilePage() {
         return
       }
 
-      // 尝试加载已保存的数据
-      const savedData = localStorage.getItem('userData')
-      if (savedData) {
-        try {
-          const userData = JSON.parse(savedData)
-          // 填充表单
-          Object.keys(userData).forEach(key => {
-            if (userData[key] !== undefined) {
-              setValue(key as keyof ProfileFormData, userData[key])
+      // 检查登录数据中是否包含用户资料
+      const parsed = JSON.parse(loginData)
+      const userProfileData = parsed.user?.profile_data
+
+      if (userProfileData) {
+        console.log('📋 发现已有用户资料，询问是否预填:', userProfileData)
+
+        // 询问用户是否使用已有资料
+        const useExistingData = confirm('检测到您已有资料信息，是否使用已有资料预填表单？\n点击"确定"使用已有资料，点击"取消"重新填写。')
+
+        if (useExistingData) {
+          // 使用登录时获取的用户资料预填表单
+          setValue('nickname', userProfileData.name || '')
+          setValue('gender', userProfileData.gender === 'male' ? '男' : userProfileData.gender === 'female' ? '女' : undefined)
+          setValue('year', userProfileData.year || 2000)
+          setValue('month', userProfileData.month || 1)
+          setValue('day', userProfileData.day || 1)
+          setValue('hour', userProfileData.hour || 0)
+          setValue('minute', userProfileData.minute || 0)
+
+          if (userProfileData.area) {
+            setValue('area', {
+              province: userProfileData.area.province || '',
+              city: userProfileData.area.city || '',
+              district: userProfileData.area.district || ''
+            })
+          }
+
+          message.info('已加载您的资料信息')
+        } else {
+          // 用户选择重新填写，清理localStorage并使用默认值
+          localStorage.removeItem('userData')
+          message.info('已清空表单，请重新填写资料')
+        }
+      } else {
+        // 如果登录数据中没有资料，检查是否有localStorage数据
+        const savedData = localStorage.getItem('userData')
+        if (savedData) {
+          try {
+            const userData = JSON.parse(savedData)
+            console.log('📋 发现localStorage中的数据，询问是否使用:', userData)
+
+            // 询问用户是否使用localStorage中的数据
+            const useLocalData = confirm('检测到本地保存的填写记录，是否继续使用？\n点击"确定"继续填写，点击"取消"重新开始。')
+
+            if (useLocalData) {
+              // 填充表单
+              Object.keys(userData).forEach(key => {
+                if (userData[key] !== undefined) {
+                  setValue(key as keyof ProfileFormData, userData[key])
+                }
+              })
+              message.info('已恢复您的填写记录')
+            } else {
+              // 清理localStorage
+              localStorage.removeItem('userData')
+              message.info('已清空本地记录，请重新填写')
             }
-          })
-        } catch (error) {
-          console.error('加载保存的数据失败:', error)
+          } catch (error) {
+            console.error('加载保存的数据失败:', error)
+            localStorage.removeItem('userData')
+          }
+        } else {
+          console.log('📋 没有发现已有数据，使用默认值')
         }
       }
     } catch (error) {
@@ -225,7 +276,7 @@ export default function ProfilePage() {
       // 转换为 UserInfo 格式
       const userInfo = {
         name: data.nickname,
-        gender: data.gender,
+        gender: data.gender === '男' ? 'male' : data.gender === '女' ? 'female' : data.gender,
         year: data.year,
         month: data.month,
         day: data.day,
@@ -234,10 +285,34 @@ export default function ProfilePage() {
         area: data.area
       }
 
-      // 第二阶段：调用 API 生成报告 (20-80%)
-      updateProgressStep(GenerationStep.GENERATING, 30)
+      // 第二阶段：保存用户资料 (20-60%)
+      updateProgressStep(GenerationStep.SAVING, 30)
 
-      const response = await fetch('/api/personality-report/generate', {
+      console.log('💾 保存用户资料...')
+      const saveResponse = await fetch('/api/user-profile/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          phoneNumber: userId,
+          userInfo
+        })
+      })
+
+      const saveResult = await saveResponse.json()
+      if (!saveResponse.ok) {
+        throw new Error(saveResult.message || '保存用户资料失败')
+      }
+
+      console.log('✅ 用户资料保存成功:', saveResult.profile)
+      updateProgressStep(GenerationStep.SAVING, 60)
+
+      // 第三阶段：启动异步报告生成 (60-90%)
+      updateProgressStep(GenerationStep.GENERATING, 70)
+
+      console.log('🚀 启动异步报告生成...')
+      const response = await fetch('/api/personality-report/generate-async', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -248,30 +323,25 @@ export default function ProfilePage() {
         })
       })
 
-      // API 调用完成
-      updateProgressStep(GenerationStep.GENERATING, 70)
-
       const result = await response.json()
-      updateProgressStep(GenerationStep.GENERATING, 80)
+      console.log('📋 异步生成结果:', result)
 
       if (result.success) {
-        // 第三阶段：保存完成 (80-95%)
-        updateProgressStep(GenerationStep.SAVING, 90)
+        updateProgressStep(GenerationStep.GENERATING, 90)
 
-        // 模拟保存处理时间
-        await new Promise(resolve => setTimeout(resolve, 500))
-        updateProgressStep(GenerationStep.SAVING, 95)
-
-        // 第四阶段：准备跳转 (95-100%)
+        // 第四阶段：准备跳转 (90-100%)
         updateProgressStep(GenerationStep.COMPLETED, 100)
 
         // 显示完成状态
-        await new Promise(resolve => setTimeout(resolve, 1000))
+        await new Promise(resolve => setTimeout(resolve, 800))
 
-        message.success('信息保存成功，性格报告已生成！')
-        router.push('/dashboard')
+        message.success('信息保存成功，正在生成性格报告...')
+
+        // 立即跳转到性格报告页面，传递taskId
+        const taskId = result.taskId
+        router.push(`/personality?taskId=${taskId}&generating=true`)
       } else {
-        throw new Error(result.error || '生成报告失败')
+        throw new Error(result.error || '启动报告生成失败')
       }
 
     } catch (error) {
@@ -294,7 +364,7 @@ export default function ProfilePage() {
             <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center mr-3">
               <span className="text-white text-sm font-bold">天</span>
             </div>
-            <h1 className="text-2xl font-bold text-gray-800 m-0">天乙神数</h1>
+            <h1 className="text-2xl font-bold text-gray-800 m-0">天乙神算</h1>
           </div>
           
           <h2 className="text-xl font-semibold text-gray-700 mb-2">完善您的个人信息</h2>
@@ -482,16 +552,16 @@ export default function ProfilePage() {
 
           {/* 提交按钮 */}
           <div className="flex gap-4 mt-8">
-            <Button 
-              size="large" 
+            <Button
+              size="large"
               className="flex-1"
               onClick={() => router.back()}
             >
               返回
             </Button>
-            <Button 
-              type="primary" 
-              size="large" 
+            <Button
+              type="primary"
+              size="large"
               htmlType="submit"
               loading={loading}
               disabled={!isValid}

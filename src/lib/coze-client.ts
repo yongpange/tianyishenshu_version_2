@@ -13,6 +13,7 @@ export interface CozeResponse {
 }
 
 export interface UserInfo {
+  name: string
   year: number
   month: number
   day: number

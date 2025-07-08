@@ -76,6 +76,12 @@ export default function PersonalityReportPage() {
   const [reportError, setReportError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
+  // 新增：异步生成相关状态
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [generationProgress, setGenerationProgress] = useState(0)
+  const [generationStatus, setGenerationStatus] = useState('')
+  const [taskId, setTaskId] = useState<string | null>(null)
+
   // 新增状态：中间聊天记录区域的显示/隐藏
   const [chatHistoryVisible, setChatHistoryVisible] = useState(true)
 
@@ -86,6 +92,98 @@ export default function PersonalityReportPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+
+  // 轮询报告生成状态
+  const pollReportStatus = async (userId: string, taskId: string) => {
+    try {
+      const response = await fetch('/api/personality-report/status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId, taskId })
+      })
+
+      const result = await response.json()
+      console.log('📊 轮询状态结果:', result)
+
+      if (result.success) {
+        setGenerationProgress(result.progress)
+
+        switch (result.status) {
+          case 'generating':
+            setGenerationStatus('正在生成性格报告...')
+            setIsGenerating(true)
+            break
+
+          case 'completed':
+            setGenerationStatus('报告生成完成！')
+            setIsGenerating(false)
+            setReportContent(result.content)
+            setReportLoading(false)
+
+            // 停止轮询
+            if (pollingIntervalRef.current) {
+              clearInterval(pollingIntervalRef.current)
+              pollingIntervalRef.current = null
+            }
+
+            message.success('性格报告生成完成！')
+            break
+
+          case 'failed':
+            setGenerationStatus('报告生成失败')
+            setIsGenerating(false)
+            setReportError(result.error || '生成失败，请重试')
+            setReportLoading(false)
+
+            // 停止轮询
+            if (pollingIntervalRef.current) {
+              clearInterval(pollingIntervalRef.current)
+              pollingIntervalRef.current = null
+            }
+            break
+
+          case 'not_found':
+            setGenerationStatus('未找到生成任务')
+            setIsGenerating(false)
+            setReportError('未找到报告生成任务')
+            setReportLoading(false)
+
+            // 停止轮询
+            if (pollingIntervalRef.current) {
+              clearInterval(pollingIntervalRef.current)
+              pollingIntervalRef.current = null
+            }
+            break
+        }
+      }
+    } catch (error) {
+      console.error('❌ 轮询状态失败:', error)
+    }
+  }
+
+  // 开始轮询
+  const startPolling = (userId: string, taskId: string) => {
+    console.log('🔄 开始轮询报告状态:', { userId, taskId })
+
+    // 立即执行一次
+    pollReportStatus(userId, taskId)
+
+    // 每3秒轮询一次
+    pollingIntervalRef.current = setInterval(() => {
+      pollReportStatus(userId, taskId)
+    }, 3000)
+  }
+
+  // 停止轮询
+  const stopPolling = () => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current)
+      pollingIntervalRef.current = null
+    }
+  }
 
   // 加载性格报告
   const loadPersonalityReport = async () => {
@@ -216,6 +314,13 @@ export default function PersonalityReportPage() {
   }
 
   useEffect(() => {
+    // 获取URL参数
+    const urlParams = new URLSearchParams(window.location.search)
+    const urlTaskId = urlParams.get('taskId')
+    const isGeneratingParam = urlParams.get('generating') === 'true'
+
+    console.log('🔍 URL参数:', { urlTaskId, isGeneratingParam })
+
     // 获取用户信息
     const userData = localStorage.getItem('userData')
     console.log('📋 从localStorage获取的userData:', userData)
@@ -236,11 +341,32 @@ export default function PersonalityReportPage() {
       return
     }
 
-    // 加载性格报告
-    loadPersonalityReport()
+    const userId = getUserPhoneNumber()
+    if (!userId) {
+      router.push('/login')
+      return
+    }
+
+    // 如果是生成模式，启动轮询
+    if (isGeneratingParam && urlTaskId) {
+      console.log('🚀 检测到生成模式，启动轮询')
+      setTaskId(urlTaskId)
+      setIsGenerating(true)
+      setGenerationStatus('正在生成性格报告...')
+      setReportLoading(true)
+      startPolling(userId, urlTaskId)
+    } else {
+      // 正常模式，加载现有报告
+      loadPersonalityReport()
+    }
 
     // 加载对话历史
     loadConversations()
+
+    // 清理函数：组件卸载时停止轮询
+    return () => {
+      stopPolling()
+    }
   }, [router])
 
   // 滚动到消息底部
@@ -959,11 +1085,49 @@ export default function PersonalityReportPage() {
             <div className="flex-1 overflow-y-auto p-6">
               {reportLoading ? (
                 <div className="flex flex-col items-center justify-center py-20">
-                  <Spin
-                    indicator={<LoadingOutlined style={{ fontSize: 48 }} spin />}
-                    className="mb-4"
-                  />
-                  <p className="text-gray-600">正在加载性格报告...</p>
+                  {isGenerating ? (
+                    // 生成进度显示
+                    <div className="w-full max-w-md">
+                      <div className="text-center mb-6">
+                        <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <Spin
+                            indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
+                          />
+                        </div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">正在生成性格报告</h3>
+                        <p className="text-gray-600">{generationStatus}</p>
+                      </div>
+
+                      {/* 进度条 */}
+                      <div className="mb-4">
+                        <div className="flex justify-between text-sm text-gray-600 mb-2">
+                          <span>生成进度</span>
+                          <span>{generationProgress}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-gradient-to-r from-blue-500 to-purple-600 h-2 rounded-full transition-all duration-500 ease-out"
+                            style={{ width: `${generationProgress}%` }}
+                          ></div>
+                        </div>
+                      </div>
+
+                      {/* 提示信息 */}
+                      <div className="text-center text-sm text-gray-500">
+                        <p>AI正在深度分析您的出生信息</p>
+                        <p>预计需要1-3分钟，请耐心等待...</p>
+                      </div>
+                    </div>
+                  ) : (
+                    // 普通加载显示
+                    <div>
+                      <Spin
+                        indicator={<LoadingOutlined style={{ fontSize: 48 }} spin />}
+                        className="mb-4"
+                      />
+                      <p className="text-gray-600">正在加载性格报告...</p>
+                    </div>
+                  )}
                 </div>
               ) : reportError ? (
                 <div className="text-center py-20">

@@ -12,7 +12,7 @@ export const tencentSmsConfig: TencentSmsConfig = {
   secretId: process.env.TENCENT_SECRET_ID || '',
   secretKey: process.env.TENCENT_SECRET_KEY || '',
   appId: process.env.TENCENT_SMS_APP_ID || '',
-  signName: process.env.TENCENT_SMS_SIGN_NAME || '天乙神数',
+  signName: process.env.TENCENT_SMS_SIGN_NAME || '天乙神算',
   templateId: process.env.TENCENT_SMS_TEMPLATE_ID || ''
 }
 
@@ -100,7 +100,7 @@ export async function sendSmsCode(phone: string, code: string): Promise<boolean>
           break;
         case 'code_and_app_name':
           // 验证码+应用名：{1}, {2}
-          templateParams = [code, '天乙神数'];
+          templateParams = [code, '天乙神算'];
           break;
         default:
           // 默认只发送验证码

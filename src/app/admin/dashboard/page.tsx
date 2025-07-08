@@ -267,7 +267,7 @@ export default function AdminDashboard() {
     <Layout className="min-h-screen">
       <Header className="bg-white shadow-sm border-b flex justify-between items-center px-6">
         <div>
-          <h1 className="text-xl font-bold text-gray-800 m-0">天乙神数 - 管理后台</h1>
+          <h1 className="text-xl font-bold text-gray-800 m-0">天乙神算 - 管理后台</h1>
         </div>
         <Button 
           icon={<LogoutOutlined />} 

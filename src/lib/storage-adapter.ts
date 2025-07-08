@@ -116,16 +116,36 @@ export class SupabaseAdapter implements StorageAdapter {
         throw new Error('查找用户失败')
       }
 
-      // 保存性格报告
-      const { error } = await supabase
+      // 保存性格报告 - 先检查是否已存在
+      const { data: existingReport } = await supabase
         .from('personality_reports')
-        .upsert({
-          user_id: actualUserId,
-          content: report.content,
-          generated_at: report.generatedAt.toISOString(),
-          user_data_hash: report.userDataHash,
-          coze_conversation_id: report.cozeConversationId
-        })
+        .select('id')
+        .eq('user_id', actualUserId)
+        .single()
+
+      const reportData = {
+        user_id: actualUserId,
+        content: report.content,
+        generated_at: report.generatedAt.toISOString(),
+        user_data_hash: report.userDataHash,
+        coze_conversation_id: report.cozeConversationId
+      }
+
+      let error
+      if (existingReport) {
+        // 更新现有报告
+        const result = await supabase
+          .from('personality_reports')
+          .update(reportData)
+          .eq('user_id', actualUserId)
+        error = result.error
+      } else {
+        // 插入新报告
+        const result = await supabase
+          .from('personality_reports')
+          .insert(reportData)
+        error = result.error
+      }
 
       if (error) {
         console.error('Supabase保存报告失败:', error)

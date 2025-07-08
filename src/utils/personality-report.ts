@@ -175,6 +175,8 @@ export async function clearPersonalityReport(userId: string): Promise<void> {
 export function validateUserInfo(userInfo: any): userInfo is UserInfo {
   return (
     userInfo &&
+    typeof userInfo.name === 'string' &&
+    userInfo.name.trim().length > 0 &&
     typeof userInfo.year === 'number' &&
     typeof userInfo.month === 'number' &&
     typeof userInfo.day === 'number' &&

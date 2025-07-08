@@ -45,7 +45,7 @@ export default function AdminLogin() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
       <Card className="w-full max-w-md mx-4 shadow-2xl">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-800 mb-2">天乙神数</h1>
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">天乙神算</h1>
           <p className="text-gray-600">管理员后台</p>
         </div>
 
