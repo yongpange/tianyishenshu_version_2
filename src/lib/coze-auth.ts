@@ -181,27 +181,21 @@ export async function createCozeClient(customConfig?: Partial<CozeAuthConfig>): 
   // 检查JWT配置的完整性
   const hasJWTConfig = config.clientId && config.privateKeyFile && config.publicKeyId
   
-  // 优先使用JWT OAuth认证，降级到PAT认证
-  if (hasJWTConfig) {
+  // 暂时强制使用PAT Token认证，避免JWT OAuth问题
+  if (config.patToken) {
+    console.log('🔑 强制使用PAT Token认证（临时解决方案）')
+    authToken = config.patToken
+    authMethod = 'PAT Token (强制)'
+  } else if (hasJWTConfig) {
     console.log('🔐 尝试使用JWT OAuth认证')
     try {
       authToken = await getOAuthAccessToken(config)
       authMethod = 'JWT OAuth'
       console.log('✅ JWT OAuth认证成功')
     } catch (error) {
-      console.warn('⚠️ JWT OAuth认证失败，降级到PAT认证:', error instanceof Error ? error.message : String(error))
-      
-      if (!config.patToken) {
-        throw new Error('JWT OAuth认证失败且PAT Token未配置，请检查认证配置')
-      }
-      
-      authToken = config.patToken
-      authMethod = 'PAT Token (降级)'
+      console.warn('⚠️ JWT OAuth认证失败:', error instanceof Error ? error.message : String(error))
+      throw new Error('JWT OAuth认证失败且PAT Token未配置，请检查认证配置')
     }
-  } else if (config.patToken) {
-    console.log('🔑 使用PAT Token认证')
-    authToken = config.patToken
-    authMethod = 'PAT Token'
   } else {
     throw new Error('认证配置缺失：请配置JWT OAuth 或 PAT Token')
   }

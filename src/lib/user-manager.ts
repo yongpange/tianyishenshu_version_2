@@ -1,5 +1,5 @@
 // 用户管理系统 - 处理用户创建、资料管理等
-import { supabase, supabaseAdmin } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase'
 import { UserInfo } from '@/lib/coze-client'
 
 export interface User {
@@ -112,9 +112,13 @@ export async function saveUserProfile(phoneNumber: string, userInfo: UserInfo): 
     console.log('📝 准备保存的资料数据:', profileData)
 
     // 使用管理员权限保存用户资料
+    // 指定 onConflict 参数来处理 user_id 唯一约束冲突
     const { data, error } = await supabaseAdmin
       .from('user_profiles')
-      .upsert(profileData)
+      .upsert(profileData, {
+        onConflict: 'user_id',
+        ignoreDuplicates: false
+      })
       .select()
       .single()
 
@@ -133,7 +137,7 @@ export async function saveUserProfile(phoneNumber: string, userInfo: UserInfo): 
     return data
   } catch (error) {
     console.error('❌ 保存用户资料失败:', error)
-    if (error.message) {
+    if (error instanceof Error && error.message) {
       throw new Error(`保存用户资料失败: ${error.message}`)
     } else {
       throw new Error('保存用户资料失败')
@@ -199,7 +203,8 @@ export async function saveConversation(phoneNumber: string, conversation: any): 
         .from('conversations')
         .update({
           title: conversation.title,
-          messages: conversation.messages
+          messages: conversation.messages,
+          coze_conversation_id: conversation.cozeConversationId
         })
         .eq('id', existingConversation.id)
 
@@ -215,7 +220,8 @@ export async function saveConversation(phoneNumber: string, conversation: any): 
         .insert({
           user_id: user.id,
           title: conversation.title,
-          messages: conversation.messages
+          messages: conversation.messages,
+          coze_conversation_id: conversation.cozeConversationId
         })
         .select('id')
         .single()

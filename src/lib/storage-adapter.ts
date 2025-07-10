@@ -131,21 +131,13 @@ export class SupabaseAdapter implements StorageAdapter {
         coze_conversation_id: report.cozeConversationId
       }
 
-      let error
-      if (existingReport) {
-        // 更新现有报告
-        const result = await supabase
-          .from('personality_reports')
-          .update(reportData)
-          .eq('user_id', actualUserId)
-        error = result.error
-      } else {
-        // 插入新报告
-        const result = await supabase
-          .from('personality_reports')
-          .insert(reportData)
-        error = result.error
-      }
+      // 使用 upsert 来处理插入或更新，避免唯一约束冲突
+      const { error } = await supabase
+        .from('personality_reports')
+        .upsert(reportData, {
+          onConflict: 'user_id',
+          ignoreDuplicates: false
+        })
 
       if (error) {
         console.error('Supabase保存报告失败:', error)

@@ -76,6 +76,9 @@ async function createTestUserScenarios() {
             area_city: '北京市',
             area_district: '朝阳区',
             phone_number: scenario.phone
+          }, {
+            onConflict: 'user_id',
+            ignoreDuplicates: false
           })
           .select()
           .single()

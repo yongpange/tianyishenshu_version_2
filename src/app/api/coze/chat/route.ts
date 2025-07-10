@@ -11,7 +11,7 @@ const COZE_BOT_ID = process.env.BOT_ID || ''
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, userInfo, conversationId } = await request.json()
+    const { message, userInfo, conversationId, userId } = await request.json()
 
     if (!message) {
       return NextResponse.json(
@@ -28,6 +28,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 生成一致的用户ID（基于手机号或传入的userId）
+    const consistentUserId = userId || `user_${Date.now()}`
+    console.log('🔑 使用用户ID:', consistentUserId)
+
     // 获取八字排盘上下文
     let astrologyContext = ''
     if (userInfo) {
@@ -40,11 +44,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 构建用户上下文信息
+    // 构建用户上下文信息 - 修复字段映射问题
     const contextMessage = userInfo ? `
 ${astrologyContext ? astrologyContext : `用户信息：
-- 昵称：${userInfo.nickname}
-- 性别：${userInfo.gender === 'male' ? '男' : '女'}
+- 昵称：${userInfo.name || userInfo.nickname || '用户'}
+- 性别：${userInfo.gender === 'male' ? '男' : userInfo.gender === 'female' ? '女' : userInfo.gender}
 - 出生日期：${userInfo.year}年${userInfo.month}月${userInfo.day}日
 - 出生时间：${userInfo.hour}时${userInfo.minute}分
 - 出生地区：${formatAreaDisplay(userInfo.area)}`}
@@ -52,13 +56,15 @@ ${astrologyContext ? astrologyContext : `用户信息：
 用户问题：${message}
 ` : message
 
+    console.log('📝 发送给Coze的上下文消息:', contextMessage.substring(0, 200) + '...')
+
     // 创建Coze客户端（支持JWT和PAT认证）
     const { client: coze, authMethod } = await createCozeClient()
 
     // 调用 Coze 智能体
     const result = await coze.chat.createAndPoll({
       bot_id: COZE_BOT_ID,
-      user_id: 'user_' + Date.now(), // 生成唯一用户ID
+      user_id: consistentUserId, // 使用一致的用户ID
       additional_messages: [
         {
           role: RoleType.User,

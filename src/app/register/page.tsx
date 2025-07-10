@@ -14,19 +14,57 @@ function WechatQRModal({ isOpen, onClose }: WechatQRModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-8 max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl p-8 max-w-md mx-4" onClick={e => e.stopPropagation()}>
         <div className="text-center">
-          <h3 className="text-xl font-bold text-gray-900 mb-4">添加客服微信</h3>
-          <div className="w-48 h-48 bg-gray-100 rounded-lg mx-auto mb-4 flex items-center justify-center">
-            <div className="text-gray-500">
-              <div className="text-4xl mb-2">📱</div>
-              <div className="text-sm">微信二维码</div>
-              <div className="text-xs text-gray-400 mt-1">请扫码添加客服</div>
+          <h3 className="text-xl font-bold text-gray-900 mb-6">添加客服微信</h3>
+
+          {/* 两个二维码并排显示 */}
+          <div className="flex justify-center gap-6 mb-6">
+            {/* 第一个二维码 */}
+            <div className="flex flex-col items-center">
+              <div className="w-32 h-32 bg-gray-100 rounded-lg flex items-center justify-center mb-2">
+                <img
+                  src="/qr-code-1.png"
+                  alt="客服微信二维码1"
+                  className="w-full h-full object-contain rounded-lg"
+                  onError={(e) => {
+                    // 如果图片加载失败，显示占位符
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                    target.nextElementSibling!.classList.remove('hidden');
+                  }}
+                />
+                <div className="hidden text-gray-500 text-center">
+                  <div className="text-2xl mb-1">📱</div>
+                  <div className="text-xs">二维码1</div>
+                </div>
+              </div>
+              <div className="text-xs text-gray-600">客服1</div>
+            </div>
+
+            {/* 第二个二维码 */}
+            <div className="flex flex-col items-center">
+              <div className="w-32 h-32 bg-gray-100 rounded-lg flex items-center justify-center mb-2">
+                <img
+                  src="/qr-code-2.png"
+                  alt="客服微信二维码2"
+                  className="w-full h-full object-contain rounded-lg"
+                  onError={(e) => {
+                    // 如果图片加载失败，显示占位符
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                    target.nextElementSibling!.classList.remove('hidden');
+                  }}
+                />
+                <div className="hidden text-gray-500 text-center">
+                  <div className="text-2xl mb-1">📱</div>
+                  <div className="text-xs">二维码2</div>
+                </div>
+              </div>
+              <div className="text-xs text-gray-600">客服2</div>
             </div>
           </div>
-          <div className="text-sm text-gray-600 mb-4">
-            微信号：tianyishenshu_kefu
-          </div>
+
           <button
             onClick={onClose}
             className="w-full py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"

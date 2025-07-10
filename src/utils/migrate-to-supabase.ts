@@ -57,6 +57,9 @@ export async function migrateUserDataToSupabase(phoneNumber: string): Promise<Mi
           area_city: profile.area.city,
           area_district: profile.area.district,
           phone_number: phoneNumber
+        }, {
+          onConflict: 'user_id',
+          ignoreDuplicates: false
         })
 
       if (profileError) {

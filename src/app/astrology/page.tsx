@@ -60,6 +60,7 @@ interface AstrologyData {
 export default function AstrologyPage() {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<AstrologyData | null>(null)
+  const [userInfo, setUserInfo] = useState<any>(null)
   const router = useRouter()
 
   // 天干颜色映射
@@ -212,6 +213,12 @@ export default function AstrologyPage() {
   }
 
   useEffect(() => {
+    // 获取用户信息
+    const userData = localStorage.getItem('userData')
+    if (userData) {
+      setUserInfo(JSON.parse(userData))
+    }
+
     fetchAstrologyData()
   }, [])
 
@@ -270,7 +277,15 @@ export default function AstrologyPage() {
   }
 
   const handleConsultation = () => {
-    message.info('1对1咨询功能开发中...')
+    router.push('/consultation')
+  }
+
+  const handleHealing = () => {
+    message.info('功能开发中，敬请期待')
+  }
+
+  const handleTreasure = () => {
+    message.info('功能开发中，敬请期待')
   }
 
   if (loading) {
@@ -315,41 +330,71 @@ export default function AstrologyPage() {
       </div>
 
       <div className="flex">
-        {/* 左侧导航栏 - 桌面端 */}
+        {/* 左侧导航栏 */}
         <div className="w-48 bg-white shadow-sm border-r border-gray-200 flex flex-col hidden md:flex">
           {/* Logo区域 */}
-          <div className="p-6 border-b border-gray-100">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">天</span>
+          <div className="p-6 border-b border-gray-100 text-center">
+            <div className="flex flex-col items-center space-y-3">
+              <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center">
+                <span className="text-white font-bold text-2xl">乙</span>
               </div>
-              <span className="font-bold text-gray-900">天乙神数</span>
+              <div className="text-center">
+                <div className="text-lg font-bold text-gray-800">天乙</div>
+                <div className="text-lg font-bold text-gray-800">神算</div>
+              </div>
             </div>
           </div>
 
-          {/* 返回按钮 */}
+          {/* 用户信息 */}
           <div className="p-4 border-b border-gray-100">
-            <Button
-              type="text"
-              icon={<ArrowLeftOutlined />}
-              onClick={() => router.push('/dashboard')}
-              className="w-full justify-start"
-            >
-              返回首页
-            </Button>
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                <span className="text-green-600 text-xs">{userInfo?.nickname ? userInfo.nickname.charAt(0) : '用'}</span>
+              </div>
+              <div>
+                <div className="text-sm font-medium text-gray-900">{userInfo?.nickname || '用户'}</div>
+                <div className="text-xs text-gray-500">您的专属命理师</div>
+              </div>
+            </div>
           </div>
 
-          {/* 底部1对1咨询按钮 */}
-          <div className="p-4 border-t border-gray-100 mt-auto">
-            <Button 
-              type="primary" 
-              block 
+          {/* 导航菜单 */}
+          <div className="flex-1 p-4">
+            <div className="space-y-6">
+              <div
+                className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center"
+                onClick={() => router.push('/dashboard')}
+              >
+                <span className="text-lg font-medium tracking-wide">命书</span>
+              </div>
+              <div className="px-4 py-4 bg-white text-gray-900 border border-gray-300 rounded-lg text-center shadow-sm">
+                <span className="text-lg font-medium tracking-wide">召灵</span>
+              </div>
+              <div
+                className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center"
+                onClick={handleHealing}
+              >
+                <span className="text-lg font-medium tracking-wide">疗愈</span>
+              </div>
+              <div
+                className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center"
+                onClick={handleTreasure}
+              >
+                <span className="text-lg font-medium tracking-wide">宝阁</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 底部问道1v1按钮 */}
+          <div className="p-4 border-t border-gray-100">
+            <Button
+              type="primary"
+              block
               size="large"
               onClick={handleConsultation}
-              className="bg-blue-500 hover:bg-blue-600 border-none"
-              icon={<MessageOutlined />}
+              className="bg-black hover:bg-gray-800 border-none shadow-lg hover:shadow-xl transition-all duration-300"
             >
-              1对1咨询
+              <span className="font-medium tracking-wide text-white">问道1v1</span>
             </Button>
           </div>
         </div>
@@ -624,17 +669,16 @@ export default function AstrologyPage() {
         </div>
       </div>
 
-      {/* 移动端底部1对1咨询按钮 */}
+      {/* 移动端底部问道1v1按钮 */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200">
-        <Button 
-          type="primary" 
-          block 
+        <Button
+          type="primary"
+          block
           size="large"
           onClick={handleConsultation}
-          className="bg-blue-500 hover:bg-blue-600 border-none"
-          icon={<MessageOutlined />}
+          className="bg-black hover:bg-gray-800 border-none shadow-lg"
         >
-          1对1咨询
+          <span className="font-medium tracking-wide text-white">问道1v1</span>
         </Button>
       </div>
     </div>

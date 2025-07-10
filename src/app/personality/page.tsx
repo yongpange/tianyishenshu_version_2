@@ -380,6 +380,15 @@ export default function PersonalityReportPage() {
     scrollToBottom()
   }, [conversations, activeConversationId])
 
+  // 导航处理函数
+  const handleHealing = () => {
+    message.info('功能开发中，敬请期待')
+  }
+
+  const handleTreasure = () => {
+    message.info('功能开发中，敬请期待')
+  }
+
   // 创建新对话
   const createNewConversation = async () => {
     console.log('🆕 创建新对话...')
@@ -422,16 +431,16 @@ export default function PersonalityReportPage() {
     // 保存到本地存储
     localStorage.setItem('personality_conversations', JSON.stringify(updatedConversations))
 
-    // 保存到Supabase
-    // 暂时注释掉，避免重复创建对话问题
-    // try {
-    //   const userId = getUserPhoneNumber()
-    //   if (userId) {
-    //     await saveConversation(userId, newConversation)
-    //   }
-    // } catch (error) {
-    //   console.warn('⚠️ 保存新对话到Supabase失败，但不影响聊天功能:', error)
-    // }
+    // 保存到Supabase（重新启用）
+    try {
+      const userId = getUserPhoneNumber()
+      if (userId) {
+        await saveConversation(userId, newConversation)
+        console.log('✅ 新对话已保存到Supabase')
+      }
+    } catch (error) {
+      console.warn('⚠️ 保存新对话到Supabase失败，但不影响聊天功能:', error)
+    }
   }
 
   // 更新对话标题（使用TextRank算法）
@@ -653,11 +662,16 @@ export default function PersonalityReportPage() {
         return
       }
 
+      // 生成一致的用户ID（基于手机号）
+      const userId = getUserPhoneNumber()
+      const consistentUserId = userId ? `user_${userId}` : `user_${Date.now()}`
+
       // 只在第一次发送消息时传递用户信息，后续依赖Coze的对话记忆
       const requestBody = {
         message: userMessage.content,
         userInfo: isFirstMessage ? userInfo : undefined, // 只在首次传递用户信息
         conversationId: currentConv?.cozeConversationId, // 保持对话连续性
+        userId: consistentUserId, // 传递一致的用户ID
       }
 
       console.log('📦 请求体:', requestBody)
@@ -716,16 +730,16 @@ export default function PersonalityReportPage() {
         if (currentConv) {
           updateConversationTitle(activeConversationId, currentConv.messages, finalConversations)
 
-          // 保存到Supabase（可选，失败不影响主功能）
-          // 暂时注释掉，避免重复创建对话问题
-          // try {
-          //   const userId = getUserPhoneNumber()
-          //   if (userId) {
-          //     await saveConversation(userId, currentConv)
-          //   }
-          // } catch (error) {
-          //   console.warn('⚠️ 保存对话到Supabase失败，但不影响聊天功能:', error)
-          // }
+          // 保存到Supabase（重新启用）
+          try {
+            const userId = getUserPhoneNumber()
+            if (userId) {
+              await saveConversation(userId, currentConv)
+              console.log('✅ 对话已保存到Supabase')
+            }
+          } catch (error) {
+            console.warn('⚠️ 保存对话到Supabase失败，但不影响聊天功能:', error)
+          }
         }
         localStorage.setItem('personality_conversations', JSON.stringify(finalConversations))
         console.log('✅ 消息发送成功')
@@ -850,7 +864,6 @@ export default function PersonalityReportPage() {
             <div className="text-center">
               <div className="text-lg font-bold text-gray-800">天乙</div>
               <div className="text-lg font-bold text-gray-800">神算</div>
-              <div className="text-xs text-gray-500 mt-2 italic">洞察命运 · 智慧人生</div>
             </div>
           </div>
         </div>
@@ -874,13 +887,22 @@ export default function PersonalityReportPage() {
             <div className="px-4 py-4 bg-white text-gray-900 border border-gray-300 rounded-lg text-center shadow-sm">
               <span className="text-lg font-medium tracking-wide">命书</span>
             </div>
-            <div className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center">
+            <div
+              className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center"
+              onClick={() => router.push('/astrology')}
+            >
               <span className="text-lg font-medium tracking-wide">召灵</span>
             </div>
-            <div className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center">
+            <div
+              className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center"
+              onClick={handleHealing}
+            >
               <span className="text-lg font-medium tracking-wide">疗愈</span>
             </div>
-            <div className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center">
+            <div
+              className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center"
+              onClick={handleTreasure}
+            >
               <span className="text-lg font-medium tracking-wide">宝阁</span>
             </div>
           </div>
@@ -892,7 +914,7 @@ export default function PersonalityReportPage() {
             type="primary"
             block
             size="large"
-            onClick={() => router.push('/dashboard')}
+            onClick={() => router.push('/consultation')}
             className="bg-black hover:bg-gray-800 border-none shadow-lg hover:shadow-xl transition-all duration-300"
           >
             <span className="font-medium tracking-wide text-white">问道1v1</span>
@@ -920,23 +942,6 @@ export default function PersonalityReportPage() {
 
             {/* 功能按钮区域 */}
             <div className="p-4 space-y-3">
-              {/* 调试按钮 */}
-              <div className="p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <Button
-                  size="small"
-                  onClick={() => {
-                    console.log('🔍 调试信息:')
-                    console.log('用户信息:', userInfo)
-                    console.log('对话列表:', conversations)
-                    console.log('活跃对话ID:', activeConversationId)
-                    console.log('当前内容:', currentContent)
-                  }}
-                  className="w-full text-xs"
-                >
-                  调试信息
-                </Button>
-              </div>
-
               <div
                 onClick={() => setCurrentContent('report')}
                 className={`flex items-center space-x-3 p-3 rounded-lg cursor-pointer transition-all duration-200 ${

@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { Card, Avatar, Button, message } from 'antd'
 import {
   UserOutlined,
-  BarChartOutlined,
   WechatOutlined,
   UsergroupAddOutlined,
   SettingOutlined,
@@ -81,9 +80,8 @@ export default function DashboardPage() {
       case 'personality':
         router.push('/personality')
         break
-      case 'astrology':
-        message.info(`即将为您生成${reportTitle}...`)
-        // 这里后续可以集成八字排盘功能
+      case 'fortune':
+        message.info('功能开发中...')
         break
       default:
         message.info(`即将为您生成${reportTitle}...`)
@@ -92,7 +90,15 @@ export default function DashboardPage() {
   }
 
   const handleConsultation = () => {
-    message.info('1对1咨询功能开发中...')
+    router.push('/consultation')
+  }
+
+  const handleHealing = () => {
+    message.info('功能开发中，敬请期待')
+  }
+
+  const handleTreasure = () => {
+    message.info('功能开发中，敬请期待')
   }
 
   if (!userInfo) {
@@ -141,7 +147,6 @@ export default function DashboardPage() {
             <div className="text-center">
               <div className="text-lg font-bold text-gray-800">天乙</div>
               <div className="text-lg font-bold text-gray-800">神算</div>
-              <div className="text-xs text-gray-500 mt-2 italic">洞察命运 · 智慧人生</div>
             </div>
           </div>
         </div>
@@ -165,17 +170,22 @@ export default function DashboardPage() {
             <div className="px-4 py-4 bg-white text-gray-900 border border-gray-300 rounded-lg text-center shadow-sm">
               <span className="text-lg font-medium tracking-wide">命书</span>
             </div>
-            <div 
-              className="flex items-center space-x-3 px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer"
+            <div
+              className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center"
               onClick={() => router.push('/astrology')}
             >
-              <BarChartOutlined />
-              <span className="text-sm">排盘分析</span>
+              <span className="text-lg font-medium tracking-wide">召灵</span>
             </div>
-            <div className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center">
+            <div
+              className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center"
+              onClick={handleHealing}
+            >
               <span className="text-lg font-medium tracking-wide">疗愈</span>
             </div>
-            <div className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center">
+            <div
+              className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center"
+              onClick={handleTreasure}
+            >
               <span className="text-lg font-medium tracking-wide">宝阁</span>
             </div>
           </div>
@@ -202,40 +212,16 @@ export default function DashboardPage() {
           <div className="mb-8">
             <div className="text-center py-8 px-8">
               <div className="max-w-4xl mx-auto">
-                <h2 className="text-xl md:text-2xl font-medium text-gray-700 mb-2">
+                <h2 className="text-xl md:text-2xl font-medium text-gray-700 mb-8">
                   欢迎回来，{userInfo.nickname || '用户'}
                 </h2>
-                <p className="text-sm md:text-base text-gray-500 mb-8">
-                  您的专属命理空间已为您准备就绪
-                </p>
-
-                {/* 装饰线 */}
-                <div className="flex items-center justify-center mb-8">
-                  <div className="h-px bg-gradient-to-r from-transparent via-gray-400 to-transparent w-24"></div>
-                  <div className="mx-4 w-2 h-2 bg-gray-600 rounded-full"></div>
-                  <div className="h-px bg-gradient-to-r from-transparent via-gray-400 to-transparent w-24"></div>
-                </div>
 
                 {/* 哲学文案 */}
-                <h1 className="text-3xl md:text-4xl font-semibold text-gray-900 leading-relaxed tracking-wider mb-8">
+                <h1 className="text-3xl md:text-4xl font-semibold text-gray-900 leading-relaxed tracking-wider">
                   人立于命 命行运中 命由心敕 运掌中天 心御乾坤
                 </h1>
-
-                {/* 装饰线 */}
-                <div className="flex items-center justify-center">
-                  <div className="h-px bg-gradient-to-r from-transparent via-gray-400 to-transparent w-24"></div>
-                  <div className="mx-4 w-2 h-2 bg-gray-600 rounded-full"></div>
-                  <div className="h-px bg-gradient-to-r from-transparent via-gray-400 to-transparent w-24"></div>
-                </div>
               </div>
             </div>
-          </div>
-
-          {/* 功能引导 */}
-          <div className="mb-8 text-center">
-            <p className="text-lg text-gray-600 font-medium">
-              选择您想要探索的领域，开启专属的命理之旅
-            </p>
           </div>
 
           {/* 6个报告模块 - 3×2布局 */}
@@ -271,17 +257,7 @@ export default function DashboardPage() {
             ))}
           </div>
 
-          {/* 底部激励文案 */}
-          <div className="text-center py-8 border-t border-gray-100">
-            <div className="max-w-2xl mx-auto">
-              <p className="text-lg text-gray-600 leading-relaxed mb-2">
-                每一次探索，都是与命运的深度对话
-              </p>
-              <p className="text-base text-gray-500">
-                您的人生答案，就在这里等待发现
-              </p>
-            </div>
-          </div>
+
 
 
         </div>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { UserInfo } from '@/lib/coze-client'
-import { validateUserInfo, calculateUserDataHash } from '@/utils/personality-report'
+import { validateUserInfo, calculateUserDataHash } from '@/utils/client-utils'
 
 // 请求接口
 interface AsyncGenerateRequest {
@@ -100,7 +100,10 @@ export async function POST(request: NextRequest): Promise<NextResponse<AsyncGene
 
     const { error: taskError } = await supabaseAdmin
       .from('personality_reports')
-      .upsert(taskRecord)
+      .upsert(taskRecord, {
+        onConflict: 'user_id',
+        ignoreDuplicates: false
+      })
 
     if (taskError) {
       console.error('❌ 创建任务记录失败:', taskError)
