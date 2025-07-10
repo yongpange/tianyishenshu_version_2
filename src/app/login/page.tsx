@@ -271,7 +271,7 @@ export default function LoginPage() {
               disabled={loading || !smsCode || smsCode.length !== 6}
               className="w-full py-3 bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {loading ? '登录中...' : '登录'}
+              {loading ? '登录中...' : '步入玄境'}
             </button>
           )}
         </div>

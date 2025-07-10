@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { markInviteCodeAsUsed } from '@/lib/user-manager'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -114,6 +115,15 @@ export async function POST(request: NextRequest) {
         { error: 'CREATE_USER_FAILED', message: '创建用户失败' },
         { status: 500 }
       )
+    }
+
+    // 标记兑换码为已使用
+    try {
+      await markInviteCodeAsUsed(inviteCode, cleanPhone)
+      console.log('✅ 兑换码已标记为已使用:', inviteCode)
+    } catch (markError) {
+      console.error('❌ 标记兑换码失败:', markError)
+      // 不影响注册流程，只记录错误
     }
 
     return NextResponse.json({

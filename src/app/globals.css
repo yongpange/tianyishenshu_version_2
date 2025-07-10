@@ -52,29 +52,8 @@ a {
   }
 }
 
-.gradient-text {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.hero-gradient {
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-}
-
-.card-gradient {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-
-.glass-effect {
-  backdrop-filter: blur(10px);
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
 .btn-primary {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #000000;
   border: none;
   border-radius: 25px;
   padding: 12px 30px;
@@ -82,12 +61,36 @@ a {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
 .btn-primary:hover {
+  background: #333333;
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.btn-secondary {
+  background: transparent;
+  border: 2px solid #000000;
+  border-radius: 25px;
+  padding: 10px 28px;
+  color: #000000;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-secondary:hover {
+  background: #000000;
+  color: white;
+  transform: translateY(-2px);
+}
+
+.glass-effect {
+  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .section-padding {
@@ -106,7 +109,8 @@ a {
 }
 
 .prose h1 {
-  border-image: linear-gradient(to right, #8b5cf6, #3b82f6) 1;
+  border-bottom: 2px solid #000000;
+  padding-bottom: 8px;
 }
 
 .prose h2::before {
@@ -114,16 +118,15 @@ a {
   display: inline-block;
   width: 4px;
   height: 24px;
-  background: linear-gradient(to bottom, #8b5cf6, #3b82f6);
+  background: #000000;
   border-radius: 2px;
   margin-right: 12px;
   vertical-align: middle;
 }
 
 .prose blockquote {
-  border-left: 4px solid;
-  border-image: linear-gradient(to bottom, #8b5cf6, #3b82f6) 1;
-  background: linear-gradient(to right, #f3f4f6, #e5e7eb);
+  border-left: 4px solid #000000;
+  background: #f9f9f9;
 }
 
 /* 响应式优化 */
@@ -156,10 +159,10 @@ a {
 }
 
 .prose::-webkit-scrollbar-thumb {
-  background: linear-gradient(to bottom, #8b5cf6, #3b82f6);
+  background: #666666;
   border-radius: 3px;
 }
 
 .prose::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(to bottom, #7c3aed, #2563eb);
+  background: #333333;
 }

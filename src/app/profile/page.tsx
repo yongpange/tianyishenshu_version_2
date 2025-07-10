@@ -582,6 +582,14 @@ export default function ProfilePage() {
                 </div>
                 <h3 className="text-lg font-semibold mb-2">正在生成性格报告</h3>
                 <p className="text-gray-600 mb-4">{stepMessages[generationStep]}</p>
+
+                {/* 预计等候时间提示 */}
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-blue-800 font-medium text-sm">
+                    性格报告正在生成，预计等候3分钟
+                  </p>
+                </div>
+
                 <Progress percent={progress} strokeColor="#1890ff" />
               </div>
             </Card>

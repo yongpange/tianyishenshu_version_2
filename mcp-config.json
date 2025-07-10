@@ -1,0 +1,43 @@
+{
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["@context7/mcp-server"],
+      "env": {
+        "CONTEXT7_API_KEY": "your-context7-api-key-here",
+        "PROJECT_ROOT": ".",
+        "INCLUDE_PATTERNS": [
+          "src/**/*.{ts,tsx,js,jsx}",
+          "pages/**/*.{ts,tsx,js,jsx}",
+          "components/**/*.{ts,tsx,js,jsx}",
+          "lib/**/*.{ts,tsx,js,jsx}",
+          "utils/**/*.{ts,tsx,js,jsx}",
+          "app/**/*.{ts,tsx,js,jsx}",
+          "*.{json,md,yml,yaml}",
+          "package.json",
+          "tsconfig.json",
+          "next.config.js",
+          "tailwind.config.js"
+        ],
+        "EXCLUDE_PATTERNS": [
+          "node_modules/**",
+          ".next/**",
+          "dist/**",
+          "build/**",
+          ".git/**",
+          "*.log",
+          ".env*"
+        ],
+        "MAX_FILE_SIZE": "100kb",
+        "CONTEXT_DEPTH": "3"
+      }
+    },
+    "docker": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-docker"],
+      "env": {
+        "DOCKER_HOST": "unix:///var/run/docker.sock"
+      }
+    }
+  }
+}

@@ -363,7 +363,7 @@ export default function RegisterPage() {
             disabled={loading}
             className="w-full py-3 bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {loading ? '注册中...' : '步入天境'}
+            {loading ? '注册中...' : '步入玄境'}
           </button>
         </div>
 
