@@ -138,7 +138,7 @@ export default function AdminDashboard() {
         id: Date.now().toString(),
         code: generateCode(),
         status: 'active',
-        createdAt: new Date().toISOString(),
+        created_at: new Date().toISOString(),
         remarks: remarks || `管理员生成 ${new Date().toLocaleString()}`
       }
 
@@ -216,14 +216,14 @@ export default function AdminDashboard() {
     },
     {
       title: '创建时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
-      render: (date) => new Date(date).toLocaleString('zh-CN')
+      dataIndex: 'created_at',
+      key: 'created_at',
+      render: (date) => date ? new Date(date).toLocaleString('zh-CN') : '-'
     },
     {
       title: '使用时间',
-      dataIndex: 'usedAt',
-      key: 'usedAt',
+      dataIndex: 'used_at',
+      key: 'used_at',
       render: (date) => date ? new Date(date).toLocaleString('zh-CN') : '-'
     },
     {

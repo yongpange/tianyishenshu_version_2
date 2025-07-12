@@ -20,18 +20,18 @@ export async function GET() {
     console.log('NEXT_PUBLIC_SUPABASE_ANON_KEY:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? `${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.substring(0, 10)}...` : 'undefined')
     console.log('SUPABASE_SERVICE_ROLE_KEY:', process.env.SUPABASE_SERVICE_ROLE_KEY ? `${process.env.SUPABASE_SERVICE_ROLE_KEY.substring(0, 10)}...` : 'undefined')
     
-    // 检查Supabase连接是否可用
-    if (!supabase) {
-      console.warn('⚠️ Supabase 未正确配置，返回空数据')
+    // 检查Supabase管理员连接是否可用
+    if (!supabaseAdmin) {
+      console.warn('⚠️ Supabase 管理员权限未正确配置，返回空数据')
       return NextResponse.json({
         success: true,
         data: []
       })
     }
-    
-    console.log('✅ Supabase 客户端已初始化，尝试连接数据库...')
 
-    const { data, error } = await supabase
+    console.log('✅ Supabase 管理员客户端已初始化，尝试连接数据库...')
+
+    const { data, error } = await supabaseAdmin
       .from('invite_codes')
       .select('*')
       .order('created_at', { ascending: false })
