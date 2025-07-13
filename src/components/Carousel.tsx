@@ -59,15 +59,15 @@ export default function Carousel({
 
   if (!images || images.length === 0) {
     return (
-      <div className={`relative w-full h-96 bg-gray-100 rounded-2xl flex items-center justify-center ${className}`}>
+      <div className={`relative w-full h-64 md:h-80 lg:h-[42.9vw] bg-gray-100 rounded-2xl lg:rounded-none flex items-center justify-center ${className}`}>
         <p className="text-gray-500 text-lg">轮播图预留位置</p>
       </div>
     )
   }
 
   return (
-    <div 
-      className={`relative w-full h-96 overflow-hidden rounded-2xl group ${className}`}
+    <div
+      className={`relative w-full h-64 md:h-80 lg:h-[42.9vw] overflow-hidden rounded-2xl lg:rounded-none group ${className}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -84,7 +84,7 @@ export default function Carousel({
             <img
               src={image}
               alt={`轮播图 ${index + 1}`}
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain bg-gray-50"
               loading={index === 0 ? 'eager' : 'lazy'}
             />
           </div>
