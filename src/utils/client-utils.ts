@@ -41,6 +41,44 @@ export function saveUserPhoneNumber(phoneNumber: string): void {
   }
 }
 
+// 获取当前激活的用户信息
+export function getActiveUser(): any | null {
+  if (typeof window === 'undefined') return null
+  
+  try {
+    const activeUser = localStorage.getItem('activeUser')
+    if (activeUser) {
+      return JSON.parse(activeUser)
+    }
+    return null
+  } catch (error) {
+    console.error('获取当前激活用户失败:', error)
+    return null
+  }
+}
+
+// 设置当前激活的用户
+export function setActiveUser(user: any): void {
+  if (typeof window === 'undefined') return
+  
+  try {
+    localStorage.setItem('activeUser', JSON.stringify(user))
+  } catch (error) {
+    console.error('设置当前激活用户失败:', error)
+  }
+}
+
+// 清除当前激活的用户
+export function clearActiveUser(): void {
+  if (typeof window === 'undefined') return
+  
+  try {
+    localStorage.removeItem('activeUser')
+  } catch (error) {
+    console.error('清除当前激活用户失败:', error)
+  }
+}
+
 // 格式化地区信息为纯汉字显示
 export function formatAreaDisplay(area: any): string {
   if (!area) return '未知地区'

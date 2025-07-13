@@ -1,11 +1,9 @@
 -- 天乙神算项目 - 完整数据库迁移 SQL
 -- 此文件包含所有表格的创建语句，可直接在新的 Supabase 账号中执行
 -- 生成时间: 2025-07-09
-
 -- ========================================
 -- 1. 创建所有表格
 -- ========================================
-
 -- 创建用户表
 CREATE TABLE users (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -13,11 +11,10 @@ CREATE TABLE users (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   invite_code_used VARCHAR(50),
-  permissions TEXT[] DEFAULT ARRAY['basic'],
+  permissions TEXT [] DEFAULT ARRAY ['basic'],
   is_profile_completed BOOLEAN DEFAULT FALSE,
   last_login TIMESTAMP WITH TIME ZONE
 );
-
 -- 创建用户资料表
 CREATE TABLE user_profiles (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -37,11 +34,11 @@ CREATE TABLE user_profiles (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(user_id)
 );
-
 -- 创建性格报告表
 CREATE TABLE personality_reports (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  -- user_id 为user_profiles表的id
+  user_id UUID REFERENCES user_profiles(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
   generated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   user_data_hash VARCHAR(100) NOT NULL,
@@ -50,34 +47,32 @@ CREATE TABLE personality_reports (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(user_id)
 );
-
 -- 创建对话表
 CREATE TABLE conversations (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  -- user_id 为user_profiles表的id
+  user_id UUID REFERENCES user_profiles(id) ON DELETE CASCADE,
   title VARCHAR(200) NOT NULL,
   messages JSONB DEFAULT '[]'::jsonb,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   coze_conversation_id VARCHAR(200)
 );
-
 -- 创建兑换码表
 CREATE TABLE invite_codes (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   code VARCHAR(50) UNIQUE NOT NULL,
   status VARCHAR(20) CHECK (status IN ('active', 'used', 'expired')) DEFAULT 'active',
   remarks TEXT,
-  used_by UUID REFERENCES users(id),
+  -- used_by 为user_profiles表的id
+  used_by UUID REFERENCES user_profiles(id),
   used_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
-
 -- ========================================
 -- 2. 创建索引
 -- ========================================
-
 CREATE INDEX idx_users_phone ON users(phone_number);
 CREATE INDEX idx_user_profiles_user_id ON user_profiles(user_id);
 CREATE INDEX idx_personality_reports_user_id ON personality_reports(user_id);
@@ -86,103 +81,164 @@ CREATE INDEX idx_invite_codes_code ON invite_codes(code);
 CREATE INDEX idx_invite_codes_status ON invite_codes(status);
 CREATE INDEX idx_conversations_coze_conversation_id ON conversations(coze_conversation_id);
 CREATE INDEX idx_conversations_user_id_created_at ON conversations(user_id, created_at DESC);
-
 -- ========================================
 -- 3. 创建触发器函数
 -- ========================================
-
 -- 创建更新时间触发器函数
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
+CREATE OR REPLACE FUNCTION update_updated_at_column() RETURNS TRIGGER AS $$ BEGIN NEW.updated_at = NOW();
+RETURN NEW;
 END;
 $$ language 'plpgsql';
-
 -- 为所有表添加更新时间触发器
-CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_user_profiles_updated_at BEFORE UPDATE ON user_profiles FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_personality_reports_updated_at BEFORE UPDATE ON personality_reports FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_conversations_updated_at BEFORE UPDATE ON conversations FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_invite_codes_updated_at BEFORE UPDATE ON invite_codes FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
+CREATE TRIGGER update_users_updated_at BEFORE
+UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_user_profiles_updated_at BEFORE
+UPDATE ON user_profiles FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_personality_reports_updated_at BEFORE
+UPDATE ON personality_reports FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_conversations_updated_at BEFORE
+UPDATE ON conversations FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_invite_codes_updated_at BEFORE
+UPDATE ON invite_codes FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 -- ========================================
 -- 4. 添加字段注释
 -- ========================================
-
 COMMENT ON COLUMN users.is_profile_completed IS '用户是否已完成个人信息填写';
 COMMENT ON COLUMN users.last_login IS '用户最后登录时间';
 COMMENT ON COLUMN conversations.coze_conversation_id IS 'Coze智能体的对话ID，用于保持对话连续性';
-
 -- ========================================
 -- 5. 启用行级安全策略 (RLS)
 -- ========================================
-
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE personality_reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE invite_codes ENABLE ROW LEVEL SECURITY;
-
 -- ========================================
 -- 6. 创建 RLS 安全策略
 -- ========================================
-
 -- 用户表策略
 CREATE POLICY "Service role can manage users" ON users FOR ALL TO service_role USING (true) WITH CHECK (true);
-CREATE POLICY "Users can view own data" ON users FOR SELECT TO authenticated USING (auth.uid()::text = id::text);
-CREATE POLICY "Users can update own data" ON users FOR UPDATE TO authenticated USING (auth.uid()::text = id::text);
-CREATE POLICY "Anonymous can insert users" ON users FOR INSERT TO anon WITH CHECK (true);
-
+CREATE POLICY "Users can view own data" ON users FOR
+SELECT TO authenticated USING (auth.uid()::text = id::text);
+CREATE POLICY "Users can update own data" ON users FOR
+UPDATE TO authenticated USING (auth.uid()::text = id::text);
+CREATE POLICY "Anonymous can insert users" ON users FOR
+INSERT TO anon WITH CHECK (true);
 -- 用户资料表策略
 CREATE POLICY "Service role can manage profiles" ON user_profiles FOR ALL TO service_role USING (true) WITH CHECK (true);
-CREATE POLICY "Users can view own profile" ON user_profiles FOR SELECT TO authenticated USING (auth.uid()::text = user_id::text);
-CREATE POLICY "Users can insert own profile" ON user_profiles FOR INSERT TO authenticated WITH CHECK (auth.uid()::text = user_id::text);
-CREATE POLICY "Users can update own profile" ON user_profiles FOR UPDATE TO authenticated USING (auth.uid()::text = user_id::text);
-
+CREATE POLICY "Users can view own profile" ON user_profiles FOR
+SELECT TO authenticated USING (auth.uid()::text = user_id::text);
+CREATE POLICY "Users can insert own profile" ON user_profiles FOR
+INSERT TO authenticated WITH CHECK (auth.uid()::text = user_id::text);
+CREATE POLICY "Users can update own profile" ON user_profiles FOR
+UPDATE TO authenticated USING (auth.uid()::text = user_id::text);
 -- 性格报告表策略
 CREATE POLICY "Service role can manage reports" ON personality_reports FOR ALL TO service_role USING (true) WITH CHECK (true);
-CREATE POLICY "Users can view own reports" ON personality_reports FOR SELECT TO authenticated USING (auth.uid()::text = user_id::text);
-CREATE POLICY "Users can insert own reports" ON personality_reports FOR INSERT TO authenticated WITH CHECK (auth.uid()::text = user_id::text);
-CREATE POLICY "Users can update own reports" ON personality_reports FOR UPDATE TO authenticated USING (auth.uid()::text = user_id::text);
-
+CREATE POLICY "Users can view own reports" ON personality_reports FOR
+SELECT TO authenticated USING (
+    user_id IN (
+      SELECT id
+      FROM user_profiles
+      WHERE user_id = auth.uid()
+    )
+  );
+CREATE POLICY "Users can insert own reports" ON personality_reports FOR
+INSERT TO authenticated WITH CHECK (
+    user_id IN (
+      SELECT id
+      FROM user_profiles
+      WHERE user_id = auth.uid()
+    )
+  );
+CREATE POLICY "Users can update own reports" ON personality_reports FOR
+UPDATE TO authenticated USING (
+    user_id IN (
+      SELECT id
+      FROM user_profiles
+      WHERE user_id = auth.uid()
+    )
+  );
 -- 对话表策略
 CREATE POLICY "Service role can manage conversations" ON conversations FOR ALL TO service_role USING (true) WITH CHECK (true);
-CREATE POLICY "Users can view own conversations" ON conversations FOR SELECT TO authenticated USING (auth.uid()::text = user_id::text);
-CREATE POLICY "Users can insert own conversations" ON conversations FOR INSERT TO authenticated WITH CHECK (auth.uid()::text = user_id::text);
-CREATE POLICY "Users can update own conversations" ON conversations FOR UPDATE TO authenticated USING (auth.uid()::text = user_id::text);
-CREATE POLICY "Users can delete own conversations" ON conversations FOR DELETE TO authenticated USING (auth.uid()::text = user_id::text);
-
+CREATE POLICY "Users can view own conversations" ON conversations FOR
+SELECT TO authenticated USING (
+    user_id IN (
+      SELECT id
+      FROM user_profiles
+      WHERE user_id = auth.uid()
+    )
+  );
+CREATE POLICY "Users can insert own conversations" ON conversations FOR
+INSERT TO authenticated WITH CHECK (
+    user_id IN (
+      SELECT id
+      FROM user_profiles
+      WHERE user_id = auth.uid()
+    )
+  );
+CREATE POLICY "Users can update own conversations" ON conversations FOR
+UPDATE TO authenticated USING (
+    user_id IN (
+      SELECT id
+      FROM user_profiles
+      WHERE user_id = auth.uid()
+    )
+  );
+CREATE POLICY "Users can delete own conversations" ON conversations FOR DELETE TO authenticated USING (
+  user_id IN (
+    SELECT id
+    FROM user_profiles
+    WHERE user_id = auth.uid()
+  )
+);
 -- 兑换码表策略
-CREATE POLICY "Anyone can view invite codes" ON invite_codes FOR SELECT TO anon, authenticated USING (true);
+CREATE POLICY "Anyone can view invite codes" ON invite_codes FOR
+SELECT TO anon,
+  authenticated USING (true);
 CREATE POLICY "Service role can manage invite codes" ON invite_codes FOR ALL TO service_role USING (true);
-CREATE POLICY "Authenticated users can insert invite codes" ON invite_codes FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "Authenticated users can update invite codes" ON invite_codes FOR UPDATE TO authenticated USING (true);
-
+CREATE POLICY "Authenticated users can insert invite codes" ON invite_codes FOR
+INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Authenticated users can update invite codes" ON invite_codes FOR
+UPDATE TO authenticated USING (true);
 -- ========================================
 -- 7. 策略注释
 -- ========================================
-
 COMMENT ON POLICY "Service role can manage users" ON users IS '服务端可以完全管理用户数据';
 COMMENT ON POLICY "Service role can manage profiles" ON user_profiles IS '服务端可以完全管理用户资料';
 COMMENT ON POLICY "Service role can manage reports" ON personality_reports IS '服务端可以完全管理性格报告';
 COMMENT ON POLICY "Service role can manage conversations" ON conversations IS '服务端可以完全管理对话数据';
 COMMENT ON POLICY "Anonymous can insert users" ON users IS '允许匿名用户注册（用于登录流程）';
-
 -- ========================================
 -- 8. 验证脚本（可选执行）
 -- ========================================
-
 -- 验证所有表是否创建成功
-SELECT table_name, table_type
+SELECT table_name,
+  table_type
 FROM information_schema.tables
 WHERE table_schema = 'public'
-AND table_name IN ('users', 'user_profiles', 'personality_reports', 'conversations', 'invite_codes')
+  AND table_name IN (
+    'users',
+    'user_profiles',
+    'personality_reports',
+    'conversations',
+    'invite_codes'
+  )
 ORDER BY table_name;
-
 -- 验证所有策略是否创建成功
-SELECT schemaname, tablename, policyname, permissive, roles, cmd
+SELECT schemaname,
+  tablename,
+  policyname,
+  permissive,
+  roles,
+  cmd
 FROM pg_policies
-WHERE tablename IN ('users', 'user_profiles', 'personality_reports', 'conversations', 'invite_codes')
-ORDER BY tablename, policyname;
+WHERE tablename IN (
+    'users',
+    'user_profiles',
+    'personality_reports',
+    'conversations',
+    'invite_codes'
+  )
+ORDER BY tablename,
+  policyname;

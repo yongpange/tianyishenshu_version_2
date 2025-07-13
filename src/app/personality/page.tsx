@@ -37,7 +37,8 @@ import {
 import {
   getUserPhoneNumber,
   formatUserInfoDisplay,
-  formatAreaDisplay
+  formatAreaDisplay,
+  getActiveUser
 } from '@/utils/client-utils'
 import { getUserConversations, saveConversation, deleteConversationFromSupabase } from '@/lib/user-manager'
 import { generateConversationTitle } from '@/utils/textrank'
@@ -99,12 +100,21 @@ export default function PersonalityReportPage() {
   // 轮询报告生成状态
   const pollReportStatus = async (userId: string, taskId: string) => {
     try {
+      // 判断userId是否为user_profiles.id（UUID格式）
+      const isUserProfileId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)
+      
+      console.log('📊 轮询状态请求:', { userId, taskId, isUserProfileId })
+      
       const response = await fetch('/api/personality-report/status', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ userId, taskId })
+        body: JSON.stringify({ 
+          userId, 
+          taskId,
+          isUserProfileId: isUserProfileId
+        })
       })
 
       const result = await response.json()
@@ -117,6 +127,7 @@ export default function PersonalityReportPage() {
           case 'generating':
             setGenerationStatus('正在生成性格报告...')
             setIsGenerating(true)
+            console.log('🔄 报告生成中...', { progress: result.progress })
             break
 
           case 'completed':
@@ -131,6 +142,12 @@ export default function PersonalityReportPage() {
               pollingIntervalRef.current = null
             }
 
+            console.log('✅ 报告生成完成!', { 
+              contentLength: result.content?.length || 0,
+              userId: userId,
+              taskId: taskId,
+              isUserProfileId: isUserProfileId
+            })
             message.success('性格报告生成完成！')
             break
 
@@ -145,24 +162,38 @@ export default function PersonalityReportPage() {
               clearInterval(pollingIntervalRef.current)
               pollingIntervalRef.current = null
             }
+
+            console.error('❌ 报告生成失败:', { 
+              error: result.error,
+              userId: userId,
+              taskId: taskId,
+              isUserProfileId: isUserProfileId
+            })
             break
 
-          case 'not_found':
-            setGenerationStatus('未找到生成任务')
-            setIsGenerating(false)
-            setReportError('未找到报告生成任务')
-            setReportLoading(false)
-
-            // 停止轮询
-            if (pollingIntervalRef.current) {
-              clearInterval(pollingIntervalRef.current)
-              pollingIntervalRef.current = null
-            }
+          default:
+            console.log('📊 未知状态:', result.status)
             break
+        }
+      } else {
+        console.error('❌ 轮询状态失败:', result.error)
+        setReportError(result.error || '查询状态失败')
+        
+        // 停止轮询
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current)
+          pollingIntervalRef.current = null
         }
       }
     } catch (error) {
-      console.error('❌ 轮询状态失败:', error)
+      console.error('❌ 轮询请求失败:', error)
+      setReportError('网络错误，请刷新页面重试')
+      
+      // 停止轮询
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+      }
     }
   }
 
@@ -175,8 +206,11 @@ export default function PersonalityReportPage() {
 
     // 每3秒轮询一次
     pollingIntervalRef.current = setInterval(() => {
+      console.log('⏰ 轮询定时器执行:', { userId, taskId })
       pollReportStatus(userId, taskId)
     }, 3000)
+    
+    console.log('✅ 轮询定时器已启动')
   }
 
   // 停止轮询
@@ -193,13 +227,45 @@ export default function PersonalityReportPage() {
       setReportLoading(true)
       setReportError(null)
 
-      const userId = getUserPhoneNumber()
-      if (!userId) {
-        setReportError('未找到用户信息，请重新登录')
-        return
+      // 优先从当前激活用户获取信息
+      const activeUser = getActiveUser()
+      let reportUserId: string
+      let isUserProfileId = false
+
+      console.log('🔍 开始确定用户身份:', { activeUser })
+
+      if (activeUser && activeUser.id) {
+        // 激活子用户模式：使用激活用户的user_profiles.id
+        reportUserId = activeUser.id
+        isUserProfileId = true
+        console.log('📋 激活子用户模式：使用激活用户的user_profiles.id:', reportUserId)
+      } else {
+        // 备用方案：从URL参数中获取userId
+        const searchParams = new URLSearchParams(window.location.search)
+        const urlUserId = searchParams.get('userId')
+        
+        console.log('🔍 URL参数检查:', { urlUserId })
+        
+        if (urlUserId) {
+          // 子用户模式：使用URL中的user_profiles.id
+          reportUserId = urlUserId
+          isUserProfileId = true
+          console.log('📋 子用户模式：使用URL中的user_profiles.id:', reportUserId)
+        } else {
+          // 主用户模式：使用手机号
+          const phoneNumber = getUserPhoneNumber()
+          console.log('📱 获取到的手机号:', phoneNumber)
+          
+          if (!phoneNumber) {
+            setReportError('未找到用户信息，请重新登录')
+            return
+          }
+          reportUserId = phoneNumber
+          console.log('📋 主用户模式：使用手机号:', reportUserId)
+        }
       }
 
-      console.log('📖 开始获取性格报告:', { userId })
+      console.log('📖 开始获取性格报告:', { reportUserId, isUserProfileId })
 
       // 使用 API 路由获取报告
       const response = await fetch('/api/personality-report/get', {
@@ -207,23 +273,38 @@ export default function PersonalityReportPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ userId })
+        body: JSON.stringify({ 
+          userId: reportUserId,
+          isUserProfileId: isUserProfileId
+        })
       })
 
       const result = await response.json()
+      console.log('📋 API响应结果:', { 
+        success: result.success, 
+        error: result.error, 
+        hasReport: !!result.report,
+        reportContentLength: result.report?.content?.length || 0
+      })
 
       if (result.success && result.report) {
         console.log('✅ 成功获取报告:', {
           contentLength: result.report.content?.length || 0,
-          generatedAt: result.report.generatedAt
+          generatedAt: result.report.generatedAt,
+          reportUserId: reportUserId,
+          isUserProfileId: isUserProfileId
         })
         setReportContent(result.report.content)
       } else {
-        console.log('❌ 获取报告失败:', result.error)
+        console.log('❌ 获取报告失败:', { 
+          error: result.error, 
+          reportUserId: reportUserId,
+          isUserProfileId: isUserProfileId 
+        })
         setReportError(result.error || '性格报告未生成，请返回信息填写页重新生成')
       }
     } catch (error) {
-      console.error('加载性格报告失败:', error)
+      console.error('❌ 加载性格报告失败:', error)
       setReportError('加载报告失败，请稍后重试')
     } finally {
       setReportLoading(false)
@@ -245,14 +326,109 @@ export default function PersonalityReportPage() {
   }
 
   // 重新生成报告
-  const regenerateReport = () => {
-    router.push('/profile')
+  const regenerateReport = async () => {
+    try {
+      console.log('🔄 开始重新生成报告...')
+      
+      // 获取用户信息
+      if (!userInfo) {
+        console.error('❌ 用户信息缺失')
+        message.error('用户信息缺失，请刷新页面重试')
+        return
+      }
+
+      // 确定用户ID和模式
+      const activeUser = getActiveUser()
+      let reportUserId: string
+      let isUserProfileId = false
+
+      if (activeUser && activeUser.id) {
+        // 激活子用户模式：使用激活用户的user_profiles.id
+        reportUserId = activeUser.id
+        isUserProfileId = true
+        console.log('📋 重新生成-子用户模式：使用激活用户的user_profiles.id:', reportUserId)
+      } else {
+        // 主用户模式：使用手机号
+        const phoneNumber = getUserPhoneNumber()
+        if (!phoneNumber) {
+          console.error('❌ 无法获取用户手机号')
+          message.error('未找到用户信息，请重新登录')
+          return
+        }
+        reportUserId = phoneNumber
+        console.log('📋 重新生成-主用户模式：使用手机号:', reportUserId)
+      }
+
+      // 设置生成状态
+      setIsGenerating(true)
+      setGenerationStatus('正在重新生成性格报告...')
+      setReportLoading(true)
+      setReportError(null)
+      setCurrentContent('report') // 切换到报告页面
+      setGenerationProgress(0)
+
+      console.log('🚀 调用异步生成API:', { reportUserId, isUserProfileId })
+
+      // 调用异步生成API
+      const response = await fetch('/api/personality-report/generate-async', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userInfo,
+          userId: reportUserId,
+          isUserProfileId: isUserProfileId
+        })
+      })
+
+      const result = await response.json()
+      console.log('📋 异步生成API响应:', result)
+
+      if (result.success) {
+        if (result.taskId === 'existing') {
+          // 如果已有相同报告，直接加载
+          console.log('📋 发现相同报告，直接加载')
+          setIsGenerating(false)
+          loadPersonalityReport()
+        } else {
+          // 启动轮询
+          console.log('🔄 启动轮询监控报告生成:', result.taskId)
+          setTaskId(result.taskId)
+          startPolling(reportUserId, result.taskId)
+        }
+        
+        message.success('已启动报告重新生成')
+      } else {
+        throw new Error(result.error || '启动报告生成失败')
+      }
+
+    } catch (error) {
+      console.error('❌ 重新生成报告失败:', error)
+      message.error(error instanceof Error ? error.message : '重新生成失败，请稍后重试')
+      setIsGenerating(false)
+      setReportLoading(false)
+      setReportError('重新生成失败，请稍后重试')
+    }
   }
 
   // 加载对话历史
   const loadConversations = async () => {
     try {
-      const userId = getUserPhoneNumber()
+      // 优先使用当前激活用户的手机号
+      const activeUser = getActiveUser()
+      let userId: string | null = null
+      
+      if (activeUser) {
+        // 如果有激活用户，使用激活用户的手机号
+        userId = activeUser.phone_number
+        console.log('📋 使用激活用户的手机号加载对话历史:', userId)
+      } else {
+        // 备用方案：使用主用户的手机号
+        userId = getUserPhoneNumber()
+        console.log('📋 使用主用户的手机号加载对话历史:', userId)
+      }
+      
       if (!userId) return
 
       // 尝试从Supabase加载对话历史
@@ -320,8 +496,9 @@ export default function PersonalityReportPage() {
     const urlParams = new URLSearchParams(window.location.search)
     const urlTaskId = urlParams.get('taskId')
     const isGeneratingParam = urlParams.get('generating') === 'true'
+    const urlUserId = urlParams.get('userId')
 
-    console.log('🔍 URL参数:', { urlTaskId, isGeneratingParam })
+    console.log('🔍 URL参数:', { urlTaskId, isGeneratingParam, urlUserId })
 
     // 获取用户信息
     const userData = localStorage.getItem('userData')
@@ -343,21 +520,42 @@ export default function PersonalityReportPage() {
       return
     }
 
-    const userId = getUserPhoneNumber()
-    if (!userId) {
-      router.push('/login')
-      return
+    // 确定用户ID用于轮询
+    let pollingUserId: string
+    const activeUser = getActiveUser()
+    
+    console.log('🔍 确定轮询用户ID:', { activeUser, urlUserId })
+
+    if (activeUser && activeUser.id) {
+      // 激活子用户模式
+      pollingUserId = activeUser.id
+      console.log('📋 使用激活用户ID进行轮询:', pollingUserId)
+    } else if (urlUserId) {
+      // URL参数中的用户ID
+      pollingUserId = urlUserId
+      console.log('📋 使用URL用户ID进行轮询:', pollingUserId)
+    } else {
+      // 使用手机号
+      const phoneNumber = getUserPhoneNumber()
+      if (!phoneNumber) {
+        console.error('❌ 无法获取用户手机号')
+        router.push('/login')
+        return
+      }
+      pollingUserId = phoneNumber
+      console.log('📋 使用手机号进行轮询:', pollingUserId)
     }
 
     // 如果是生成模式，启动轮询
     if (isGeneratingParam && urlTaskId) {
-      console.log('🚀 检测到生成模式，启动轮询')
+      console.log('🚀 检测到生成模式，启动轮询:', { pollingUserId, urlTaskId })
       setTaskId(urlTaskId)
       setIsGenerating(true)
       setGenerationStatus('正在生成性格报告...')
       setReportLoading(true)
-      startPolling(userId, urlTaskId)
+      startPolling(pollingUserId, urlTaskId)
     } else {
+      console.log('📖 正常模式，加载现有报告')
       // 正常模式，加载现有报告
       loadPersonalityReport()
     }
@@ -370,6 +568,53 @@ export default function PersonalityReportPage() {
       stopPolling()
     }
   }, [router])
+
+  // 监听用户切换，重新加载数据
+  useEffect(() => {
+    const handleUserSwitched = () => {
+      console.log('👤 检测到用户切换，重新加载性格报告数据')
+      // 重置状态
+      setReportLoading(true)
+      setReportError(null)
+      setIsGenerating(false)
+      
+      // 停止当前轮询
+      stopPolling()
+      
+      // 获取新的用户信息
+      const activeUser = getActiveUser()
+      if (activeUser) {
+        console.log('👤 切换到用户:', activeUser.name)
+        setUserInfo({
+          nickname: activeUser.name,
+          gender: activeUser.gender,
+          year: activeUser.year,
+          month: activeUser.month,
+          day: activeUser.day,
+          hour: activeUser.hour,
+          minute: activeUser.minute,
+          area: {
+            province: activeUser.area_province,
+            city: activeUser.area_city,
+            district: activeUser.area_district
+          }
+        })
+        
+        // 重新加载报告
+        loadPersonalityReport()
+        
+        // 重新加载对话历史
+        loadConversations()
+      }
+    }
+
+    // 监听自定义事件
+    window.addEventListener('userSwitched', handleUserSwitched)
+
+    return () => {
+      window.removeEventListener('userSwitched', handleUserSwitched)
+    }
+  }, [])
 
   // 滚动到消息底部
   const scrollToBottom = () => {
@@ -822,7 +1067,7 @@ export default function PersonalityReportPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white flex overflow-hidden">
+    <div className="bg-white flex overflow-hidden h-full">
       {/* 移动端顶部导航 */}
       <div className="md:hidden fixed top-0 left-0 right-0 bg-white shadow-lg border-b border-gray-200 p-4 z-20">
         <div className="flex items-center justify-between">
@@ -841,89 +1086,12 @@ export default function PersonalityReportPage() {
             >
               菜单
             </Button>
-            <Button
-              icon={<ArrowLeftOutlined />}
-              onClick={() => router.push('/dashboard')}
-              size="small"
-              type="text"
-            >
-              返回
-            </Button>
           </div>
-        </div>
-      </div>
-
-      {/* 左侧导航栏 - 完全复制dashboard设计 */}
-      <div className="w-48 bg-white shadow-sm border-r border-gray-200 flex flex-col hidden md:flex">
-        {/* Logo区域 */}
-        <div className="p-6 border-b border-gray-100 text-center">
-          <div className="flex flex-col items-center space-y-3">
-            <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center">
-              <span className="text-white font-bold text-2xl">乙</span>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-gray-800">天乙</div>
-              <div className="text-lg font-bold text-gray-800">神算</div>
-            </div>
-          </div>
-        </div>
-
-        {/* 用户信息 */}
-        <div className="p-4 border-b border-gray-100">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-              <span className="text-green-600 text-xs">{userInfo?.nickname ? userInfo.nickname.charAt(0) : '用'}</span>
-            </div>
-            <div>
-              <div className="text-sm font-medium text-gray-900">{userInfo?.nickname || '用户'}</div>
-              <div className="text-xs text-gray-500">您的专属命理师</div>
-            </div>
-          </div>
-        </div>
-
-        {/* 导航菜单 */}
-        <div className="flex-1 p-4">
-          <div className="space-y-6">
-            <div className="px-4 py-4 bg-white text-gray-900 border border-gray-300 rounded-lg text-center shadow-sm">
-              <span className="text-lg font-medium tracking-wide">命书</span>
-            </div>
-            <div
-              className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center"
-              onClick={() => router.push('/astrology')}
-            >
-              <span className="text-lg font-medium tracking-wide">召灵</span>
-            </div>
-            <div
-              className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center"
-              onClick={handleHealing}
-            >
-              <span className="text-lg font-medium tracking-wide">疗愈</span>
-            </div>
-            <div
-              className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center"
-              onClick={handleTreasure}
-            >
-              <span className="text-lg font-medium tracking-wide">宝阁</span>
-            </div>
-          </div>
-        </div>
-
-        {/* 底部问道1v1按钮 */}
-        <div className="p-4 border-t border-gray-100">
-          <Button
-            type="primary"
-            block
-            size="large"
-            onClick={() => router.push('/consultation')}
-            className="bg-black hover:bg-gray-800 border-none shadow-lg hover:shadow-xl transition-all duration-300"
-          >
-            <span className="font-medium tracking-wide text-white">问道1v1</span>
-          </Button>
         </div>
       </div>
 
       {/* 中间聊天记录区域 */}
-      <div className={`bg-white border-r border-gray-200 transition-all duration-300 h-screen overflow-hidden ${
+      <div className={`bg-white border-r border-gray-200 transition-all duration-300 h-full overflow-hidden ${
         chatHistoryVisible ? 'w-80' : 'w-0'
       }`}>
         {chatHistoryVisible && (
@@ -1067,7 +1235,7 @@ export default function PersonalityReportPage() {
 
       {/* 展开按钮（当中间区域隐藏时显示） */}
       {!chatHistoryVisible && (
-        <div className="w-8 bg-white border-r border-gray-200 flex items-center justify-center h-screen">
+        <div className="w-8 bg-white border-r border-gray-200 flex items-center justify-center h-full">
           <Button
             type="text"
             icon={<ArrowRightOutlined />}
@@ -1079,7 +1247,7 @@ export default function PersonalityReportPage() {
       )}
 
       {/* 右侧内容区域 */}
-      <div className="flex-1 pt-16 md:pt-0 h-screen overflow-hidden bg-white">
+      <div className="flex-1 pt-16 md:pt-0 h-full overflow-hidden bg-white">
         {currentContent === 'report' ? (
           /* 性格报告展示区域 */
           <div className="h-full flex flex-col">
@@ -1106,8 +1274,21 @@ export default function PersonalityReportPage() {
               {userInfo && (
                 <div className="bg-gray-50 rounded-lg p-4 mt-4">
                   <Paragraph className="text-gray-700 mb-0">
-                    您好，<span className="font-semibold text-gray-900">{userInfo.nickname || '用户'}</span>！
-                    根据您提供的出生信息（{formatUserInfoDisplay(userInfo)}），
+                    您好，<span className="font-semibold text-gray-900">{(() => {
+                      const activeUser = getActiveUser()
+                      return activeUser?.name || userInfo?.nickname || '用户'
+                    })()}</span>！
+                    根据您提供的出生信息（{(() => {
+                      const activeUser = getActiveUser()
+                      if (activeUser) {
+                        const genderText = activeUser.gender === 'male' ? '男' : '女'
+                        const areaText = activeUser.area_province && activeUser.area_city && activeUser.area_district 
+                          ? `${activeUser.area_province} ${activeUser.area_city} ${activeUser.area_district}`
+                          : '未知地区'
+                        return `${activeUser.year}年${activeUser.month}月${activeUser.day}日 ${activeUser.hour}:${String(activeUser.minute).padStart(2, '0')}, ${genderText}, ${areaText}`
+                      }
+                      return formatUserInfoDisplay(userInfo)
+                    })()}），
                     经过天乙神算系统的综合分析，为您生成以下性格特征报告。
                   </Paragraph>
                 </div>
@@ -1153,133 +1334,80 @@ export default function PersonalityReportPage() {
                     </div>
                   ) : (
                     // 普通加载显示
-                    <div>
-                      <Spin
-                        indicator={<LoadingOutlined style={{ fontSize: 48 }} spin />}
-                        className="mb-4"
-                      />
-                      <p className="text-gray-600">正在加载性格报告...</p>
+                    <div className="text-center">
+                      <Spin size="large" />
+                      <p className="text-gray-600 mt-4">正在加载性格报告...</p>
                     </div>
                   )}
                 </div>
               ) : reportError ? (
                 <div className="text-center py-20">
-                  <Alert
-                    message="报告加载失败"
-                    description={reportError}
-                    type="warning"
-                    showIcon
-                    className="mb-6"
-                  />
+                  <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <span className="text-red-600 text-2xl">⚠️</span>
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">报告加载失败</h3>
+                  <p className="text-gray-600 mb-4">{reportError}</p>
                   <div className="space-x-3">
-                    <Button
-                      type="primary"
-                      onClick={regenerateReport}
-                      size="large"
-                      className="bg-black hover:bg-gray-800 border-0"
-                    >
-                      重新生成报告
+                    <Button type="primary" onClick={regenerateReport}>
+                      重新生成
                     </Button>
-                    <Button
-                      onClick={loadPersonalityReport}
-                      size="large"
-                      className="border-gray-300 text-gray-600 hover:border-gray-400"
-                    >
-                      重新加载
+                    <Button onClick={loadPersonalityReport}>
+                      重试加载
                     </Button>
                   </div>
                 </div>
               ) : reportContent ? (
-                <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <div className="prose prose-lg prose-gray max-w-none">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        // 自定义标题样式 - 黑白色系
-                        h1: ({children}) => (
-                          <h1 className="text-3xl font-bold text-gray-900 mb-6 pb-2 border-b-2 border-gray-200">
-                            {children}
-                          </h1>
-                        ),
-                        h2: ({children}) => (
-                          <h2 className="text-2xl font-semibold text-gray-800 mt-8 mb-4 flex items-center">
-                            <span className="w-1 h-6 bg-gray-800 rounded-full mr-3"></span>
-                            {children}
-                          </h2>
-                        ),
-                        h3: ({children}) => (
-                          <h3 className="text-xl font-semibold text-gray-700 mt-6 mb-3 flex items-center">
-                            <span className="w-2 h-2 bg-gray-600 rounded-full mr-2"></span>
-                            {children}
-                          </h3>
-                        ),
-                        // 自定义段落样式
-                        p: ({children}) => (
-                          <p className="text-gray-700 leading-relaxed mb-4 text-base">
-                            {children}
-                          </p>
-                        ),
-                        // 自定义列表样式
-                        ul: ({children}) => (
-                          <ul className="space-y-2 mb-4">
-                            {children}
-                          </ul>
-                        ),
-                        li: ({children}) => (
-                          <li className="flex items-start">
-                            <span className="w-1.5 h-1.5 bg-gray-600 rounded-full mt-2 mr-3 flex-shrink-0"></span>
-                            <span className="text-gray-700">{children}</span>
-                          </li>
-                        ),
-                        // 自定义强调文本
-                        strong: ({children}) => (
-                          <strong className="font-semibold text-gray-900 bg-gray-100 px-1 py-0.5 rounded">
-                            {children}
-                          </strong>
-                        ),
-                        // 自定义代码块
-                        code: ({children}) => (
-                          <code className="bg-gray-100 text-gray-800 px-2 py-1 rounded text-sm font-mono">
-                            {children}
-                          </code>
-                        ),
-                        // 自定义引用块
-                        blockquote: ({children}) => (
-                          <blockquote className="border-l-4 border-gray-400 pl-4 py-2 bg-gray-50 rounded-r-lg my-4">
-                            {children}
-                          </blockquote>
-                        )
-                      }}
-                    >
-                      {reportContent}
-                    </ReactMarkdown>
-                  </div>
+                <div className="prose prose-gray max-w-none">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      h1: ({ children }) => <h1 className="text-2xl font-bold text-gray-900 mb-4">{children}</h1>,
+                      h2: ({ children }) => <h2 className="text-xl font-semibold text-gray-900 mb-3 mt-6">{children}</h2>,
+                      h3: ({ children }) => <h3 className="text-lg font-medium text-gray-900 mb-2 mt-4">{children}</h3>,
+                      p: ({ children }) => <p className="text-gray-700 mb-4 leading-relaxed">{children}</p>,
+                      strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
+                      em: ({ children }) => <em className="italic text-gray-800">{children}</em>,
+                      ul: ({ children }) => <ul className="list-disc list-inside mb-4 text-gray-700">{children}</ul>,
+                      ol: ({ children }) => <ol className="list-decimal list-inside mb-4 text-gray-700">{children}</ol>,
+                      li: ({ children }) => <li className="mb-1">{children}</li>,
+                      blockquote: ({ children }) => (
+                        <blockquote className="border-l-4 pl-4 italic text-gray-600 mb-4">
+                          {children}
+                        </blockquote>
+                      ),
+                      code: ({ children }) => (
+                        <code className="bg-gray-100 px-2 py-1 rounded text-sm font-mono text-gray-800">
+                          {children}
+                        </code>
+                      ),
+                      pre: ({ children }) => (
+                        <pre className="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-4">
+                          {children}
+                        </pre>
+                      ),
+                    }}
+                  >
+                    {reportContent}
+                  </ReactMarkdown>
                 </div>
               ) : (
                 <div className="text-center py-20">
-                  <Alert
-                    message="暂无报告"
-                    description="性格报告尚未生成，请返回信息填写页生成报告"
-                    type="info"
-                    showIcon
-                    className="mb-6"
-                  />
-                  <Button
-                    type="primary"
-                    onClick={regenerateReport}
-                    size="large"
-                    className="bg-black hover:bg-gray-800 border-0"
-                  >
-                    去生成报告
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <FileTextOutlined className="text-gray-400 text-2xl" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">暂无性格报告</h3>
+                  <p className="text-gray-600 mb-4">点击按钮生成您的专属性格分析报告</p>
+                  <Button type="primary" onClick={regenerateReport}>
+                    生成报告
                   </Button>
                 </div>
               )}
             </div>
           </div>
         ) : (
-          /* 聊天界面区域 */
+          /* 聊天对话区域 */
           <div className="h-full flex flex-col">
-            {/* 聊天标题区域 */}
+            {/* 聊天标题栏 */}
             <div className="p-6 border-b border-gray-100">
               <div className="flex items-center space-x-3">
                 <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
@@ -1287,129 +1415,102 @@ export default function PersonalityReportPage() {
                 </div>
                 <Title level={2} className="!mb-0 !text-gray-900">AI智能对话</Title>
               </div>
-              <Text className="text-gray-500 text-sm">与AI助手深入探讨您的性格特征</Text>
-            </div>
-
-            {/* 对话消息区域 - 独立滚动 */}
-            <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
-              {!activeConversationId ? (
-                <div className="text-center text-gray-500 py-12">
-                  <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center mx-auto mb-4">
-                    <RobotOutlined className="text-2xl text-white" />
-                  </div>
-                  <p className="text-lg mb-4">开始您的AI对话之旅</p>
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={createNewConversation}
-                    size="large"
-                    className="bg-black hover:bg-gray-800 border-0"
-                  >
-                    创建新对话
-                  </Button>
-                </div>
-              ) : getCurrentConversation()?.messages.length === 0 ? (
-                <div className="text-center text-gray-500 py-12">
-                  <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center mx-auto mb-4">
-                    <RobotOutlined className="text-2xl text-white" />
-                  </div>
-                  <p className="text-lg mb-4">开始与AI助手对话，了解更多关于您的性格特征</p>
-                  <div className="bg-white rounded-lg p-4 text-sm text-gray-600 max-w-md mx-auto border border-gray-200">
-                    <p className="font-medium mb-2">您可以问一些问题，比如：</p>
-                    <div className="space-y-1">
-                      <p>&ldquo;我的性格优势是什么？&rdquo;</p>
-                      <p>&ldquo;我在人际关系中的表现如何？&rdquo;</p>
-                      <p>&ldquo;如何发挥我的潜力？&rdquo;</p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {getCurrentConversation()?.messages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div className={`flex items-start space-x-3 max-w-[80%] ${
-                        message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''
-                      }`}>
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                          message.type === 'user'
-                            ? 'bg-black text-white'
-                            : 'bg-gray-600 text-white'
-                        }`}>
-                          {message.type === 'user' ? <UserOutlined /> : <RobotOutlined />}
-                        </div>
-                        <div className={`p-4 rounded-2xl shadow-sm ${
-                          message.type === 'user'
-                            ? 'bg-black text-white'
-                            : 'bg-white border border-gray-200 text-gray-900'
-                        }`}>
-                          <p className="text-sm leading-relaxed">{message.content}</p>
-                          <p className={`text-xs mt-2 ${
-                            message.type === 'user' ? 'text-gray-300' : 'text-gray-500'
-                          }`}>
-                            {formatTime(message.timestamp)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {loading && (
-                    <div className="flex justify-start">
-                      <div className="flex items-start space-x-3">
-                        <div className="w-10 h-10 rounded-full bg-gray-600 flex items-center justify-center">
-                          <RobotOutlined className="text-white" />
-                        </div>
-                        <div className="bg-white border border-gray-200 p-4 rounded-2xl shadow-sm">
-                          <div className="flex space-x-1">
-                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  <div ref={messagesEndRef} />
+              {userInfo && (
+                <div className="bg-gray-50 rounded-lg p-4 mt-4">
+                  <Paragraph className="text-gray-700 mb-0">
+                    您好，<span className="font-semibold text-gray-900">{(() => {
+                      const activeUser = getActiveUser()
+                      return activeUser?.name || userInfo?.nickname || '用户'
+                    })()}</span>！
+                    我已了解您的基本信息，您可以向我咨询任何关于命理、性格、人生规划等方面的问题。
+                  </Paragraph>
                 </div>
               )}
             </div>
 
-            {/* 输入区域 */}
-            <div className="border-t border-gray-100 p-6">
+            {/* 聊天消息区域 - 独立滚动 */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {getCurrentConversation()?.messages.map((message, index) => (
+                <div key={message.id} className={`mb-6 ${message.type === 'user' ? 'flex justify-end' : 'flex justify-start'}`}>
+                  <div className={`max-w-[80%] ${message.type === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-900'} rounded-lg p-4`}>
+                    <div className={`flex items-center space-x-2 mb-2 ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      {message.type === 'user' ? (
+                        <UserOutlined className="text-blue-200" />
+                      ) : (
+                        <RobotOutlined className="text-gray-600" />
+                      )}
+                      <span className={`text-sm ${message.type === 'user' ? 'text-blue-200' : 'text-gray-600'}`}>
+                        {message.type === 'user' ? '您' : 'AI助手'}
+                      </span>
+                    </div>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                        em: ({ children }) => <em className="italic">{children}</em>,
+                        ul: ({ children }) => <ul className="list-disc list-inside mb-2">{children}</ul>,
+                        ol: ({ children }) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
+                        li: ({ children }) => <li className="mb-1">{children}</li>,
+                        code: ({ children }) => (
+                          <code className={`px-2 py-1 rounded text-sm font-mono ${
+                            message.type === 'user' 
+                              ? 'bg-blue-700 text-blue-100' 
+                              : 'bg-gray-200 text-gray-800'
+                          }`}>
+                            {children}
+                          </code>
+                        ),
+                        blockquote: ({ children }) => (
+                          <blockquote className={`border-l-4 pl-4 italic mb-2 ${
+                            message.type === 'user' 
+                              ? 'border-blue-300 text-blue-100' 
+                              : 'border-gray-300 text-gray-600'
+                          }`}>
+                            {children}
+                          </blockquote>
+                        ),
+                      }}
+                    >
+                      {message.content}
+                    </ReactMarkdown>
+                    <div className={`text-xs mt-2 ${message.type === 'user' ? 'text-blue-200' : 'text-gray-500'}`}>
+                      {formatTime(message.timestamp)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* 输入框区域 */}
+            <div className="p-6 border-t border-gray-100">
               <div className="flex space-x-3">
                 <TextArea
                   value={currentMessage}
                   onChange={(e) => setCurrentMessage(e.target.value)}
+                  placeholder="请输入您的问题..."
+                  autoSize={{ minRows: 1, maxRows: 4 }}
+                  className="flex-1"
+                  disabled={loading}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
                       sendMessage()
                     }
                   }}
-                  placeholder="输入你想要了解的性格问题..."
-                  autoSize={{ minRows: 1, maxRows: 4 }}
-                  disabled={!activeConversationId}
-                  className="flex-1"
                 />
                 <Button
                   type="primary"
                   icon={<SendOutlined />}
                   onClick={sendMessage}
                   loading={loading}
-                  disabled={!currentMessage.trim() || !activeConversationId}
-                  className="bg-black hover:bg-gray-800 border-0 h-auto px-6"
-                  size="large"
+                  disabled={!currentMessage.trim()}
+                  className="self-end"
                 >
                   发送
                 </Button>
               </div>
-              {!activeConversationId && (
-                <p className="text-sm text-gray-500 mt-2">
-                  请先创建一个新对话开始聊天
-                </p>
-              )}
             </div>
           </div>
         )}

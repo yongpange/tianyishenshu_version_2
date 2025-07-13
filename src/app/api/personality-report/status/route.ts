@@ -5,6 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 interface StatusRequest {
   userId: string
   taskId?: string
+  isUserProfileId?: boolean // 新增：标识userId是否为user_profiles.id
 }
 
 // 响应接口
@@ -22,9 +23,9 @@ interface StatusResponse {
 export async function POST(request: NextRequest): Promise<NextResponse<StatusResponse>> {
   try {
     const body: StatusRequest = await request.json()
-    const { userId, taskId } = body
+    const { userId, taskId, isUserProfileId } = body
 
-    console.log('🔍 查询报告状态:', { userId, taskId })
+    console.log('🔍 查询报告状态:', { userId, taskId, isUserProfileId })
 
     if (!userId) {
       return NextResponse.json({
@@ -35,35 +36,82 @@ export async function POST(request: NextRequest): Promise<NextResponse<StatusRes
       }, { status: 400 })
     }
 
-    // 获取真实的用户UUID（如果userId是手机号）
-    let realUserId = userId
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
-      // userId不是UUID格式，可能是手机号，需要查找对应的UUID
-      const { data: user } = await supabaseAdmin
-        .from('users')
+    let userProfileId: string
+
+    if (isUserProfileId) {
+      // 直接使用提供的user_profiles.id
+      userProfileId = userId
+      console.log('📋 直接使用user_profiles.id:', userProfileId)
+      
+      // 验证user_profiles.id是否存在
+      const { data: profile, error: profileError } = await supabaseAdmin
+        .from('user_profiles')
         .select('id')
-        .eq('phone_number', userId)
+        .eq('id', userProfileId)
         .single()
 
-      if (user) {
-        realUserId = user.id
-        console.log('📞 通过手机号找到用户UUID:', { phoneNumber: userId, uuid: realUserId })
-      } else {
-        console.error('❌ 未找到对应的用户:', userId)
+      if (profileError || !profile) {
+        console.error('❌ 用户资料不存在:', userProfileId)
         return NextResponse.json({
           success: false,
           status: 'not_found',
           progress: 0,
-          error: '用户不存在'
+          error: '用户资料不存在'
         }, { status: 404 })
       }
+    } else {
+      // 原有逻辑：通过手机号查找user_profiles.id
+      let realUserId = userId
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+        // userId不是UUID格式，可能是手机号，需要查找对应的UUID
+        const { data: user } = await supabaseAdmin
+          .from('users')
+          .select('id')
+          .eq('phone_number', userId)
+          .single()
+
+        if (user) {
+          realUserId = user.id
+          console.log('📞 通过手机号找到用户UUID:', { phoneNumber: userId, uuid: realUserId })
+        } else {
+          console.error('❌ 未找到对应的用户:', userId)
+          return NextResponse.json({
+            success: false,
+            status: 'not_found',
+            progress: 0,
+            error: '用户不存在'
+          }, { status: 404 })
+        }
+      }
+
+      // 通过 users.id 找到对应的 user_profiles.id（取主用户资料）
+      const { data: userProfile, error: profileError } = await supabaseAdmin
+        .from('user_profiles')
+        .select('id')
+        .eq('user_id', realUserId)
+        .is('parent_id', null) // 只查找主用户资料
+        .single()
+
+      if (profileError || !userProfile) {
+        console.error('❌ 找不到主用户资料:', profileError)
+        return NextResponse.json({
+          success: false,
+          status: 'not_found',
+          progress: 0,
+          error: '主用户资料不存在'
+        }, { status: 404 })
+      }
+
+      userProfileId = userProfile.id
     }
+
+    console.log('✅ 确定用户资料ID:', userProfileId)
 
     // 构建查询条件
     let query = supabaseAdmin
       .from('personality_reports')
       .select('*')
-      .eq('user_id', realUserId)
+      .eq('user_id', userProfileId)
 
     // 如果提供了taskId，优先查询特定任务
     if (taskId && taskId !== 'existing') {

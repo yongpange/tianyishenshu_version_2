@@ -314,9 +314,9 @@ export async function getPersonalityReport(userId: string): Promise<PersonalityR
 }
 
 // 保存性格报告
-export async function savePersonalityReport(report: PersonalityReport): Promise<void> {
+export async function savePersonalityReport(report: PersonalityReport, userProfileId: string): Promise<void> {
   try {
-    await storageManager.savePersonalityReport(report.userId, report)
+    await storageManager.savePersonalityReport(userProfileId, report)
   } catch (error) {
     console.error('保存性格报告失败:', error)
     throw error

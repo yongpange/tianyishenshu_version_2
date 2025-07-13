@@ -33,7 +33,7 @@ const AreaSelector = dynamic(
 
 const { Option } = Select
 
-// Zod 验证模式
+// 统一验证模式（手机号都是可选的）
 const profileSchema = z.object({
   nickname: z.string().min(1, '请输入昵称').max(20, '昵称不能超过20个字符'),
   gender: z.enum(['男', '女'], { errorMap: () => ({ message: '请选择性别' }) }),
@@ -75,6 +75,8 @@ export default function ProfilePage() {
   const [progress, setProgress] = useState(0)
   const [showProgress, setShowProgress] = useState(false)
   const [showLunarModal, setShowLunarModal] = useState(false)
+  const [isAddingNewUser, setIsAddingNewUser] = useState(false)
+  const [inviteCode, setInviteCode] = useState('')
   const [lunarDate, setLunarDate] = useState({
     year: undefined as number | undefined,
     month: undefined as number | undefined,
@@ -94,7 +96,7 @@ export default function ProfilePage() {
     mode: 'onChange',
     defaultValues: {
       nickname: '',
-      gender: undefined,
+      gender: '男' as '男' | '女',
       year: 2000,
       month: 1,
       day: 1,
@@ -114,6 +116,29 @@ export default function ProfilePage() {
   // 页面加载时检查登录状态并预填用户信息
   useEffect(() => {
     try {
+      // 检查是否是新增用户模式
+      const isNewUserMode = sessionStorage.getItem('is_adding_new_user') === 'true'
+      const verifiedCode = sessionStorage.getItem('verified_invite_code')
+      
+      if (isNewUserMode) {
+        if (!verifiedCode) {
+          message.error('请先验证兑换码')
+          router.push('/add-user/verify-code')
+          return
+        }
+        setIsAddingNewUser(true)
+        setInviteCode(verifiedCode)
+        
+        // 新增用户模式，重置表单为空白状态
+        setValue('nickname', '')
+        setValue('gender', '男' as '男' | '女')
+        setValue('area', { province: '', city: '', district: '' })
+        
+        message.info('新增用户模式：请填写用户信息')
+        return
+      }
+      
+      // 原有的登录用户逻辑
       const loginData = localStorage.getItem('loginData')
       if (!loginData) {
         message.error('请先登录')
@@ -192,13 +217,16 @@ export default function ProfilePage() {
     }
   }, [router, setValue])
 
-  // 获取用户手机号
-  const getUserPhoneNumber = (): string | null => {
+  // 获取当前登录用户信息
+  const getCurrentUser = (): { phoneNumber: string; userId?: string } | null => {
     try {
       const loginData = localStorage.getItem('loginData')
       if (loginData) {
         const parsed = JSON.parse(loginData)
-        return parsed.phoneNumber || null
+        return {
+          phoneNumber: parsed.phoneNumber || null,
+          userId: parsed.user?.id || null
+        }
       }
       return null
     } catch {
@@ -260,17 +288,29 @@ export default function ProfilePage() {
       // 第一阶段：验证和准备数据 (0-20%)
       updateProgressStep(GenerationStep.ANALYZING, 10)
 
-      const userId = getUserPhoneNumber()
-      if (!userId) {
+      const currentUser = getCurrentUser()
+      if (!currentUser) {
         message.error('未找到登录信息，请重新登录')
         router.push('/login')
         return
       }
 
+      // 新增用户模式：不需要注册新账户，直接保存到当前用户下
+      if (isAddingNewUser) {
+        if (!inviteCode) {
+          message.error('缺少兑换码信息，请重新验证')
+          router.push('/add-user/verify-code')
+          return
+        }
+        console.log('🔧 新增用户：将用户资料保存到当前登录用户下')
+      }
+
       console.log('📝 提交表单数据:', data)
 
-      // 保存到 localStorage
-      localStorage.setItem('userData', JSON.stringify(data))
+      // 保存到 localStorage (仅普通用户模式)
+      if (!isAddingNewUser) {
+        localStorage.setItem('userData', JSON.stringify(data))
+      }
       updateProgressStep(GenerationStep.ANALYZING, 20)
 
       // 转换为 UserInfo 格式
@@ -295,8 +335,11 @@ export default function ProfilePage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          phoneNumber: userId,
-          userInfo
+          phoneNumber: currentUser.phoneNumber,
+          userInfo,
+          isAddingNewUser: isAddingNewUser,
+          targetUserId: isAddingNewUser ? currentUser.userId : undefined,
+          inviteCode: isAddingNewUser ? inviteCode : undefined
         })
       })
 
@@ -312,6 +355,19 @@ export default function ProfilePage() {
       updateProgressStep(GenerationStep.GENERATING, 70)
 
       console.log('🚀 启动异步报告生成...')
+      
+      // 根据用户模式决定使用哪个用户标识符
+      let reportUserId: string
+      if (isAddingNewUser) {
+        // 新增用户模式：使用新创建的user_profiles.id
+        reportUserId = saveResult.profile.id
+        console.log('📋 新增用户模式：使用user_profiles.id作为报告用户标识:', reportUserId)
+      } else {
+        // 普通模式：使用手机号
+        reportUserId = currentUser.phoneNumber
+        console.log('📋 普通模式：使用手机号作为报告用户标识:', reportUserId)
+      }
+
       const response = await fetch('/api/personality-report/generate-async', {
         method: 'POST',
         headers: {
@@ -319,7 +375,8 @@ export default function ProfilePage() {
         },
         body: JSON.stringify({
           userInfo,
-          userId
+          userId: reportUserId,
+          isUserProfileId: isAddingNewUser // 标识使用的是user_profiles.id而不是手机号
         })
       })
 
@@ -335,14 +392,25 @@ export default function ProfilePage() {
         // 显示完成状态
         await new Promise(resolve => setTimeout(resolve, 800))
 
-        message.success('信息保存成功，正在生成性格报告...')
-
-        // 立即跳转到性格报告页面，传递taskId
-        const taskId = result.taskId
-        router.push(`/personality?taskId=${taskId}&generating=true`)
+        if (isAddingNewUser) {
+          // 新增用户模式：也跳转到性格报告页面查看生成的报告
+          message.success('子用户创建成功，正在生成性格报告...')
+          const taskId = result.taskId
+          // 清理标记
+          sessionStorage.removeItem('verified_invite_code')
+          sessionStorage.removeItem('is_adding_new_user')
+          router.push(`/personality?taskId=${taskId}&generating=true&userId=${reportUserId}`)
+        } else {
+          // 普通用户，跳转到性格报告页面
+          message.success('信息保存成功，正在生成性格报告...')
+          const taskId = result.taskId
+          router.push(`/personality?taskId=${taskId}&generating=true`)
+        }
       } else {
         throw new Error(result.error || '启动报告生成失败')
       }
+
+
 
     } catch (error) {
       console.error('提交失败:', error)
@@ -367,8 +435,18 @@ export default function ProfilePage() {
             <h1 className="text-2xl font-bold text-gray-800 m-0">天乙神算</h1>
           </div>
           
-          <h2 className="text-xl font-semibold text-gray-700 mb-2">完善您的个人信息</h2>
-          <p className="text-gray-500">提高详细信息，获取精准生辰分析</p>
+          <h2 className="text-xl font-semibold text-gray-700 mb-2">
+            {isAddingNewUser ? '新增用户信息' : '完善您的个人信息'}
+          </h2>
+          <p className="text-gray-500">
+            {isAddingNewUser ? '请填写新用户的详细信息' : '提高详细信息，获取精准生辰分析'}
+          </p>
+          
+          {isAddingNewUser && (
+            <div className="mt-2 text-sm text-blue-600">
+              兑换码: {inviteCode}
+            </div>
+          )}
 
           {/* 步骤指示器 */}
           <div className="mt-6">
@@ -430,6 +508,8 @@ export default function ProfilePage() {
               />
             </Form.Item>
           </div>
+
+
 
           {/* 出生日期时间 */}
           <Form.Item label="出生日期时间" required>

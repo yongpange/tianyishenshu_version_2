@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, Button, message, Spin } from 'antd'
 import { ArrowLeftOutlined, MessageOutlined, InfoCircleOutlined } from '@ant-design/icons'
+import { getActiveUser } from '@/utils/client-utils'
 
 // 类型定义
 interface AstrologyData {
@@ -213,64 +214,154 @@ export default function AstrologyPage() {
   }
 
   useEffect(() => {
-    // 获取用户信息
-    const userData = localStorage.getItem('userData')
-    if (userData) {
-      setUserInfo(JSON.parse(userData))
+    // 设置用户信息
+    const activeUser = getActiveUser()
+    if (activeUser) {
+      setUserInfo({
+        nickname: activeUser.name,
+        gender: activeUser.gender === 'male' ? '男' : '女'
+      })
+    } else {
+      // 备用方案：从localStorage获取用户信息
+      const userData = localStorage.getItem('userData')
+      if (userData) {
+        setUserInfo(JSON.parse(userData))
+      }
     }
 
     fetchAstrologyData()
   }, [])
 
+  // 监听用户切换，重新加载数据
+  useEffect(() => {
+    const handleStorageChange = () => {
+      // 当localStorage中的activeUser发生变化时，重新加载数据
+      const activeUser = getActiveUser()
+      if (activeUser) {
+        console.log('用户切换，重新加载八字数据:', activeUser.name)
+        setLoading(true)
+        setUserInfo({
+          nickname: activeUser.name,
+          gender: activeUser.gender === 'male' ? '男' : '女'
+        })
+        fetchAstrologyData()
+      }
+    }
+
+    // 监听localStorage变化
+    window.addEventListener('storage', handleStorageChange)
+    
+    // 监听自定义事件（用于同一标签页内的切换）
+    window.addEventListener('userSwitched', handleStorageChange)
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      window.removeEventListener('userSwitched', handleStorageChange)
+    }
+  }, [])
+
   const fetchAstrologyData = async () => {
     try {
-      // 从localStorage获取用户数据
-      const userData = localStorage.getItem('userData')
-      if (!userData) {
-        message.error('请先完善个人信息')
+      // 确定用户ID
+      const activeUser = getActiveUser()
+      let userId: string | null = null
+      let isUserProfileId = false
+
+      if (activeUser && activeUser.id) {
+        // 使用激活用户的ID
+        userId = activeUser.id
+        isUserProfileId = true
+        console.log('📊 使用激活用户ID:', userId)
+      } else {
+        // 备用方案：使用手机号
+        const loginData = localStorage.getItem('loginData')
+        if (loginData) {
+          const parsed = JSON.parse(loginData)
+          userId = parsed.phoneNumber
+          console.log('📊 使用手机号:', userId)
+        }
+      }
+
+      if (!userId) {
+        message.error('请先登录')
         setTimeout(() => {
-          router.push('/profile')
+          router.push('/login')
         }, 1000)
         return
       }
 
-      const userInfo = JSON.parse(userData)
-      
-      // 构建出生日期和时间
-      const birthDate = `${userInfo.year}-${String(userInfo.month).padStart(2, '0')}-${String(userInfo.day).padStart(2, '0')}`
-      const birthTime = `${String(userInfo.hour).padStart(2, '0')}:${String(userInfo.minute).padStart(2, '0')}`
-      
-      // 性别转换：'男' -> 'male', '女' -> 'female'
-      const gender = userInfo.gender === '男' ? 'male' : 'female'
-      
-      // 地区信息
-      const region = userInfo.area ? `${userInfo.area.province} ${userInfo.area.city} ${userInfo.area.district}` : '北京市'
-      
-      // 发送POST请求到API
-      const response = await fetch('/api/astrology/generate', {
+      console.log('🔮 从数据库获取八字报告:', { userId, isUserProfileId })
+
+      // 从数据库获取八字报告
+      const response = await fetch('/api/bazi/get', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          name: userInfo.nickname,
-          gender: gender,
-          birthDate: birthDate,
-          birthTime: birthTime,
-          region: region
+          userId: userId,
+          isUserProfileId: isUserProfileId
         })
       })
 
-      if (response.ok) {
-        const result = await response.json()
-        setData(result)
+      const result = await response.json()
+
+      if (result.success) {
+        console.log('✅ 成功获取八字报告')
+        setData(result.report)
       } else {
-        const error = await response.json()
-        message.error(error.error || '获取命理数据失败')
+        console.warn('⚠️ 未找到八字报告，需要生成新报告')
+        
+        // 如果没有找到报告，尝试生成新的
+        const activeUser = getActiveUser()
+        if (activeUser) {
+          const userInfo = {
+            name: activeUser.name,
+            gender: activeUser.gender,
+            year: activeUser.year,
+            month: activeUser.month,
+            day: activeUser.day,
+            hour: activeUser.hour,
+            minute: activeUser.minute,
+            area: {
+              province: activeUser.area_province,
+              city: activeUser.area_city,
+              district: activeUser.area_district
+            }
+          }
+
+          console.log('🔮 生成新的八字报告...')
+          const generateResponse = await fetch('/api/bazi/generate', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              userInfo,
+              userId: userId,
+              isUserProfileId: isUserProfileId
+            })
+          })
+
+          const generateResult = await generateResponse.json()
+          
+          if (generateResult.success) {
+            console.log('✅ 八字报告生成成功')
+            setData(generateResult.report.raw_payload)
+          } else {
+            throw new Error(generateResult.message || '生成八字报告失败')
+          }
+        } else {
+          message.error('无法获取用户信息，请完善个人资料')
+          setTimeout(() => {
+            router.push('/profile')
+          }, 1000)
+          return
+        }
       }
     } catch (error) {
-      console.error('获取命理数据失败:', error)
-      message.error('网络错误')
+      console.error('获取八字数据失败:', error)
+      message.error('获取八字数据失败，请稍后重试')
     } finally {
       setLoading(false)
     }
@@ -313,105 +404,27 @@ export default function AstrologyPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* 移动端顶部导航栏 */}
-      <div className="md:hidden bg-white shadow-sm border-b border-gray-200 p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <Button
-              type="text"
-              icon={<ArrowLeftOutlined />}
-              onClick={() => router.push('/dashboard')}
-              className="p-0"
-            />
-            <span className="font-bold text-gray-900">八字排盘</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex">
-        {/* 左侧导航栏 */}
-        <div className="w-48 bg-white shadow-sm border-r border-gray-200 flex flex-col hidden md:flex">
-          {/* Logo区域 */}
-          <div className="p-6 border-b border-gray-100 text-center">
-            <div className="flex flex-col items-center space-y-3">
-              <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center">
-                <span className="text-white font-bold text-2xl">乙</span>
-              </div>
-              <div className="text-center">
-                <div className="text-lg font-bold text-gray-800">天乙</div>
-                <div className="text-lg font-bold text-gray-800">神算</div>
-              </div>
-            </div>
-          </div>
-
-          {/* 用户信息 */}
-          <div className="p-4 border-b border-gray-100">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                <span className="text-green-600 text-xs">{userInfo?.nickname ? userInfo.nickname.charAt(0) : '用'}</span>
-              </div>
-              <div>
-                <div className="text-sm font-medium text-gray-900">{userInfo?.nickname || '用户'}</div>
-                <div className="text-xs text-gray-500">您的专属命理师</div>
-              </div>
-            </div>
-          </div>
-
-          {/* 导航菜单 */}
-          <div className="flex-1 p-4">
-            <div className="space-y-6">
-              <div
-                className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center"
-                onClick={() => router.push('/dashboard')}
-              >
-                <span className="text-lg font-medium tracking-wide">命书</span>
-              </div>
-              <div className="px-4 py-4 bg-white text-gray-900 border border-gray-300 rounded-lg text-center shadow-sm">
-                <span className="text-lg font-medium tracking-wide">召灵</span>
-              </div>
-              <div
-                className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center"
-                onClick={handleHealing}
-              >
-                <span className="text-lg font-medium tracking-wide">疗愈</span>
-              </div>
-              <div
-                className="px-4 py-4 text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm rounded-lg cursor-pointer transition-all duration-300 text-center"
-                onClick={handleTreasure}
-              >
-                <span className="text-lg font-medium tracking-wide">宝阁</span>
-              </div>
-            </div>
-          </div>
-
-          {/* 底部问道1v1按钮 */}
-          <div className="p-4 border-t border-gray-100">
-            <Button
-              type="primary"
-              block
-              size="large"
-              onClick={handleConsultation}
-              className="bg-black hover:bg-gray-800 border-none shadow-lg hover:shadow-xl transition-all duration-300"
-            >
-              <span className="font-medium tracking-wide text-white">问道1v1</span>
-            </Button>
-          </div>
-        </div>
-
-        {/* 主内容区域 */}
-        <div className="flex-1 p-4 md:p-8 pb-20 md:pb-8">
+    <div className="bg-gray-50 h-full">
+      {/* 主内容区域 */}
+      <div className="p-4 md:p-8 pb-20 md:pb-8 h-full overflow-y-auto">
           <div className="max-w-4xl mx-auto">
             {/* 页面标题 */}
             <div className="mb-8">
               <h1 className="text-2xl font-bold text-gray-900 mb-2">八字排盘分析</h1>
               <p className="text-gray-600">
                 {(() => {
+                  const activeUser = getActiveUser()
+                  if (activeUser) {
+                    const genderText = activeUser.gender === 'male' ? '男' : '女'
+                    return `${activeUser.name || '用户'} ${genderText}`
+                  }
+                  
                   const userData = localStorage.getItem('userData')
                   if (userData) {
                     const userInfo = JSON.parse(userData)
                     return `${userInfo.nickname || '用户'} ${userInfo.gender || ''}`
                   }
+                  
                   return '基于您的出生信息，为您详细分析八字命理'
                 })()}
               </p>
@@ -667,20 +680,6 @@ export default function AstrologyPage() {
             </Card>
           </div>
         </div>
-      </div>
-
-      {/* 移动端底部问道1v1按钮 */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200">
-        <Button
-          type="primary"
-          block
-          size="large"
-          onClick={handleConsultation}
-          className="bg-black hover:bg-gray-800 border-none shadow-lg"
-        >
-          <span className="font-medium tracking-wide text-white">问道1v1</span>
-        </Button>
-      </div>
     </div>
   )
 } 

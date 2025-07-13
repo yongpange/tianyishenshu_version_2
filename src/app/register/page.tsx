@@ -207,6 +207,8 @@ export default function RegisterPage() {
         localStorage.setItem('loginData', JSON.stringify(loginData))
 
         alert('注册成功!')
+        // 确保注册用户明确设置 isAddingNewUser 为 false
+        sessionStorage.setItem('is_adding_new_user', 'false')
         // 跳转到信息填写页面
         window.location.href = '/profile'
       } else {
