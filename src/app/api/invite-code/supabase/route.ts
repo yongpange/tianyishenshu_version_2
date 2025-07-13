@@ -20,36 +20,16 @@ export async function GET() {
     console.log('NEXT_PUBLIC_SUPABASE_ANON_KEY:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? `${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.substring(0, 10)}...` : 'undefined')
     console.log('SUPABASE_SERVICE_ROLE_KEY:', process.env.SUPABASE_SERVICE_ROLE_KEY ? `${process.env.SUPABASE_SERVICE_ROLE_KEY.substring(0, 10)}...` : 'undefined')
     
-    // 检查Supabase连接是否可用
-    if (!supabase) {
-      console.warn('⚠️ Supabase 未正确配置，返回空数据')
+    // 检查Supabase管理员连接是否可用
+    if (!supabaseAdmin) {
+      console.warn('⚠️ Supabase 管理员权限未正确配置，返回空数据')
       return NextResponse.json({
         success: true,
         data: []
       })
     }
-    
-    console.log('✅ Supabase 客户端已初始化，尝试连接数据库...')
 
-    // 关联查询兑换码和用户信息
-    // invite_codes.used_by -> user_profiles.id -> user_profiles.user_id -> users.id
-    // const { data, error } = await supabase
-    //   .from('invite_codes')
-    //   .select(`
-    //     *,
-    //     user_profiles!used_by (
-    //       id,
-    //       name,
-    //       phone_number,
-    //       chat_remaining_count,
-    //       user_role,
-    //       users!user_id (
-    //         id,
-    //         phone_number
-    //       )
-    //     )
-    //   `)
-    //   .order('created_at', { ascending: false })
+    console.log('✅ Supabase 管理员客户端已初始化，尝试连接数据库...')
 
     const { data, error } = await supabase
   .from('invite_codes')
