@@ -3,13 +3,14 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { UserInfo } from '@/lib/coze-client'
 import { validateUserInfo, calculateUserDataHash } from '@/utils/client-utils'
 
-// 请求接口
+// 异步生成请求接口
 interface AsyncGenerateRequest {
   userInfo: UserInfo
   userId: string
+  isUserProfileId?: boolean // 新增：标识userId是否为user_profiles.id
 }
 
-// 响应接口
+// 异步生成响应接口
 interface AsyncGenerateResponse {
   success: boolean
   taskId?: string
@@ -19,9 +20,9 @@ interface AsyncGenerateResponse {
 export async function POST(request: NextRequest): Promise<NextResponse<AsyncGenerateResponse>> {
   try {
     const body: AsyncGenerateRequest = await request.json()
-    const { userInfo, userId } = body
+    const { userInfo, userId, isUserProfileId } = body
 
-    console.log('🚀 启动异步性格报告生成:', { userId, userInfo })
+    console.log('🚀 启动异步性格报告生成:', { userId, userInfo, isUserProfileId })
 
     // 验证请求参数
     if (!userId || !userInfo) {
@@ -40,37 +41,80 @@ export async function POST(request: NextRequest): Promise<NextResponse<AsyncGene
       }, { status: 400 })
     }
 
-    // 获取真实的用户UUID（如果userId是手机号）
-    let realUserId = userId
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
-      // userId不是UUID格式，可能是手机号，需要查找对应的UUID
-      const { data: user } = await supabaseAdmin
-        .from('users')
+    let userProfileId: string
+
+    if (isUserProfileId) {
+      // 直接使用提供的user_profiles.id
+      userProfileId = userId
+      console.log('📋 直接使用user_profiles.id:', userProfileId)
+      
+      // 验证user_profiles.id是否存在
+      const { data: profile, error: profileError } = await supabaseAdmin
+        .from('user_profiles')
         .select('id')
-        .eq('phone_number', userId)
+        .eq('id', userProfileId)
         .single()
 
-      if (user) {
-        realUserId = user.id
-        console.log('📞 通过手机号找到用户UUID:', { phoneNumber: userId, uuid: realUserId })
-      } else {
-        console.error('❌ 未找到对应的用户:', userId)
+      if (profileError || !profile) {
+        console.error('❌ 用户资料不存在:', userProfileId)
         return NextResponse.json({
           success: false,
-          error: '用户不存在'
+          error: '用户资料不存在'
         }, { status: 404 })
       }
+    } else {
+      // 原有逻辑：通过手机号查找user_profiles.id
+      let realUserId = userId
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+        // userId不是UUID格式，可能是手机号，需要查找对应的UUID
+        const { data: user } = await supabaseAdmin
+          .from('users')
+          .select('id')
+          .eq('phone_number', userId)
+          .single()
+
+        if (user) {
+          realUserId = user.id
+          console.log('📞 通过手机号找到用户UUID:', { phoneNumber: userId, uuid: realUserId })
+        } else {
+          console.error('❌ 未找到对应的用户:', userId)
+          return NextResponse.json({
+            success: false,
+            error: '用户不存在'
+          }, { status: 404 })
+        }
+      }
+
+      // 通过 users.id 找到对应的 user_profiles.id（取第一个主用户资料）
+      const { data: userProfile, error: profileError } = await supabaseAdmin
+        .from('user_profiles')
+        .select('id')
+        .eq('user_id', realUserId)
+        .is('parent_id', null) // 只查找主用户资料
+        .single()
+
+      if (profileError || !userProfile) {
+        console.error('❌ 找不到主用户资料:', profileError)
+        return NextResponse.json({
+          success: false,
+          error: '主用户资料不存在'
+        }, { status: 404 })
+      }
+
+      userProfileId = userProfile.id
     }
 
+    console.log('✅ 确定用户资料ID:', userProfileId)
+
     // 生成任务ID
-    const taskId = `task_${realUserId}_${Date.now()}`
+    const taskId = `task_${userProfileId}_${Date.now()}`
     const userDataHash = calculateUserDataHash(userInfo)
 
     // 检查是否已有相同的报告
     const { data: existingReport } = await supabaseAdmin
       .from('personality_reports')
       .select('id, content, user_data_hash')
-      .eq('user_id', realUserId)
+      .eq('user_id', userProfileId)
       .single()
 
     if (existingReport && existingReport.user_data_hash === userDataHash && existingReport.content) {
@@ -82,8 +126,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<AsyncGene
     }
 
     // 创建生成任务记录（兼容旧表结构）
-    const taskRecord = {
-      user_id: realUserId,
+    const taskRecord: any = {
+      user_id: userProfileId, // 使用 user_profiles.id
       content: '', // 空内容表示正在生成
       user_data_hash: userDataHash,
       generated_at: new Date().toISOString()
@@ -114,29 +158,31 @@ export async function POST(request: NextRequest): Promise<NextResponse<AsyncGene
     }
 
     // 启动后台生成任务（不等待完成）
-    generateReportInBackground(taskId, realUserId, userInfo).catch(error => {
+    // 注意：这里的userId已经是userProfileId了，所以isUserProfileId应该是true
+    generateReportInBackground(taskId, userProfileId, userInfo, true).catch(error => {
       console.error('❌ 后台生成任务失败:', error)
     })
 
-    console.log('✅ 异步任务已启动:', taskId)
+    console.log('✅ 异步生成任务已启动:', { taskId, userProfileId, isUserProfileId: true })
+
     return NextResponse.json({
       success: true,
       taskId: taskId
     })
 
   } catch (error) {
-    console.error('❌ 异步生成API错误:', error)
+    console.error('❌ 启动异步生成失败:', error)
     return NextResponse.json({
       success: false,
-      error: '服务器内部错误'
+      error: '启动生成任务失败，请稍后重试'
     }, { status: 500 })
   }
 }
 
 // 后台生成报告的函数
-async function generateReportInBackground(taskId: string, userId: string, userInfo: UserInfo) {
+async function generateReportInBackground(taskId: string, userId: string, userInfo: UserInfo, isUserProfileId: boolean = false) {
   try {
-    console.log('🔄 开始后台生成报告:', taskId)
+    console.log('🔄 开始后台生成报告:', { taskId, userId, isUserProfileId })
 
     // 计算用户数据hash
     const userDataHash = calculateUserDataHash(userInfo)
@@ -155,18 +201,20 @@ async function generateReportInBackground(taskId: string, userId: string, userIn
       console.log('⚠️ 跳过状态更新（表结构不支持）')
     }
 
-    // 调用原有的生成逻辑
+    // 调用原有的生成逻辑 - 添加isUserProfileId参数
+    console.log('📡 调用generate接口，参数:', { userInfo, userId, isUserProfileId })
     const generateResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/personality-report/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userInfo, userId })
+      body: JSON.stringify({ userInfo, userId, isUserProfileId })
     })
 
     const result = await generateResponse.json()
+    console.log('📋 generate接口响应:', result)
 
     if (result.success && result.content) {
       // 更新为完成状态（兼容旧表结构）
-      const updateData = {
+      const updateData: any = {
         content: result.content,
         coze_conversation_id: result.conversationId
       }
@@ -184,10 +232,10 @@ async function generateReportInBackground(taskId: string, userId: string, userIn
         .eq('user_id', userId)
         .eq('user_data_hash', userDataHash)
 
-      console.log('✅ 后台报告生成完成:', taskId)
+      console.log('✅ 后台报告生成完成:', { taskId, userId, isUserProfileId })
     } else {
       // 更新为失败状态（兼容旧表结构）
-      const updateData = {
+      const updateData: any = {
         content: `生成失败: ${result.error || '未知错误'}`
       }
 
@@ -205,14 +253,14 @@ async function generateReportInBackground(taskId: string, userId: string, userIn
         .eq('user_id', userId)
         .eq('user_data_hash', userDataHash)
 
-      console.error('❌ 后台报告生成失败:', result.error)
+      console.error('❌ 后台报告生成失败:', { taskId, userId, isUserProfileId, error: result.error })
     }
 
-  } catch (error) {
-    console.error('❌ 后台生成过程出错:', error)
+  } catch (error: any) {
+    console.error('❌ 后台生成过程出错:', { taskId, userId, isUserProfileId, error: error.message })
     
     // 更新为失败状态（兼容旧表结构）
-    const updateData = {
+    const updateData: any = {
       content: `生成过程出错: ${error.message || '未知错误'}`
     }
 

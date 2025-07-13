@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createPersonalityReport, savePersonalityReport } from '@/utils/personality-report'
+import { supabaseAdmin } from '@/lib/supabase'
 
 interface TestSaveRequest {
   userInfo: {
@@ -43,9 +44,30 @@ export async function POST(request: NextRequest) {
       userDataHash: reportData.userDataHash
     })
 
+    // 获取用户资料ID
+    const { data: user, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('phone_number', userId)
+      .single()
+
+    if (userError || !user) {
+      throw new Error('用户不存在')
+    }
+
+    const { data: userProfile, error: profileError } = await supabaseAdmin
+      .from('user_profiles')
+      .select('id')
+      .eq('user_id', user.id)
+      .single()
+
+    if (profileError || !userProfile) {
+      throw new Error('用户资料不存在')
+    }
+
     // 尝试保存
     try {
-      await savePersonalityReport(reportData)
+      await savePersonalityReport(reportData, userProfile.id)
       console.log('✅ 报告保存成功')
 
       return NextResponse.json({

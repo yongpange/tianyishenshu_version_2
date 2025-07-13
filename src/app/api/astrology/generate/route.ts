@@ -71,9 +71,9 @@ export async function POST(request: Request) {
     const cityNameWithSpaces = convertAreaCodeToName(userData)
     const cityName = cityNameWithSpaces.replace(/\s+/g, '') // 去掉所有空格
     
-    // 手动构建查询字符串，避免URL编码city参数
+    // 手动构建查询字符串，避免URL编码name和city参数
     const queryString = [
-      `name=${encodeURIComponent(name)}`,
+      `name=${name}`, // 不对name进行编码，保持汉字形式
       `sex=${sex}`,
       `year=${year}`,
       `month=${month}`,

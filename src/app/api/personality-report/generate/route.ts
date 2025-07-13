@@ -18,6 +18,7 @@ import {
 interface PersonalityReportRequest {
   userInfo: UserInfo
   userId: string
+  isUserProfileId?: boolean // 新增：标识userId是否为user_profiles.id
 }
 
 // 响应接口
@@ -63,9 +64,20 @@ ${astrologyContext}
 export async function POST(request: NextRequest): Promise<NextResponse<PersonalityReportResponse>> {
   try {
     const body: PersonalityReportRequest = await request.json()
-    const { userInfo, userId } = body
+    const { userInfo, userId, isUserProfileId } = body
 
-    console.log('🚀 开始生成性格报告:', { userId, userInfo })
+    console.log('🚀 开始生成性格报告:', { userId, userInfo, isUserProfileId })
+    console.log('🔍 详细参数检查:', {
+      userId: userId,
+      userIdType: typeof userId,
+      userIdLength: userId ? userId.length : 0,
+      isUserProfileId: isUserProfileId,
+      isUserProfileIdType: typeof isUserProfileId,
+      isUserProfileIdDefined: isUserProfileId !== undefined,
+      isUserProfileIdBooleanTrue: isUserProfileId === true,
+      requestBodyKeys: Object.keys(body),
+      requestBodyString: JSON.stringify(body).substring(0, 200) + '...'
+    })
 
     // 验证请求参数
     if (!userId || !userInfo) {
@@ -147,50 +159,105 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
       })
 
       if (result.chat.status === ChatStatus.COMPLETED && result.messages) {
-                  // 找到AI的回复
-          const aiMessage = result.messages.find(
-            (msg: any) => msg.role === RoleType.Assistant && msg.type === 'answer'
-          )
+        // 找到AI的回复
+        const aiMessage = result.messages.find(
+          (msg: any) => msg.role === RoleType.Assistant && msg.type === 'answer'
+        )
 
-          if (aiMessage && aiMessage.content) {
-            const reportContent = aiMessage.content
+        if (aiMessage && aiMessage.content) {
+          const reportContent = aiMessage.content
 
-            console.log('✅ 获取到AI生成的性格报告:', {
-              length: reportContent.length,
-              preview: reportContent.substring(0, 100) + '...'
+          console.log('✅ 获取到AI生成的性格报告:', {
+            length: reportContent.length,
+            preview: reportContent.substring(0, 100) + '...'
+          })
+
+          try {
+            // 获取用户资料ID - 支持子账户
+            let userProfileId: string
+
+            if (isUserProfileId) {
+              // 直接使用提供的user_profiles.id
+              userProfileId = userId
+              console.log('📋 子账户模式：直接使用user_profiles.id:', userProfileId)
+              
+              // 验证user_profiles.id是否存在
+              const { data: profile, error: profileError } = await supabaseAdmin
+                .from('user_profiles')
+                .select('id')
+                .eq('id', userProfileId)
+                .single()
+
+              if (profileError || !profile) {
+                console.error('❌ 子账户用户资料不存在:', userProfileId)
+                throw new Error('子账户用户资料不存在')
+              }
+            } else {
+              // 原有逻辑：通过手机号查找主用户资料
+              console.log('📋 主账户模式：通过手机号查找用户资料')
+              
+              const { data: user, error: userError } = await supabaseAdmin
+                .from('users')
+                .select('id')
+                .eq('phone_number', userId)
+                .single()
+
+              if (userError || !user) {
+                console.error('❌ 主账户用户不存在:', userId)
+                throw new Error('主账户用户不存在')
+              }
+
+              const { data: userProfile, error: profileError } = await supabaseAdmin
+                .from('user_profiles')
+                .select('id')
+                .eq('user_id', user.id)
+                .is('parent_id', null) // 只查找主用户资料
+                .single()
+
+              if (profileError || !userProfile) {
+                console.error('❌ 主账户用户资料不存在:', user.id)
+                throw new Error('主账户用户资料不存在')
+              }
+
+              userProfileId = userProfile.id
+            }
+
+            console.log('✅ 确定用户资料ID:', userProfileId)
+
+            // 保存到Supabase
+            console.log('💾 保存性格报告到数据库...')
+            const reportData = createPersonalityReport(
+              userId,
+              reportContent,
+              userInfo,
+              result.chat.conversation_id
+            )
+            await savePersonalityReport(reportData, userProfileId)
+
+            console.log('✅ 性格报告保存成功:', { 
+              reportId: reportData.id, 
+              userProfileId: userProfileId,
+              isUserProfileId: isUserProfileId 
             })
 
-            try {
-              // 保存到Supabase
-              console.log('💾 保存性格报告到数据库...')
-              const reportData = createPersonalityReport(
-                userId,
-                reportContent,
-                userInfo,
-                result.chat.conversation_id
-              )
-              await savePersonalityReport(reportData)
+            return NextResponse.json({
+              success: true,
+              reportId: reportData.id,
+              content: reportContent,
+              authMethod: authMethod
+            })
 
-              console.log('✅ 性格报告保存成功:', { reportId: reportData.id })
-
-              return NextResponse.json({
-                success: true,
-                reportId: reportData.id,
-                content: reportContent,
-                authMethod: authMethod
-              })
-
-            } catch (saveError) {
-              console.error('❌ 保存性格报告失败:', saveError)
-              
-              // 即使保存失败，也返回生成的内容
-              return NextResponse.json({
-                success: true,
-                content: reportContent,
-                error: '报告生成成功，但保存失败',
-                authMethod: authMethod
-              })
-            }
+          } catch (saveError) {
+            console.error('❌ 保存性格报告失败:', saveError)
+            
+            // 即使保存失败，也返回生成的内容
+            return NextResponse.json({
+              success: true,
+              content: reportContent,
+              error: '报告生成成功，但保存失败',
+              authMethod: authMethod
+            })
+          }
 
         } else {
           console.error('❌ AI响应中没有找到有效内容')
@@ -208,8 +275,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
     } catch (cozeError) {
       console.error('❌ Coze API调用异常:', cozeError)
       
-             // 生成fallback内容
-       const fallbackContent = `# 性格分析报告
+      // 生成fallback内容
+      const fallbackContent = `# 性格分析报告
 
 基于您的出生信息：${formatUserInfoDisplay(userInfo)}
 
@@ -226,22 +293,79 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
 
 请稍后重试以获取完整的AI分析报告。`
 
-       try {
-         // 尝试保存fallback内容
-         const reportData = createPersonalityReport(
-           userId,
-           fallbackContent,
-           userInfo
-         )
-         await savePersonalityReport(reportData)
+      try {
+        // 获取用户资料ID（用于fallback保存）- 支持子账户
+        let userProfileId: string
 
-         return NextResponse.json({
-           success: true,
-           reportId: reportData.id,
-           content: fallbackContent,
-           error: 'AI服务暂时不可用，使用了备用分析',
-           authMethod: 'fallback'
-         })
+        if (isUserProfileId) {
+          // 直接使用提供的user_profiles.id
+          userProfileId = userId
+          console.log('📋 Fallback子账户模式：直接使用user_profiles.id:', userProfileId)
+          
+          // 验证user_profiles.id是否存在
+          const { data: profile, error: profileError } = await supabaseAdmin
+            .from('user_profiles')
+            .select('id')
+            .eq('id', userProfileId)
+            .single()
+
+          if (profileError || !profile) {
+            console.error('❌ Fallback子账户用户资料不存在:', userProfileId)
+            throw new Error('Fallback子账户用户资料不存在')
+          }
+        } else {
+          // 原有逻辑：通过手机号查找主用户资料
+          console.log('📋 Fallback主账户模式：通过手机号查找用户资料')
+          
+          const { data: user, error: userError } = await supabaseAdmin
+            .from('users')
+            .select('id')
+            .eq('phone_number', userId)
+            .single()
+
+          if (userError || !user) {
+            console.error('❌ Fallback主账户用户不存在:', userId)
+            throw new Error('Fallback主账户用户不存在')
+          }
+
+          const { data: userProfile, error: profileError } = await supabaseAdmin
+            .from('user_profiles')
+            .select('id')
+            .eq('user_id', user.id)
+            .is('parent_id', null) // 只查找主用户资料
+            .single()
+
+          if (profileError || !userProfile) {
+            console.error('❌ Fallback主账户用户资料不存在:', user.id)
+            throw new Error('Fallback主账户用户资料不存在')
+          }
+
+          userProfileId = userProfile.id
+        }
+
+        console.log('✅ Fallback确定用户资料ID:', userProfileId)
+
+        // 尝试保存fallback内容
+        const reportData = createPersonalityReport(
+          userId,
+          fallbackContent,
+          userInfo
+        )
+        await savePersonalityReport(reportData, userProfileId)
+
+        console.log('✅ Fallback报告保存成功:', { 
+          reportId: reportData.id, 
+          userProfileId: userProfileId,
+          isUserProfileId: isUserProfileId 
+        })
+
+        return NextResponse.json({
+          success: true,
+          reportId: reportData.id,
+          content: fallbackContent,
+          error: 'AI服务暂时不可用，使用了备用分析',
+          authMethod: 'fallback'
+        })
 
       } catch (fallbackError) {
         console.error('❌ Fallback保存也失败:', fallbackError)

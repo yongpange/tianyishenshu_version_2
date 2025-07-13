@@ -162,6 +162,8 @@ export default function LoginPage() {
           window.location.href = '/dashboard'
         } else {
           console.log('⚠️ 用户数据不完整，跳转到profile页面')
+          // 确保登录用户明确设置 isAddingNewUser 为 false
+          sessionStorage.setItem('is_adding_new_user', 'false')
           window.location.href = '/profile'
         }
       } else {

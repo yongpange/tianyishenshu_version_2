@@ -9,7 +9,7 @@ export interface PersonalityReport {
 }
 
 export interface StorageAdapter {
-  savePersonalityReport(userId: string, report: PersonalityReport): Promise<void>
+  savePersonalityReport(userProfileId: string, report: PersonalityReport): Promise<void>
   getPersonalityReport(userId: string): Promise<PersonalityReport | null>
   clearPersonalityReport(userId: string): Promise<void>
 }
@@ -20,9 +20,9 @@ export class LocalStorageAdapter implements StorageAdapter {
     return `personality_report_${userId}`
   }
 
-  async savePersonalityReport(userId: string, report: PersonalityReport): Promise<void> {
+  async savePersonalityReport(userProfileId: string, report: PersonalityReport): Promise<void> {
     try {
-      const key = this.getStorageKey(userId)
+      const key = this.getStorageKey(userProfileId)
       localStorage.setItem(key, JSON.stringify(report))
     } catch (error) {
       console.error('保存性格报告失败:', error)
@@ -82,49 +82,19 @@ export class SupabaseAdapter implements StorageAdapter {
     return this.supabase
   }
 
-  async savePersonalityReport(userId: string, report: PersonalityReport): Promise<void> {
+  async savePersonalityReport(userProfileId: string, report: PersonalityReport): Promise<void> {
     try {
       const supabase = await this.ensureSupabase()
 
-      // 首先查找或创建用户
-      const { data: user, error: userError } = await supabase
-        .from('users')
-        .select('id')
-        .eq('phone_number', userId)
-        .single()
+      console.log('💾 保存性格报告:', {
+        userProfileId,
+        contentLength: report.content.length,
+        userDataHash: report.userDataHash
+      })
 
-      let actualUserId = user?.id
-
-      if (userError && userError.code === 'PGRST116') {
-        // 用户不存在，创建新用户
-        const { data: newUser, error: createError } = await supabase
-          .from('users')
-          .insert({
-            phone_number: userId,
-            permissions: ['basic']
-          })
-          .select('id')
-          .single()
-
-        if (createError) {
-          console.error('创建用户失败:', createError)
-          throw new Error('创建用户失败')
-        }
-        actualUserId = newUser.id
-      } else if (userError) {
-        console.error('查找用户失败:', userError)
-        throw new Error('查找用户失败')
-      }
-
-      // 保存性格报告 - 先检查是否已存在
-      const { data: existingReport } = await supabase
-        .from('personality_reports')
-        .select('id')
-        .eq('user_id', actualUserId)
-        .single()
-
+      // 直接使用 user_profiles.id 保存性格报告
       const reportData = {
-        user_id: actualUserId,
+        user_id: userProfileId, // 直接使用 user_profiles.id
         content: report.content,
         generated_at: report.generatedAt.toISOString(),
         user_data_hash: report.userDataHash,
@@ -143,6 +113,8 @@ export class SupabaseAdapter implements StorageAdapter {
         console.error('Supabase保存报告失败:', error)
         throw new Error('保存报告失败')
       }
+
+      console.log('✅ 性格报告保存成功')
     } catch (error) {
       console.error('保存性格报告失败:', error)
       throw new Error('保存报告失败')
@@ -169,11 +141,27 @@ export class SupabaseAdapter implements StorageAdapter {
         return null
       }
 
-      // 通过用户ID查找性格报告
+      // 通过 users.id 找到对应的 user_profiles.id
+      const { data: userProfile, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .single()
+
+      if (profileError) {
+        if (profileError.code === 'PGRST116') {
+          // 用户资料不存在
+          return null
+        }
+        console.error('查找用户资料失败:', profileError)
+        return null
+      }
+
+      // 通过用户资料ID查找性格报告
       const { data, error } = await supabase
         .from('personality_reports')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', userProfile.id)
         .single()
 
       if (error) {
@@ -221,10 +209,26 @@ export class SupabaseAdapter implements StorageAdapter {
         throw new Error('查找用户失败')
       }
 
+      // 通过 users.id 找到对应的 user_profiles.id
+      const { data: userProfile, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .single()
+
+      if (profileError) {
+        if (profileError.code === 'PGRST116') {
+          // 用户资料不存在，无需清除
+          return
+        }
+        console.error('查找用户资料失败:', profileError)
+        throw new Error('查找用户资料失败')
+      }
+
       const { error } = await supabase
         .from('personality_reports')
         .delete()
-        .eq('user_id', user.id)
+        .eq('user_id', userProfile.id)
 
       if (error) {
         console.error('Supabase清除报告失败:', error)
@@ -245,8 +249,8 @@ export class StorageManager {
     this.adapter = useSupabase ? new SupabaseAdapter() : new LocalStorageAdapter()
   }
 
-  async savePersonalityReport(userId: string, report: PersonalityReport): Promise<void> {
-    return this.adapter.savePersonalityReport(userId, report)
+  async savePersonalityReport(userProfileId: string, report: PersonalityReport): Promise<void> {
+    return this.adapter.savePersonalityReport(userProfileId, report)
   }
 
   async getPersonalityReport(userId: string): Promise<PersonalityReport | null> {

@@ -118,9 +118,11 @@ export interface Database {
           area_province: string
           area_city: string
           area_district: string
-          phone_number: string
+          // 移除 phone_number 字段，避免与 users 表冗余
+          remaining_chat_credits: number
           created_at: string
           updated_at: string
+          parent_id?: string | null
         }
         Insert: {
           id?: string
@@ -135,9 +137,11 @@ export interface Database {
           area_province: string
           area_city: string
           area_district: string
-          phone_number: string
+          // 移除 phone_number 字段，避免与 users 表冗余
+          remaining_chat_credits?: number
           created_at?: string
           updated_at?: string
+          parent_id?: string | null
         }
         Update: {
           id?: string
@@ -152,9 +156,11 @@ export interface Database {
           area_province?: string
           area_city?: string
           area_district?: string
-          phone_number?: string
+          // 移除 phone_number 字段，避免与 users 表冗余
+          remaining_chat_credits?: number
           created_at?: string
           updated_at?: string
+          parent_id?: string | null
         }
       }
       personality_reports: {
