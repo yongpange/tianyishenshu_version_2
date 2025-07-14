@@ -90,6 +90,23 @@ CREATE TABLE personality_reports (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(user_id)
 );
+-- 创建八字报告表
+create table bazi_reports (
+  id uuid not null default gen_random_uuid (),
+  user_id uuid not null,
+  raw_payload jsonb not null,
+  generated_at timestamp with time zone null default now(),
+  user_data_hash character varying(100) null,
+  api_request_id character varying(200) null,
+  created_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null default now(),
+  constraint bazi_reports_pkey primary key (id),
+  constraint bazi_reports_user_id_key unique (user_id),
+  constraint bazi_reports_user_id_fkey foreign KEY (user_id) references user_profiles (id) on delete CASCADE
+) TABLESPACE pg_default;
+create index IF not exists idx_bazi_reports_user_id on public.bazi_reports using btree (user_id) TABLESPACE pg_default;
+create trigger trg_bazi_reports_updated_at BEFORE
+update on bazi_reports for EACH row execute FUNCTION update_updated_at_column ();
 -- 创建对话表
 CREATE TABLE conversations (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,

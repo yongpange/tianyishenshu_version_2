@@ -75,15 +75,25 @@ export async function POST(request: NextRequest) {
       district: userInfo.area.district
     }
 
-    console.log('🚀 调用外部八字API:', apiParams)
+    console.log('🚀 调用本地八字API:', apiParams)
 
-    // 调用外部八字API
-    const response = await fetch(`${process.env.NEXT_PUBLIC_ASTROLOGY_API_URL}/astrology/generate`, {
+    // 构建调用本地astrology API的参数
+    const astrologyParams = {
+      name: apiParams.name,
+      gender: apiParams.gender === '男' ? 'male' : 'female',
+      birthDate: `${apiParams.year}-${apiParams.month.toString().padStart(2, '0')}-${apiParams.day.toString().padStart(2, '0')}`,
+      birthTime: `${apiParams.hour.toString().padStart(2, '0')}:${apiParams.minute.toString().padStart(2, '0')}`,
+      region: `${apiParams.province} ${apiParams.city} ${apiParams.district}`
+    }
+
+    // 调用本地astrology API
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
+    const response = await fetch(`${baseUrl}/api/astrology/generate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(apiParams)
+      body: JSON.stringify(astrologyParams)
     })
 
     if (!response.ok) {
