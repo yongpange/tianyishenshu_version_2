@@ -32,6 +32,30 @@ const PersonalityPage = dynamic(() => import('@/app/personality/page'), {
   )
 })
 
+const WealthPage = dynamic(() => import('@/app/wealth/page'), {
+  loading: () => (
+    <div className="flex items-center justify-center h-96">
+      <Spin size="large" />
+    </div>
+  )
+})
+
+const MarriagePage = dynamic(() => import('@/app/marriage/page'), {
+  loading: () => (
+    <div className="flex items-center justify-center h-96">
+      <Spin size="large" />
+    </div>
+  )
+})
+
+const HealthPage = dynamic(() => import('@/app/health/page'), {
+  loading: () => (
+    <div className="flex items-center justify-center h-96">
+      <Spin size="large" />
+    </div>
+  )
+})
+
 const AddUserPage = dynamic(() => import('@/components/AddUserPage'), {
   loading: () => (
     <div className="flex items-center justify-center h-96">
@@ -233,12 +257,20 @@ export default function DashboardPage() {
       case 'personality':
         setCurrentView('personality')
         break
+      case 'wealth':
+        setCurrentView('wealth')
+        break
+      case 'marriage':
+        setCurrentView('marriage')
+        break
+      case 'health':
+        setCurrentView('health')
+        break
       case 'fortune':
         message.info('功能开发中...')
         break
       default:
         message.info(`即将为您生成${reportTitle}...`)
-        // 这里后续可以集成Coze API调用
     }
   }
 
@@ -253,6 +285,12 @@ export default function DashboardPage() {
         return <AstrologyPage />
       case 'personality':
         return <PersonalityPage />
+      case 'wealth':
+        return <WealthPage />
+      case 'marriage':
+        return <MarriagePage />
+      case 'health':
+        return <HealthPage />
       case 'add-user':
         return <AddUserPage onSuccess={() => {
           // 验证成功后切换到profile视图
