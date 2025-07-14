@@ -393,18 +393,16 @@ export default function ProfilePage() {
         await new Promise(resolve => setTimeout(resolve, 800))
 
         if (isAddingNewUser) {
-          // 新增用户模式：也跳转到性格报告页面查看生成的报告
-          message.success('子用户创建成功，正在生成性格报告...')
-          const taskId = result.taskId
+          // 新增用户模式：跳转到dashboard页面
+          message.success('子用户创建成功，性格报告正在后台生成...')
           // 清理标记
           sessionStorage.removeItem('verified_invite_code')
           sessionStorage.removeItem('is_adding_new_user')
-          router.push(`/personality?taskId=${taskId}&generating=true&userId=${reportUserId}`)
+          router.push('/dashboard')
         } else {
-          // 普通用户，跳转到性格报告页面
-          message.success('信息保存成功，正在生成性格报告...')
-          const taskId = result.taskId
-          router.push(`/personality?taskId=${taskId}&generating=true`)
+          // 普通用户，跳转到dashboard页面
+          message.success('信息保存成功，性格报告正在后台生成...')
+          router.push('/dashboard')
         }
       } else {
         throw new Error(result.error || '启动报告生成失败')

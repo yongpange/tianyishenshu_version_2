@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Button,
@@ -32,7 +32,8 @@ import {
   PushpinOutlined,
   PushpinFilled,
   CopyOutlined,
-  CheckOutlined
+  CheckOutlined,
+  DownOutlined
 } from '@ant-design/icons'
 import {
   getUserPhoneNumber,
@@ -88,14 +89,138 @@ export default function PersonalityReportPage() {
   // 新增状态：中间聊天记录区域的显示/隐藏
   const [chatHistoryVisible, setChatHistoryVisible] = useState(true)
 
+  // 智能滚动状态
+  const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true)
+  const [isUserScrolling, setIsUserScrolling] = useState(false)
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false)
+  const [lastScrollTop, setLastScrollTop] = useState(0)
+
   // 对话管理相关状态
   const [renameModalVisible, setRenameModalVisible] = useState(false)
   const [renamingConversationId, setRenamingConversationId] = useState<string | null>(null)
   const [newTitle, setNewTitle] = useState('')
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const chatContainerRef = useRef<HTMLDivElement>(null)
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const router = useRouter()
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+
+  // 滚动检测常量
+  const BOTTOM_THRESHOLD = 100 // 距离底部100px内算"接近底部"
+  const SCROLL_DEBOUNCE = 150  // 防抖延迟150ms
+  const USER_SCROLL_THRESHOLD = 5 // 超过5px算用户主动滚动
+
+  // 检测是否接近底部
+  const isNearBottom = useCallback((element: HTMLElement | null): boolean => {
+    if (!element) return false
+    const { scrollTop, scrollHeight, clientHeight } = element
+    return scrollHeight - scrollTop <= clientHeight + BOTTOM_THRESHOLD
+  }, [BOTTOM_THRESHOLD])
+
+  // 检测用户是否主动滚动
+  const detectUserScroll = useCallback((currentScrollTop: number): boolean => {
+    const scrollDiff = Math.abs(currentScrollTop - lastScrollTop)
+    return scrollDiff > USER_SCROLL_THRESHOLD
+  }, [lastScrollTop, USER_SCROLL_THRESHOLD])
+
+  // 滚动到底部
+  const scrollToBottom = useCallback((smooth: boolean = true) => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({
+        behavior: smooth ? 'smooth' : 'auto',
+        block: 'end'
+      })
+    }
+  }, [])
+
+  // 处理滚动事件
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const element = e.currentTarget
+    const currentScrollTop = element.scrollTop
+
+    // 检测用户是否主动滚动
+    if (detectUserScroll(currentScrollTop)) {
+      setIsUserScrolling(true)
+
+      // 清除之前的定时器
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current)
+      }
+
+      // 延迟重置用户滚动状态
+      scrollTimeoutRef.current = setTimeout(() => {
+        setIsUserScrolling(false)
+      }, SCROLL_DEBOUNCE)
+    }
+
+    // 检测是否接近底部
+    const nearBottom = isNearBottom(element)
+
+    // 更新自动滚动状态
+    if (nearBottom) {
+      setIsAutoScrollEnabled(true)
+      setShowScrollToBottom(false)
+    } else {
+      setIsAutoScrollEnabled(false)
+      setShowScrollToBottom(true)
+    }
+
+    // 更新最后滚动位置
+    setLastScrollTop(currentScrollTop)
+
+    console.log('📊 滚动状态:', {
+      currentScrollTop,
+      nearBottom,
+      isUserScrolling: isUserScrolling,
+      autoScrollEnabled: nearBottom
+    })
+  }, [detectUserScroll, isNearBottom, isUserScrolling, SCROLL_DEBOUNCE])
+
+  // 智能自动滚动
+  const smartAutoScroll = useCallback(() => {
+    // 只在满足条件时自动滚动
+    if (isAutoScrollEnabled && !isUserScrolling) {
+      console.log('🤖 执行智能自动滚动')
+      requestAnimationFrame(() => {
+        scrollToBottom(true)
+      })
+    } else {
+      console.log('⏸️ 跳过自动滚动:', {
+        autoScrollEnabled: isAutoScrollEnabled,
+        userScrolling: isUserScrolling
+      })
+    }
+  }, [isAutoScrollEnabled, isUserScrolling, scrollToBottom])
+
+  // 监听对话消息变化，执行智能滚动
+  useEffect(() => {
+    const currentConv = conversations.find(conv => conv.id === activeConversationId)
+    if (currentConv && currentConv.messages.length > 0) {
+      // 延迟执行，确保DOM已更新
+      setTimeout(() => {
+        smartAutoScroll()
+      }, 50)
+    }
+  }, [conversations, activeConversationId, smartAutoScroll])
+
+  // 处理"回到底部"按钮点击
+  const handleScrollToBottomClick = useCallback(() => {
+    setIsAutoScrollEnabled(true)
+    setShowScrollToBottom(false)
+    setIsUserScrolling(false)
+    scrollToBottom(true)
+    console.log('🔽 用户点击回到底部')
+  }, [scrollToBottom])
+
+  // 清理定时器
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current)
+      }
+    }
+  }, [])
 
   // 轮询报告生成状态
   const pollReportStatus = async (userId: string, taskId: string) => {
@@ -616,14 +741,7 @@ export default function PersonalityReportPage() {
     }
   }, [])
 
-  // 滚动到消息底部
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
-
-  useEffect(() => {
-    scrollToBottom()
-  }, [conversations, activeConversationId])
+  // 注意：scrollToBottom 函数已在智能滚动部分定义，这里移除重复定义
 
   // 导航处理函数
   const handleHealing = () => {
@@ -922,6 +1040,7 @@ export default function PersonalityReportPage() {
       console.log('📦 请求体:', requestBody)
       console.log('🔄 是否首次消息:', isFirstMessage)
 
+      // 使用流式请求
       const response = await fetch('/api/coze/chat', {
         method: 'POST',
         headers: {
@@ -930,66 +1049,187 @@ export default function PersonalityReportPage() {
         body: JSON.stringify(requestBody),
       })
 
-      // 伪造一个response用于调试
-      // const response = {
-      //   status: 200,
-      //   json: async () => ({
-      //     success: true,
-      //     response: '你好，我是天乙神算，很高兴为你服务。',
-      //     conversationId: currentConv?.cozeConversationId || ('fake_conversation_' + Date.now()), // 如果已有conversationId则使用现有的，否则生成新的
-      //     chatId: 'fake_chat_' + Date.now(),
-      //     authMethod: 'fake_auth',
-      //     error: null // 添加error属性避免linter错误
-      //   }),
-      // }
-
       console.log('📡 API响应状态:', response.status)
-      const data = await response.json()
-      console.log('🔑 聊天页面AI返回的data: ', data)
-      
-      if (data.success) {
-        const botMessage: ChatMessage = {
-          id: (Date.now() + 1).toString(),
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      // 检查是否是流式响应
+      const contentType = response.headers.get('content-type')
+      if (contentType?.includes('text/event-stream')) {
+        console.log('🌊 开始处理流式响应...')
+
+        // 创建一个临时的bot消息用于实时更新
+        const botMessageId = (Date.now() + 1).toString()
+        let streamingContent = ''
+        let finalConversationId = ''
+        let finalChatId = ''
+
+        // 先添加一个空的bot消息
+        const initialBotMessage: ChatMessage = {
+          id: botMessageId,
           type: 'bot',
-          content: data.response,
+          content: '',
           timestamp: new Date()
         }
 
-        console.log('🤖 AI回复消息:', botMessage)
-
-        const finalConversations = updatedConversations.map(conv => {
+        const initialConversations = updatedConversations.map(conv => {
           if (conv.id === activeConversationId) {
             return {
               ...conv,
-              messages: [...conv.messages, botMessage],
-              cozeConversationId: conv.cozeConversationId || data.conversationId, // 只在首次消息时设置conversationId，后续保持不变
+              messages: [...conv.messages, initialBotMessage],
             }
           }
           return conv
         })
-        console.log('🔄 更新后的对话列表:', finalConversations)
-        setConversations(finalConversations)
+        setConversations(initialConversations)
 
-        // 更新对话标题
-        const currentConv = finalConversations.find(conv => conv.id === activeConversationId)
-        if (currentConv) {
-          updateConversationTitle(activeConversationId, currentConv.messages, finalConversations)
+        // 处理流式数据
+        const reader = response.body?.getReader()
+        const decoder = new TextDecoder()
 
-          // 保存到Supabase（重新启用）
+        if (reader) {
           try {
-            const userId = getUserPhoneNumber()
-            if (userId) {
-              await saveConversation(userId, currentConv)
-              console.log('✅ 对话已保存到Supabase')
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
+
+              const chunk = decoder.decode(value)
+              const lines = chunk.split('\n')
+
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  try {
+                    const data = JSON.parse(line.slice(6))
+                    console.log('📦 收到流式数据:', data)
+
+                    if (data.type === 'content') {
+                      streamingContent += data.content
+                      finalConversationId = data.conversationId || finalConversationId
+                      finalChatId = data.chatId || finalChatId
+
+                      // 实时更新消息内容
+                      setConversations(prevConversations =>
+                        prevConversations.map(conv => {
+                          if (conv.id === activeConversationId) {
+                            return {
+                              ...conv,
+                              messages: conv.messages.map(msg =>
+                                msg.id === botMessageId
+                                  ? { ...msg, content: streamingContent }
+                                  : msg
+                              ),
+                              cozeConversationId: conv.cozeConversationId || finalConversationId,
+                            }
+                          }
+                          return conv
+                        })
+                      )
+                    } else if (data.type === 'done') {
+                      console.log('✅ 流式响应完成')
+                      finalConversationId = data.conversationId || finalConversationId
+                      finalChatId = data.chatId || finalChatId
+
+                      // 最终更新
+                      setConversations(prevConversations => {
+                        const finalConversations = prevConversations.map(conv => {
+                          if (conv.id === activeConversationId) {
+                            return {
+                              ...conv,
+                              messages: conv.messages.map(msg =>
+                                msg.id === botMessageId
+                                  ? { ...msg, content: data.fullResponse || streamingContent }
+                                  : msg
+                              ),
+                              cozeConversationId: conv.cozeConversationId || finalConversationId,
+                            }
+                          }
+                          return conv
+                        })
+
+                        // 更新对话标题和保存
+                        const currentConv = finalConversations.find(conv => conv.id === activeConversationId)
+                        if (currentConv) {
+                          updateConversationTitle(activeConversationId, currentConv.messages, finalConversations)
+
+                          // 保存到Supabase
+                          const userId = getUserPhoneNumber()
+                          if (userId) {
+                            saveConversation(userId, currentConv)
+                              .then(() => console.log('✅ 对话已保存到Supabase'))
+                              .catch(error => console.warn('⚠️ 保存对话到Supabase失败:', error))
+                          }
+                        }
+                        localStorage.setItem('personality_conversations', JSON.stringify(finalConversations))
+
+                        return finalConversations
+                      })
+                      break
+                    } else if (data.type === 'error') {
+                      console.error('❌ 流式响应错误:', data.error)
+                      throw new Error(data.error || 'AI回复失败，请重试')
+                    }
+                  } catch (parseError) {
+                    console.warn('⚠️ 解析流式数据失败:', parseError)
+                  }
+                }
+              }
             }
-          } catch (error) {
-            console.warn('⚠️ 保存对话到Supabase失败，但不影响聊天功能:', error)
+          } finally {
+            reader.releaseLock()
           }
         }
-        localStorage.setItem('personality_conversations', JSON.stringify(finalConversations))
-        console.log('✅ 消息发送成功')
+        console.log('✅ 流式消息发送成功')
       } else {
-        throw new Error(data.error || 'AI服务响应失败')
+        // 降级到传统JSON响应
+        const data = await response.json()
+        console.log('🔑 聊天页面AI返回的data: ', data)
+
+        if (data.success) {
+          const botMessage: ChatMessage = {
+            id: (Date.now() + 1).toString(),
+            type: 'bot',
+            content: data.response,
+            timestamp: new Date()
+          }
+
+          console.log('🤖 AI回复消息:', botMessage)
+
+          const finalConversations = updatedConversations.map(conv => {
+            if (conv.id === activeConversationId) {
+              return {
+                ...conv,
+                messages: [...conv.messages, botMessage],
+                cozeConversationId: conv.cozeConversationId || data.conversationId,
+              }
+            }
+            return conv
+          })
+          console.log('🔄 更新后的对话列表:', finalConversations)
+          setConversations(finalConversations)
+
+          // 更新对话标题
+          const currentConv = finalConversations.find(conv => conv.id === activeConversationId)
+          if (currentConv) {
+            updateConversationTitle(activeConversationId, currentConv.messages, finalConversations)
+
+            // 保存到Supabase
+            try {
+              const userId = getUserPhoneNumber()
+              if (userId) {
+                await saveConversation(userId, currentConv)
+                console.log('✅ 对话已保存到Supabase')
+              }
+            } catch (error) {
+              console.warn('⚠️ 保存对话到Supabase失败，但不影响聊天功能:', error)
+            }
+          }
+          localStorage.setItem('personality_conversations', JSON.stringify(finalConversations))
+          console.log('✅ 传统消息发送成功')
+        } else {
+          throw new Error(data.error || 'AI服务响应失败')
+        }
       }
     } catch (error) {
       console.error('❌ 调用 Coze API 失败:', error)
@@ -1024,6 +1264,15 @@ export default function PersonalityReportPage() {
   // 获取当前对话
   const getCurrentConversation = () => {
     return conversations.find(conv => conv.id === activeConversationId)
+  }
+
+  // 调试信息（开发环境）
+  const debugInfo = {
+    isAutoScrollEnabled,
+    isUserScrolling,
+    showScrollToBottom,
+    lastScrollTop,
+    messagesCount: getCurrentConversation()?.messages.length || 0
   }
 
   // 安全的日期格式化函数
@@ -1067,7 +1316,7 @@ export default function PersonalityReportPage() {
   }
 
   return (
-    <div className="bg-white flex overflow-hidden h-full">
+    <div className="bg-white flex overflow-hidden h-screen">
       {/* 移动端顶部导航 */}
       <div className="md:hidden fixed top-0 left-0 right-0 bg-white shadow-lg border-b border-gray-200 p-4 z-20">
         <div className="flex items-center justify-between">
@@ -1091,11 +1340,11 @@ export default function PersonalityReportPage() {
       </div>
 
       {/* 中间聊天记录区域 */}
-      <div className={`bg-white border-r border-gray-200 transition-all duration-300 h-full overflow-hidden ${
+      <div className={`bg-white border-r border-gray-200 transition-all duration-300 h-screen overflow-hidden ${
         chatHistoryVisible ? 'w-80' : 'w-0'
       }`}>
         {chatHistoryVisible && (
-          <div className="flex flex-col h-full">
+          <div className="flex flex-col h-screen">
             {/* 标题区域 */}
             <div className="p-4 border-b border-gray-100 flex items-center justify-between">
               <h2 className="text-lg font-medium text-gray-900">性格内观</h2>
@@ -1154,7 +1403,7 @@ export default function PersonalityReportPage() {
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                <div className="flex-1 overflow-y-auto p-4 space-y-2" style={{ overscrollBehavior: 'contain' }}>
                   {conversations
                     .sort((a, b) => {
                       // 置顶的对话排在前面
@@ -1247,10 +1496,10 @@ export default function PersonalityReportPage() {
       )}
 
       {/* 右侧内容区域 */}
-      <div className="flex-1 pt-16 md:pt-0 h-full overflow-hidden bg-white">
+      <div className="flex-1 pt-16 md:pt-0 h-screen overflow-hidden bg-white">
         {currentContent === 'report' ? (
           /* 性格报告展示区域 */
-          <div className="h-full flex flex-col">
+          <div className="h-screen flex flex-col">
             {/* 报告标题栏 */}
             <div className="p-6 border-b border-gray-100">
               <div className="flex items-center justify-between">
@@ -1296,7 +1545,7 @@ export default function PersonalityReportPage() {
             </div>
 
             {/* 报告内容区域 - 独立滚动 */}
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-6" style={{ overscrollBehavior: 'contain' }}>
               {reportLoading ? (
                 <div className="flex flex-col items-center justify-center py-20">
                   {isGenerating ? (
@@ -1406,7 +1655,7 @@ export default function PersonalityReportPage() {
           </div>
         ) : (
           /* 聊天对话区域 */
-          <div className="h-full flex flex-col">
+          <div className="h-screen flex flex-col">
             {/* 聊天标题栏 */}
             <div className="p-6 border-b border-gray-100">
               <div className="flex items-center space-x-3">
@@ -1429,7 +1678,12 @@ export default function PersonalityReportPage() {
             </div>
 
             {/* 聊天消息区域 - 独立滚动 */}
-            <div className="flex-1 overflow-y-auto p-6">
+            <div
+              ref={chatContainerRef}
+              className="flex-1 overflow-y-auto p-6 relative"
+              style={{ overscrollBehavior: 'contain' }}
+              onScroll={handleScroll}
+            >
               {getCurrentConversation()?.messages.map((message, index) => (
                 <div key={message.id} className={`mb-6 ${message.type === 'user' ? 'flex justify-end' : 'flex justify-start'}`}>
                   <div className={`max-w-[80%] ${message.type === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-900'} rounded-lg p-4`}>
@@ -1481,6 +1735,27 @@ export default function PersonalityReportPage() {
                 </div>
               ))}
               <div ref={messagesEndRef} />
+
+              {/* 回到底部按钮 */}
+              {showScrollToBottom && (
+                <div className="fixed bottom-32 right-8 z-10">
+                  <Button
+                    type="primary"
+                    shape="circle"
+                    size="large"
+                    icon={<DownOutlined />}
+                    onClick={handleScrollToBottomClick}
+                    className="shadow-lg hover:shadow-xl transition-all duration-200"
+                    style={{
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      border: 'none',
+                      width: '48px',
+                      height: '48px'
+                    }}
+                    title="回到底部"
+                  />
+                </div>
+              )}
             </div>
 
             {/* 输入框区域 */}

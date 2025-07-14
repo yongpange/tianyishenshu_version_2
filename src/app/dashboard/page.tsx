@@ -246,14 +246,6 @@ export default function DashboardPage() {
     setCurrentView('consultation')
   }
 
-  const handleHealing = () => {
-    setCurrentView('healing')
-  }
-
-  const handleTreasure = () => {
-    setCurrentView('treasure')
-  }
-
   // 渲染主内容区域
   const renderMainContent = () => {
     switch (currentView) {
@@ -288,47 +280,83 @@ export default function DashboardPage() {
             setCurrentView('add-user')
           }}
         />
+
       case 'consultation':
         return (
-          <div className="max-w-6xl mx-auto">
-            <div className="text-center py-16">
-              <div className="w-20 h-20 bg-black rounded-full flex items-center justify-center mx-auto mb-6">
-                <MessageOutlined className="text-white text-2xl" />
+          <div className="max-w-4xl mx-auto px-4 py-8">
+            {/* 页面标题 */}
+            <div className="text-center mb-12">
+              <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center mx-auto mb-4">
+                <MessageOutlined className="text-white text-xl" />
               </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">问道1v1</h2>
-              <p className="text-gray-600 mb-8">一对一专业咨询服务</p>
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 max-w-md mx-auto">
-                <p className="text-yellow-800">功能开发中，敬请期待...</p>
-              </div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">问道1v1</h1>
+              <p className="text-gray-600">专业命理咨询服务</p>
             </div>
-          </div>
-        )
-      case 'healing':
-        return (
-          <div className="max-w-6xl mx-auto">
-            <div className="text-center py-16">
-              <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-6">
-                <span className="text-white text-2xl">🌿</span>
+
+            {/* 客服二维码区域 */}
+            <div className="bg-white rounded-2xl shadow-lg p-8 mb-12">
+              <h2 className="text-xl font-semibold text-gray-900 text-center mb-8">联系客服</h2>
+              <div className="flex justify-center items-center gap-12">
+                {/* 第一个客服二维码 */}
+                <div className="text-center">
+                  <div className="w-32 h-32 bg-gray-100 rounded-xl flex items-center justify-center mb-4 shadow-sm">
+                    <img
+                      src="/images/consultation-qr-1.jpg"
+                      alt="客服微信二维码1"
+                      className="w-full h-full object-contain rounded-xl"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        target.nextElementSibling!.classList.remove('hidden');
+                      }}
+                    />
+                    <div className="hidden text-gray-500 text-center">
+                      <div className="text-3xl mb-2">📱</div>
+                      <div className="text-sm">客服1</div>
+                    </div>
+                  </div>
+                  <p className="text-sm font-medium text-gray-700">客服1</p>
+                </div>
+
+                {/* 第二个客服二维码 */}
+                <div className="text-center">
+                  <div className="w-32 h-32 bg-gray-100 rounded-xl flex items-center justify-center mb-4 shadow-sm">
+                    <img
+                      src="/images/consultation-qr-2.jpg"
+                      alt="客服微信二维码2"
+                      className="w-full h-full object-contain rounded-xl"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        target.nextElementSibling!.classList.remove('hidden');
+                      }}
+                    />
+                    <div className="hidden text-gray-500 text-center">
+                      <div className="text-3xl mb-2">📱</div>
+                      <div className="text-sm">客服2</div>
+                    </div>
+                  </div>
+                  <p className="text-sm font-medium text-gray-700">客服2</p>
+                </div>
               </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">疗愈</h2>
-              <p className="text-gray-600 mb-8">心灵疗愈与能量平衡</p>
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 max-w-md mx-auto">
-                <p className="text-yellow-800">功能开发中，敬请期待...</p>
-              </div>
+              <p className="text-center text-gray-500 text-sm mt-6">扫描二维码添加客服微信，获得专业咨询服务</p>
             </div>
-          </div>
-        )
-      case 'treasure':
-        return (
-          <div className="max-w-6xl mx-auto">
-            <div className="text-center py-16">
-              <div className="w-20 h-20 bg-amber-500 rounded-full flex items-center justify-center mx-auto mb-6">
-                <span className="text-white text-2xl">💎</span>
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">宝阁</h2>
-              <p className="text-gray-600 mb-8">精品收藏与能量物品</p>
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 max-w-md mx-auto">
-                <p className="text-yellow-800">功能开发中，敬请期待...</p>
+
+            {/* 公司介绍区域 */}
+            <div className="bg-white rounded-2xl shadow-lg p-8">
+              <h2 className="text-xl font-semibold text-gray-900 mb-6 text-center">公司介绍</h2>
+              <div className="prose prose-gray max-w-none">
+                <div className="space-y-6 text-gray-700 leading-relaxed">
+                  <p className="text-base">
+                    天乙神算（Dao fate）于2025年夏季正式上线，是一家以东方术数体系为根基、人工智能技术为引擎的创新型企业。公司秉承"融合古今智慧，赋能精准决策"的使命，致力于通过大语言模型（LLM）与玄学理法的深度融合，推动东方术数在全球范围的科学化传播与场景化落地。
+                  </p>
+                  <p className="text-base">
+                    公司以「专业理法体系」为核心竞争力，以十万级真实案例库 与10年行业经验为根基，将八字命理等传统术数模型转化为可计算的AI算法。通过自研的玄学大语言模型（Metaphysical LLM），实现命理推演的标准化、交互化与可视化，突破传统术数的学习壁垒与应用局限。
+                  </p>
+                  <p className="text-base">
+                    创始人寻一，早年任职上市公司负责资本运作，因特殊奇遇而进入玄学领域，又历经十年名师遍访、八年全职从业，深感术数高阶理论的认知壁垒。创立天乙神算的初心，是借力AI破解'传统玄学曲高和寡'之困，让造物之奇与术数之精，成为可被普罗大众理解的生活智慧。
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -526,10 +554,10 @@ export default function DashboardPage() {
         {/* 导航菜单 */}
         <div className="flex-1 p-4 overflow-y-auto">
           <div className="space-y-6">
-            <div 
+            <div
               className={`px-4 py-4 rounded-lg text-center shadow-sm cursor-pointer transition-all duration-300 ${
-                currentView === 'dashboard' 
-                  ? 'bg-white text-gray-900 border border-gray-300' 
+                currentView === 'dashboard'
+                  ? 'bg-white text-gray-900 border border-gray-300'
                   : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm'
               }`}
               onClick={() => setCurrentView('dashboard')}
@@ -537,52 +565,20 @@ export default function DashboardPage() {
               <span className="text-lg font-medium tracking-wide">命书</span>
             </div>
             <div
-              className={`px-4 py-4 rounded-lg cursor-pointer transition-all duration-300 text-center ${
-                currentView === 'astrology' 
-                  ? 'bg-white text-gray-900 border border-gray-300 shadow-sm' 
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm'
-              }`}
-              onClick={() => setCurrentView('astrology')}
+              className="px-4 py-4 rounded-lg cursor-pointer transition-all duration-300 text-center text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm"
+              onClick={() => message.info('功能开发中，敬请期待...')}
             >
               <span className="text-lg font-medium tracking-wide">召灵</span>
             </div>
             <div
-              className={`px-4 py-4 rounded-lg cursor-pointer transition-all duration-300 text-center ${
-                currentView === 'personality' 
-                  ? 'bg-white text-gray-900 border border-gray-300 shadow-sm' 
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm'
-              }`}
-              onClick={() => setCurrentView('personality')}
-            >
-              <span className="text-lg font-medium tracking-wide">内观</span>
-            </div>
-            <div
-              className={`px-4 py-4 rounded-lg cursor-pointer transition-all duration-300 text-center ${
-                currentView === 'add-user' 
-                  ? 'bg-white text-gray-900 border border-gray-300 shadow-sm' 
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm'
-              }`}
-              onClick={() => setCurrentView('add-user')}
-            >
-              <span className="text-lg font-medium tracking-wide">增用</span>
-            </div>
-            <div
-              className={`px-4 py-4 rounded-lg cursor-pointer transition-all duration-300 text-center ${
-                currentView === 'healing' 
-                  ? 'bg-white text-gray-900 border border-gray-300 shadow-sm' 
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm'
-              }`}
-              onClick={handleHealing}
+              className="px-4 py-4 rounded-lg cursor-pointer transition-all duration-300 text-center text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm"
+              onClick={() => message.info('功能开发中，敬请期待...')}
             >
               <span className="text-lg font-medium tracking-wide">疗愈</span>
             </div>
             <div
-              className={`px-4 py-4 rounded-lg cursor-pointer transition-all duration-300 text-center ${
-                currentView === 'treasure' 
-                  ? 'bg-white text-gray-900 border border-gray-300 shadow-sm' 
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm'
-              }`}
-              onClick={handleTreasure}
+              className="px-4 py-4 rounded-lg cursor-pointer transition-all duration-300 text-center text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm"
+              onClick={() => message.info('功能开发中，敬请期待...')}
             >
               <span className="text-lg font-medium tracking-wide">宝阁</span>
             </div>

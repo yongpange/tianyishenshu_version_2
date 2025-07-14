@@ -11,7 +11,7 @@ const supabase = createClient(
 )
 
 // 环境变量配置
-const COZE_BOT_ID = process.env.BOT_ID || ''
+const COZE_BOT_ID = process.env.CHAT_BOT_ID || ''
 
 // 更新聊天次数
 async function updateChatCount(userId: string): Promise<{ success: boolean; remainingCount?: number; error?: string }> {
@@ -145,8 +145,8 @@ ${astrologyContext ? astrologyContext : `用户信息：
     // 创建Coze客户端（支持JWT和PAT认证）
     const { client: coze, authMethod } = await createCozeClient()
 
-    // 调用 Coze 智能体
-    const result = await coze.chat.createAndPoll({
+    // 调用 Coze 智能体 - 使用流式输出
+    const stream = await coze.chat.stream({
       bot_id: COZE_BOT_ID,
       user_id: consistentUserId, // 使用一致的用户ID
       additional_messages: [
@@ -158,79 +158,119 @@ ${astrologyContext ? astrologyContext : `用户信息：
       ],
       conversation_id: conversationId, // 如果有对话ID则传入，用于保持对话连续性
     })
-    console.log('🔑 AI返回结果: ', result)
-    console.log('🔑 Chat状态: ', result.chat.status)
-    console.log('🔑 Messages数量: ', result.messages?.length || 0)
-    console.log('🔑 所有Messages: ', JSON.stringify(result.messages, null, 2))
+    console.log('� 开始流式处理...')
 
-    if (result.chat.status === ChatStatus.COMPLETED && result.messages) {
-      // 找到AI的回复 - 尝试多种消息类型
-      let aiMessage = result.messages.find(
-        (msg: any) => msg.role === RoleType.Assistant && msg.type === 'answer'
-      )
+    // 创建流式响应
+    const encoder = new TextEncoder()
+    let finalConversationId = ''
+    let finalChatId = ''
+    let fullResponse = ''
 
-      // 如果没找到answer类型，尝试其他类型
-      if (!aiMessage) {
-        aiMessage = result.messages.find(
-          (msg: any) => msg.role === RoleType.Assistant
-        )
-      }
-
-      console.log('🔑 AI返回的aiMessage回复: ', aiMessage)
-      console.log('🔑 AI返回的aiMessage.CONTENT回复: ', aiMessage?.content)
-
-      const responseContent = aiMessage?.content || '抱歉，我现在无法回答这个问题。'
-
-      // 获取更新后的聊天次数信息
-      let remainingCount: number | undefined
-      if (consistentUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(consistentUserId)) {
+    const readableStream = new ReadableStream({
+      async start(controller) {
         try {
-          const { data: userProfile } = await supabase
-            .from('user_profiles')
-            .select('chat_remaining_count')
-            .eq('id', consistentUserId)
-            .single()
-          
-          remainingCount = userProfile?.chat_remaining_count
+          for await (const chunk of stream) {
+            console.log('📦 收到流式数据块:', chunk.event)
+
+            // 保存对话信息
+            if (chunk.event === 'conversation.chat.created') {
+              finalConversationId = chunk.data?.conversation_id || ''
+              finalChatId = chunk.data?.id || ''
+              console.log('💬 对话创建:', { finalConversationId, finalChatId })
+            }
+
+            // 处理消息内容
+            if (chunk.event === 'conversation.message.delta') {
+              const content = chunk.data?.content || ''
+              if (content) {
+                fullResponse += content
+                // 发送流式数据到前端
+                const data = JSON.stringify({
+                  type: 'content',
+                  content: content,
+                  conversationId: finalConversationId,
+                  chatId: finalChatId
+                })
+                controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+              }
+            }
+
+            // 处理完成事件
+            if (chunk.event === 'conversation.chat.completed') {
+              console.log('✅ 对话完成')
+
+              // 获取更新后的聊天次数信息
+              let remainingCount: number | undefined
+              if (consistentUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(consistentUserId)) {
+                try {
+                  const { data: userProfile } = await supabase
+                    .from('user_profiles')
+                    .select('chat_remaining_count')
+                    .eq('id', consistentUserId)
+                    .single()
+
+                  remainingCount = userProfile?.chat_remaining_count
+                } catch (error) {
+                  console.warn('⚠️ 获取剩余次数失败:', error)
+                }
+              }
+
+              const finalData = JSON.stringify({
+                type: 'done',
+                fullResponse: fullResponse,
+                conversationId: finalConversationId,
+                chatId: finalChatId,
+                authMethod: authMethod,
+                remainingCount: remainingCount
+              })
+              controller.enqueue(encoder.encode(`data: ${finalData}\n\n`))
+              controller.close()
+              return
+            }
+
+            // 处理错误事件
+            if (chunk.event === 'conversation.chat.failed') {
+              console.error('❌ 对话失败:', chunk.data)
+              const errorData = JSON.stringify({
+                type: 'error',
+                error: '对话生成失败，请重试'
+              })
+              controller.enqueue(encoder.encode(`data: ${errorData}\n\n`))
+              controller.close()
+              return
+            }
+          }
         } catch (error) {
-          console.warn('⚠️ 获取剩余次数失败:', error)
+          console.error('❌ 流式处理错误:', error)
+          const errorData = JSON.stringify({
+            type: 'error',
+            error: error instanceof Error ? error.message : '未知错误'
+          })
+          controller.enqueue(encoder.encode(`data: ${errorData}\n\n`))
+          controller.close()
         }
       }
+    })
 
-      return NextResponse.json({
-        success: true,
-        response: responseContent,
-        conversationId: result.chat.conversation_id,
-        chatId: result.chat.id,
-        authMethod: authMethod, // 返回实际使用的认证方式
-        remainingCount: remainingCount, // 返回剩余聊天次数
-        debug: {
-          chatStatus: result.chat.status,
-          messagesCount: result.messages?.length || 0,
-          aiMessageFound: !!aiMessage,
-          aiMessageType: aiMessage?.type
-        }
-      })
-    } else {
-      console.log('❌ Chat未完成或无消息:', {
-        status: result.chat.status,
-        hasMessages: !!result.messages,
-        messagesCount: result.messages?.length || 0
-      })
-      return NextResponse.json(
-        { error: '智能体响应失败', status: result.chat.status, debug: result },
-        { status: 500 }
-      )
-    }
+    return new Response(readableStream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      },
+    })
 
   } catch (error) {
     console.error('Coze API调用失败:', error)
     return NextResponse.json(
-      { 
+      {
         error: 'AI服务暂时不可用，请稍后重试',
         details: error instanceof Error ? error.message : String(error)
       },
       { status: 500 }
     )
   }
-} 
+}
