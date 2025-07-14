@@ -28,26 +28,18 @@ export async function sendSmsCode(phone: string, code: string): Promise<boolean>
       templateId: tencentSmsConfig.templateId || '未设置'
     })
 
-    // 🚧 临时注释：运营商审核期间强制使用模拟发送
-    console.warn('🚧 运营商审核期间，强制使用模拟发送')
-    console.log(`📱 模拟发送短信: 手机号 ${phone}, 验证码 ${code}`)
-    console.log(`【${tencentSmsConfig.signName}】您的验证码是${code}，5分钟内有效，请勿泄露给他人。`)
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    return true
-
-    /* 🚧 临时注释掉腾讯云真实发送代码 - 运营商审核期间
+    // ✅ 腾讯云短信服务已审核通过，使用真实发送
     // 检查必要配置是否完整
-    if (!tencentSmsConfig.secretId || !tencentSmsConfig.secretKey || 
+    if (!tencentSmsConfig.secretId || !tencentSmsConfig.secretKey ||
         !tencentSmsConfig.appId || !tencentSmsConfig.templateId) {
-      console.warn('⚠️ 腾讯云配置不完整，使用模拟发送')
-      
-      // 模拟发送
-      console.log(`📱 模拟发送短信: 手机号 ${phone}, 验证码 ${code}`)
-      console.log(`【${tencentSmsConfig.signName}】您的验证码是${code}，5分钟内有效，请勿泄露给他人。`)
-      
-      // 模拟延迟
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      return true
+      console.error('❌ 腾讯云配置不完整，无法发送短信')
+      console.error('缺少配置项:', {
+        secretId: !tencentSmsConfig.secretId,
+        secretKey: !tencentSmsConfig.secretKey,
+        appId: !tencentSmsConfig.appId,
+        templateId: !tencentSmsConfig.templateId
+      })
+      return false
     }
 
     // 尝试导入腾讯云SDK
@@ -136,12 +128,11 @@ export async function sendSmsCode(phone: string, code: string): Promise<boolean>
         console.error('❌ 短信发送失败:', sendResult?.Message)
         console.log('💡 提示：请检查模板参数格式是否正确')
         
-        // 如果是模板参数错误，尝试其他格式
+        // 如果是模板参数错误，记录详细错误信息
         if (sendResult?.Code === 'FailedOperation.TemplateParamSetNotMatchApprovedTemplate') {
-          console.log('🔄 模板参数不匹配，尝试降级到模拟发送...')
-          console.log(`📱 模拟发送短信: 手机号 ${phone}, 验证码 ${code}`)
-          console.log(`【${tencentSmsConfig.signName}】您的验证码是${code}，5分钟内有效，请勿泄露给他人。`)
-          return true
+          console.error('🔄 模板参数不匹配，请检查环境变量 TENCENT_SMS_TEMPLATE_PARAMS 配置')
+          console.error('当前模板参数格式:', process.env.TENCENT_SMS_TEMPLATE_PARAMS)
+          console.error('当前发送的参数:', templateParams)
         }
         
         return false
@@ -149,17 +140,10 @@ export async function sendSmsCode(phone: string, code: string): Promise<boolean>
       
     } catch (sdkError) {
       console.error('❌ SDK导入或使用失败:', sdkError)
-      
-      // 降级到模拟发送
-      console.log('🔄 降级到模拟发送...')
-      console.log(`📱 模拟发送短信: 手机号 ${phone}, 验证码 ${code}`)
-      console.log(`【${tencentSmsConfig.signName}】您的验证码是${code}，5分钟内有效，请勿泄露给他人。`)
-      
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      return true
+      console.error('请检查腾讯云SDK是否正确安装')
+      return false
     }
-    */ // 🚧 腾讯云代码注释结束
-    
+
   } catch (error) {
     console.error('💥 发送短信失败:', error)
     return false

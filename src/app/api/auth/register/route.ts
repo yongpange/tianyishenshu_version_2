@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 验证验证码格式（普通验证码6位数字，管理员特殊验证码000000）
+    // 验证验证码格式（6位数字）
     if (!/^\d{6}$/.test(code)) {
       return NextResponse.json(
         { error: 'INVALID_CODE', message: '验证码格式不正确' },
@@ -67,25 +67,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 验证短信验证码（管理员操作时使用特殊验证码000000）
-    if (code !== '000000') {
-      // 普通用户注册，需要验证短信验证码
-      const smsVerifyResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/sms/verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, code, type: 'register' })
-      })
+    // 验证短信验证码
+    const smsVerifyResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/sms/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, code, type: 'register' })
+    })
 
-      if (!smsVerifyResponse.ok) {
-        const smsError = await smsVerifyResponse.json()
-        return NextResponse.json(
-          { error: 'INVALID_CODE', message: smsError.message || '验证码错误' },
-          { status: 400 }
-        )
-      }
-    } else {
-      // 管理员操作，使用特殊验证码000000，跳过短信验证
-      console.log('🔧 管理员操作：跳过短信验证码验证')
+    if (!smsVerifyResponse.ok) {
+      const smsError = await smsVerifyResponse.json()
+      return NextResponse.json(
+        { error: 'INVALID_CODE', message: smsError.message || '验证码错误' },
+        { status: 400 }
+      )
     }
 
     // 验证兑换码

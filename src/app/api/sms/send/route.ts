@@ -27,16 +27,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // xdu modify 临时测试使用 20250630 begin
     // 生成验证码
-    // const code = generateVerificationCode()
-    let code = generateVerificationCode()
-
-    // 如果电话号码是17778943656，则使用固定验证码852963,固定邀请码为6V59K3SBUW29D67Y
-    if (phone === '17778943656') {
-      code = '852963'
-    }
-    // xdu modify 20250630 end
+    const code = generateVerificationCode()
 
     // 发送短信
     const sendResult = await sendSmsCode(phone, code)
