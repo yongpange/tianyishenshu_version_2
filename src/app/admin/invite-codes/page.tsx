@@ -44,6 +44,8 @@ interface InviteCode {
   user_name?: string
   remaining_tokens?: number
   user_role?: string
+  latest_verification_code?: string
+  verification_code_expires_at?: string
 }
 
 // 角色选项类型
@@ -413,6 +415,49 @@ export default function InviteCodesManagement() {
       }
     },
     {
+      title: '最新验证码',
+      dataIndex: 'latest_verification_code',
+      key: 'latest_verification_code',
+      render: (code: string) => {
+        if (!code) return '-'
+        return (
+          <Space>
+            <code className="bg-yellow-100 px-2 py-1 rounded font-mono text-sm text-yellow-800">
+              {code}
+            </code>
+            <Button 
+              size="small" 
+              icon={<CopyOutlined />} 
+              onClick={() => handleCopyCode(code)}
+            />
+          </Space>
+        )
+      }
+    },
+    {
+      title: '验证码过期时间',
+      dataIndex: 'verification_code_expires_at',
+      key: 'verification_code_expires_at',
+      render: (date: string) => {
+        if (!date) return '-'
+        
+        const expireTime = new Date(date)
+        const now = new Date()
+        const isExpired = now > expireTime
+        
+        return (
+          <div>
+            <div className={isExpired ? 'text-red-500' : 'text-green-600'}>
+              {expireTime.toLocaleString('zh-CN')}
+            </div>
+            <Tag color={isExpired ? 'red' : 'green'}>
+              {isExpired ? '已过期' : '有效'}
+            </Tag>
+          </div>
+        )
+      }
+    },
+    {
       title: '创建时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
@@ -534,10 +579,29 @@ export default function InviteCodesManagement() {
               <div className="text-sm text-gray-600">VIP用户</div>
             </div>
             <div className="text-center p-3 bg-cyan-50 rounded-lg">
-                             <div className="text-lg font-semibold text-cyan-600">
-                 {codes.reduce((sum, c) => sum + (c.remaining_tokens || 0), 0)}
-               </div>
-               <div className="text-sm text-gray-600">总剩余对话次数</div>
+              <div className="text-lg font-semibold text-cyan-600">
+                {codes.reduce((sum, c) => sum + (c.remaining_tokens || 0), 0)}
+              </div>
+              <div className="text-sm text-gray-600">总剩余对话次数</div>
+            </div>
+          </div>
+          
+          {/* 验证码统计 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-200">
+            <div className="text-center p-3 bg-yellow-50 rounded-lg">
+              <div className="text-lg font-semibold text-yellow-600">
+                {codes.filter(c => c.latest_verification_code).length}
+              </div>
+              <div className="text-sm text-gray-600">有验证码的用户</div>
+            </div>
+            <div className="text-center p-3 bg-red-50 rounded-lg">
+              <div className="text-lg font-semibold text-red-600">
+                {codes.filter(c => {
+                  if (!c.verification_code_expires_at) return false
+                  return new Date() > new Date(c.verification_code_expires_at)
+                }).length}
+              </div>
+              <div className="text-sm text-gray-600">验证码已过期</div>
             </div>
           </div>
         </Card>
@@ -569,7 +633,7 @@ export default function InviteCodesManagement() {
               pageSizeOptions: ['10', '20', '50', '100'],
               size: 'default'
             }}
-            scroll={{ x: 1400 }}
+            scroll={{ x: 1700 }}
           />
         </Card>
 

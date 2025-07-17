@@ -104,9 +104,41 @@ export async function POST(request: NextRequest): Promise<NextResponse<HealthRep
       }, { status: 500 })
     }
 
-    // 获取八字排盘上下文信息
+    // 获取八字排盘上下文信息 - 数据库优先
     console.log('🔮 获取八字排盘数据...')
-    const astrologyContext = await getAstrologyContext(userInfo)
+    // 确定用户ID for 八字获取
+    let baziUserId: string
+
+    if (isUserProfileId) {
+      // 使用user_profiles.id
+      baziUserId = userId
+    } else {
+      // 通过手机号查找user_profiles.id
+      const { data: user, error: userError } = await supabaseAdmin
+        .from('users')
+        .select('id')
+        .eq('phone_number', userId)
+        .single()
+
+      if (userError || !user) {
+        throw new Error('找不到用户信息')
+      }
+
+      const { data: userProfile, error: profileError } = await supabaseAdmin
+        .from('user_profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .is('parent_id', null)
+        .single()
+
+      if (profileError || !userProfile) {
+        throw new Error('找不到用户资料')
+      }
+
+      baziUserId = userProfile.id
+    }
+
+    const astrologyContext = await getAstrologyContext(userInfo, baziUserId)
     console.log('✅ 八字排盘数据获取完成')
 
     // 生成身体健康报告prompt

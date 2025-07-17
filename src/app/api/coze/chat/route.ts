@@ -116,11 +116,16 @@ export async function POST(request: NextRequest) {
       console.log('📱 手机号用户，跳过聊天次数检查')
     }
 
-    // 获取八字排盘上下文
+    // 获取八字排盘上下文 - 数据库优先
     let astrologyContext = ''
     if (userInfo) {
       try {
-        astrologyContext = await getAstrologyContext(userInfo)
+        // 尝试从用户ID获取八字上下文
+        const baziUserId = consistentUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(consistentUserId) 
+          ? consistentUserId // 如果是UUID格式，直接使用（user_profiles.id）
+          : undefined // 否则不传userId，回退到API调用
+        
+        astrologyContext = await getAstrologyContext(userInfo, baziUserId)
         console.log('✅ 成功获取八字排盘上下文')
       } catch (error) {
         console.warn('⚠️ 获取八字排盘上下文失败，将使用基础用户信息:', error)

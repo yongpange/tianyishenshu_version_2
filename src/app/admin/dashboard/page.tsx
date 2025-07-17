@@ -29,11 +29,31 @@ interface InviteCode {
   user_name?: string
   remaining_tokens?: number
   user_role?: string
+  latest_verification_code?: string
+  verification_code_expires_at?: string
+}
+
+interface VerificationCode {
+  id: string
+  phone_number: string
+  latest_verification_code: string
+  verification_code_expires_at: string
+  status: 'active' | 'expired'
+  expires_in_minutes: number
+  created_at: string
+  updated_at: string
+  last_login?: string
 }
 
 export default function AdminDashboard() {
   const [codes, setCodes] = useState<InviteCode[]>([])
+  const [verificationCodes, setVerificationCodes] = useState<VerificationCode[]>([])
   const [loading, setLoading] = useState(false)
+  const [verificationSummary, setVerificationSummary] = useState({
+    total: 0,
+    active: 0,
+    expired: 0
+  })
 
   const router = useRouter()
 
@@ -45,12 +65,14 @@ export default function AdminDashboard() {
       return
     }
 
-    // 加载兑换码列表
+    // 加载兑换码列表和验证码列表
     loadCodes()
+    loadVerificationCodes()
 
-    // 设置定时刷新，每30秒检查一次兑换码状态
+    // 设置定时刷新，每30秒检查一次状态
     const interval = setInterval(() => {
       loadCodes()
+      loadVerificationCodes()
     }, 30000)
 
     return () => clearInterval(interval)
@@ -85,6 +107,49 @@ export default function AdminDashboard() {
     const data = localStorage.getItem('invite_codes')
     const allCodes = data ? JSON.parse(data) : []
     setCodes(allCodes)
+  }
+
+  const loadVerificationCodes = async () => {
+    try {
+      const response = await fetch('/api/admin/verification-codes')
+      if (response.ok) {
+        const result = await response.json()
+        if (result.success) {
+          setVerificationCodes(result.data)
+          setVerificationSummary(result.summary)
+          return
+        }
+      }
+    } catch (error) {
+      console.error('加载验证码失败:', error)
+    }
+    
+    // 如果获取失败，设置为空数据
+    setVerificationCodes([])
+    setVerificationSummary({ total: 0, active: 0, expired: 0 })
+  }
+
+  const cleanExpiredCodes = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch('/api/admin/verification-codes', {
+        method: 'DELETE'
+      })
+      
+      if (response.ok) {
+        const result = await response.json()
+        message.success(result.message)
+        // 重新加载数据
+        loadVerificationCodes()
+      } else {
+        message.error('清理失败')
+      }
+    } catch (error) {
+      console.error('清理过期验证码失败:', error)
+      message.error('清理失败')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleLogout = () => {
@@ -319,54 +384,76 @@ export default function AdminDashboard() {
 
           <Card className="hover:shadow-lg transition-shadow">
             <div className="text-center">
-              <div className="text-3xl text-purple-500 mb-4">📊</div>
-              <h3 className="text-lg font-semibold mb-2">系统统计</h3>
-              <p className="text-gray-600 mb-4">查看系统使用统计数据</p>
+              <div className="text-3xl text-purple-500 mb-4">🔐</div>
+              <h3 className="text-lg font-semibold mb-2">验证码管理</h3>
+              <p className="text-gray-600 mb-4">查看和管理所有用户验证码</p>
               <Button 
-                type="default" 
-                disabled
+                type="primary" 
+                onClick={() => router.push('/admin/verification-codes')}
                 block
               >
-                即将上线
+                进入管理
               </Button>
             </div>
           </Card>
         </div>
 
-        <Card title="兑换码概览">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <Card title="验证码管理">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
             <div className="text-center p-4 bg-blue-50 rounded-lg">
-              <div className="text-2xl font-bold text-blue-600">{codes.length}</div>
-              <div className="text-sm text-gray-600">总兑换码</div>
+              <div className="text-2xl font-bold text-blue-600">{verificationSummary.total}</div>
+              <div className="text-sm text-gray-600">总验证码</div>
             </div>
             <div className="text-center p-4 bg-green-50 rounded-lg">
-              <div className="text-2xl font-bold text-green-600">
-                {codes.filter(c => c.status === 'active').length}
-              </div>
-              <div className="text-sm text-gray-600">未使用</div>
-            </div>
-            <div className="text-center p-4 bg-blue-50 rounded-lg">
-              <div className="text-2xl font-bold text-blue-500">
-                {codes.filter(c => c.status === 'used').length}
-              </div>
-              <div className="text-sm text-gray-600">已使用</div>
+              <div className="text-2xl font-bold text-green-600">{verificationSummary.active}</div>
+              <div className="text-sm text-gray-600">有效验证码</div>
             </div>
             <div className="text-center p-4 bg-red-50 rounded-lg">
-              <div className="text-2xl font-bold text-red-500">
-                {codes.filter(c => c.status === 'expired').length}
-              </div>
+              <div className="text-2xl font-bold text-red-500">{verificationSummary.expired}</div>
               <div className="text-sm text-gray-600">已过期</div>
             </div>
           </div>
           
-          <div className="text-center">
+          {/* 验证码列表 */}
+          <div className="space-y-3 mb-6">
+            <h4 className="font-semibold text-gray-700">最近的验证码</h4>
+            {verificationCodes.slice(0, 5).map((code) => (
+              <div key={code.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                <div className="flex-1">
+                  <div className="font-mono text-sm">{code.phone_number}</div>
+                  <div className="text-xs text-gray-500">
+                    验证码: {code.latest_verification_code} | 
+                    状态: <span className={code.status === 'active' ? 'text-green-600' : 'text-red-600'}>
+                      {code.status === 'active' ? `${code.expires_in_minutes}分钟后过期` : '已过期'}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-xs text-gray-400">
+                  {new Date(code.verification_code_expires_at).toLocaleString('zh-CN')}
+                </div>
+              </div>
+            ))}
+            {verificationCodes.length === 0 && (
+              <div className="text-center py-4 text-gray-500">暂无验证码记录</div>
+            )}
+          </div>
+          
+          <div className="flex gap-3 justify-center">
             <Button 
               type="primary" 
               size="large"
               icon={<EyeOutlined />}
-              onClick={() => router.push('/admin/invite-codes')}
+              onClick={() => router.push('/admin/verification-codes')}
             >
-              查看详细管理
+              查看全部验证码
+            </Button>
+            <Button 
+              type="default" 
+              size="large"
+              loading={loading}
+              onClick={cleanExpiredCodes}
+            >
+              清理过期验证码
             </Button>
           </div>
         </Card>

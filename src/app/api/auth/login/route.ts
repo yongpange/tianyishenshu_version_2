@@ -72,7 +72,8 @@ export async function POST(request: NextRequest) {
         minute,
         area_province,
         area_city,
-        area_district
+        area_district,
+        parent_id
       `)
       .eq('user_id', user.id)
 
@@ -118,19 +119,73 @@ export async function POST(request: NextRequest) {
                      personalityReports[0].content &&
                      personalityReports[0].content.trim().length > 0
 
+    // 详细打印所有用户资料原始数据
+    console.log('📊 用户资料原始数据:')
+    console.log('  userId:', user.id)
+    console.log('  phone:', user.phone_number)
+    console.log('  userProfiles 数组:', userProfiles)
+    console.log('  userProfiles 数量:', userProfiles?.length || 0)
+
+    // 逐个检查每个资料的parent_id详细信息
+    if (userProfiles && userProfiles.length > 0) {
+      userProfiles.forEach((profile, index) => {
+        console.log(`📋 资料 ${index + 1} 详细分析:`)
+        console.log(`  ID: ${profile.id}`)
+        console.log(`  姓名: ${profile.name}`)
+        console.log(`  parent_id 原始值: ${JSON.stringify(profile.parent_id)}`)
+        console.log(`  parent_id 类型: ${typeof profile.parent_id}`)
+        console.log(`  是否 === null: ${profile.parent_id === null}`)
+        console.log(`  是否 === undefined: ${profile.parent_id === undefined}`)
+        console.log(`  是否 === '': ${profile.parent_id === ''}`)
+        console.log(`  !profile.parent_id: ${!profile.parent_id}`)
+        
+        const isMainProfile = !profile.parent_id || profile.parent_id === null || profile.parent_id === undefined || profile.parent_id === ''
+        console.log(`  最终判断是否为主资料: ${isMainProfile}`)
+        console.log('  ---')
+      })
+    } else {
+      console.log('❌ 没有找到任何用户资料')
+    }
+
+    // 检查是否有parent_id为空或null的主资料
+    // parent_id 为 null, undefined, 空字符串都视为主资料
+    const hasMainProfile = hasProfile && userProfiles.some(profile => 
+      !profile.parent_id || profile.parent_id === null || profile.parent_id === undefined || profile.parent_id === ''
+    )
+
+    console.log('🎯 跳转逻辑判断:')
+    console.log('  hasProfile:', hasProfile)
+    console.log('  hasMainProfile:', hasMainProfile)
+    console.log('  最终跳转目标:', hasMainProfile ? 'dashboard' : 'profile')
+
     console.log('🔍 用户状态检查:', {
       userId: user.id,
       phone: user.phone_number,
       hasProfile,
+      hasMainProfile,
       hasReport,
       profileCount: userProfiles?.length || 0,
       reportCount: personalityReports?.length || 0,
-      reportContentLength: personalityReports?.[0]?.content?.length || 0
+      reportContentLength: personalityReports?.[0]?.content?.length || 0,
+      profiles: userProfiles?.map(p => ({ 
+        id: p.id, 
+        name: p.name, 
+        parent_id: p.parent_id,
+        parent_id_type: typeof p.parent_id,
+        isMainProfile: !p.parent_id || p.parent_id === null || p.parent_id === undefined || p.parent_id === ''
+      }))
     })
 
-    // 决定跳转目标
-    const shouldGoToDashboard = hasProfile && hasReport
-    const redirectTo = shouldGoToDashboard ? 'dashboard' : 'profile'
+    // 根据用户状态决定跳转页面
+    // 如果有主资料（parent_id为空/null），跳转dashboard
+    // 否则跳转profile页面让用户填写个人信息
+    const redirectTo = hasMainProfile ? 'dashboard' : 'profile'
+
+    console.log(`📍 用户登录跳转决策: ${redirectTo}`, {
+      hasProfile,
+      hasMainProfile,
+      reason: hasMainProfile ? '用户已有主个人信息' : '用户需要填写主个人信息'
+    })
 
     // 更新最后登录时间
     const { error: updateError } = await supabase
@@ -147,7 +202,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 准备返回的用户数据
-    const responseData = {
+    const responseData: any = {
       success: true,
       message: '登录成功',
       user: {

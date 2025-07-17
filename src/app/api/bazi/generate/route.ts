@@ -75,15 +75,25 @@ export async function POST(request: NextRequest) {
       district: userInfo.area.district
     }
 
-    console.log('🚀 调用外部八字API:', apiParams)
+    console.log('🚀 调用本地八字API:', apiParams)
 
-    // 调用外部八字API
-    const response = await fetch(`${process.env.NEXT_PUBLIC_ASTROLOGY_API_URL}/astrology/generate`, {
+    // 构建调用本地astrology API的参数
+    const astrologyParams = {
+      name: apiParams.name,
+      gender: apiParams.gender === '男' ? 'male' : 'female',
+      birthDate: `${apiParams.year}-${apiParams.month.toString().padStart(2, '0')}-${apiParams.day.toString().padStart(2, '0')}`,
+      birthTime: `${apiParams.hour.toString().padStart(2, '0')}:${apiParams.minute.toString().padStart(2, '0')}`,
+      region: `${apiParams.province} ${apiParams.city} ${apiParams.district}`
+    }
+
+    // 调用本地astrology API
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
+    const response = await fetch(`${baseUrl}/api/astrology/generate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(apiParams)
+      body: JSON.stringify(astrologyParams)
     })
 
     if (!response.ok) {
@@ -94,12 +104,19 @@ export async function POST(request: NextRequest) {
     
     console.log('✅ 八字API调用成功，数据长度:', JSON.stringify(baziData).length)
 
-    // 保存到数据库
+    // 生成格式化的八字上下文
+    console.log('🔮 生成格式化八字上下文...')
+    const { formatAstrologyPrompt } = await import('@/utils/personality-report')
+    const astrologyContext = formatAstrologyPrompt(baziData, userInfo)
+    console.log('✅ 八字上下文生成完成，长度:', astrologyContext.length)
+
+    // 保存到数据库（包含原始数据和格式化上下文）
     const { data: savedReport, error: saveError } = await supabase
       .from('bazi_reports')
       .insert({
         user_id: userId,
         raw_payload: baziData,
+        astrology_context: astrologyContext,
         user_data_hash: userDataHash,
         api_request_id: `bazi_${Date.now()}_${Math.random().toString(36).substring(7)}`
       })

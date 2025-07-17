@@ -82,13 +82,51 @@ export default function DashboardPage() {
   const router = useRouter()
 
   useEffect(() => {
-    // 从localStorage获取用户信息
-    const userData = localStorage.getItem('userData')
-    if (userData) {
-      setUserInfo(JSON.parse(userData))
-    } else {
-      // 如果没有用户信息，跳转到信息填写页面
-      router.push('/profile')
+    // 检查登录状态并获取用户信息
+    const loginData = localStorage.getItem('loginData')
+    if (!loginData) {
+      // 如果没有登录信息，跳转到登录页面
+      router.push('/login')
+      return
+    }
+
+    try {
+      const parsed = JSON.parse(loginData)
+      console.log('🔍 Dashboard检查登录数据:', parsed)
+
+      // 检查登录数据中是否包含完整的用户资料
+      if (parsed.user?.profile_data) {
+        console.log('✅ 发现登录时已有的用户资料:', parsed.user.profile_data)
+        // 将登录时获取的资料转换为userInfo格式
+        const userInfoFromLogin = {
+          nickname: parsed.user.profile_data.name,
+          gender: parsed.user.profile_data.gender === 'male' ? '男' : 
+                  parsed.user.profile_data.gender === 'female' ? '女' : parsed.user.profile_data.gender,
+          year: parsed.user.profile_data.year,
+          month: parsed.user.profile_data.month,
+          day: parsed.user.profile_data.day,
+          hour: parsed.user.profile_data.hour,
+          minute: parsed.user.profile_data.minute,
+          area: parsed.user.profile_data.area
+        }
+        setUserInfo(userInfoFromLogin)
+      } else {
+        // 检查localStorage中是否有手动填写的userData
+        const userData = localStorage.getItem('userData')
+        if (userData) {
+          console.log('✅ 发现localStorage中的用户资料:', JSON.parse(userData))
+          setUserInfo(JSON.parse(userData))
+        } else {
+          // 如果既没有登录时的资料，也没有手动填写的资料，跳转到profile页面
+          console.log('❌ 未找到用户资料，跳转到profile页面')
+          router.push('/profile')
+          return
+        }
+      }
+    } catch (error) {
+      console.error('解析登录数据失败:', error)
+      router.push('/login')
+      return
     }
     
     // 加载用户层级结构
@@ -284,6 +322,31 @@ export default function DashboardPage() {
       case 'astrology':
         return <AstrologyPage />
       case 'personality':
+        // 确保设置用户数据到localStorage，避免PersonalityPage跳转到profile
+        const currentActiveUser = activeUser || userInfo
+        if (currentActiveUser) {
+          const userData = {
+            nickname: currentActiveUser.name || currentActiveUser.nickname,
+            gender: currentActiveUser.gender === 'male' || currentActiveUser.gender === '男' ? 'male' : 'female',
+            year: currentActiveUser.year,
+            month: currentActiveUser.month,
+            day: currentActiveUser.day,
+            hour: currentActiveUser.hour,
+            minute: currentActiveUser.minute,
+            area: {
+              province: currentActiveUser.area_province || currentActiveUser.area?.province,
+              city: currentActiveUser.area_city || currentActiveUser.area?.city,
+              district: currentActiveUser.area_district || currentActiveUser.area?.district
+            }
+          }
+          // 设置userData到localStorage，确保PersonalityPage能正常加载
+          localStorage.setItem('userData', JSON.stringify(userData))
+          
+          // 如果有activeUser，也设置到localStorage
+          if (activeUser) {
+            localStorage.setItem('activeUser', JSON.stringify(activeUser))
+          }
+        }
         return <PersonalityPage />
       case 'wealth':
         return <WealthPage />
@@ -386,13 +449,13 @@ export default function DashboardPage() {
               <div className="prose prose-gray max-w-none">
                 <div className="space-y-6 text-gray-700 leading-relaxed">
                   <p className="text-base">
-                    天乙神算（Dao fate）于2025年夏季正式上线，是一家以东方术数体系为根基、人工智能技术为引擎的创新型企业。公司秉承"融合古今智慧，赋能精准决策"的使命，致力于通过大语言模型（LLM）与玄学理法的深度融合，推动东方术数在全球范围的科学化传播与场景化落地。
+                    天乙神算（Dao fate）于2025年夏季正式上线，是一家以东方术数体系为根基、人工智能技术为引擎的创新型企业。公司秉承&ldquo;融合古今智慧，赋能精准决策&rdquo;的使命，致力于通过大语言模型（LLM）与玄学理法的深度融合，推动东方术数在全球范围的科学化传播与场景化落地。
                   </p>
                   <p className="text-base">
                     公司以「专业理法体系」为核心竞争力，以十万级真实案例库 与10年行业经验为根基，将八字命理等传统术数模型转化为可计算的AI算法。通过自研的玄学大语言模型（Metaphysical LLM），实现命理推演的标准化、交互化与可视化，突破传统术数的学习壁垒与应用局限。
                   </p>
                   <p className="text-base">
-                    创始人寻一，早年任职上市公司负责资本运作，因特殊奇遇而进入玄学领域，又历经十年名师遍访、八年全职从业，深感术数高阶理论的认知壁垒。创立天乙神算的初心，是借力AI破解'传统玄学曲高和寡'之困，让造物之奇与术数之精，成为可被普罗大众理解的生活智慧。
+                    创始人寻一，早年任职上市公司负责资本运作，因特殊奇遇而进入玄学领域，又历经十年名师遍访、八年全职从业，深感术数高阶理论的认知壁垒。创立天乙神算的初心，是借力AI破解&lsquo;传统玄学曲高和寡&rsquo;之困，让造物之奇与术数之精，成为可被普罗大众理解的生活智慧。
                   </p>
                 </div>
               </div>
