@@ -323,6 +323,16 @@ export async function savePersonalityReport(report: PersonalityReport, userProfi
   }
 }
 
+// 保存性格报告（包含八字上下文）
+export async function savePersonalityReportWithAstrology(report: PersonalityReport, userProfileId: string, astrologyContext: string): Promise<void> {
+  try {
+    await storageManager.savePersonalityReportWithAstrology(userProfileId, report, astrologyContext)
+  } catch (error) {
+    console.error('保存性格报告（含八字上下文）失败:', error)
+    throw error
+  }
+}
+
 // 清除性格报告
 export async function clearPersonalityReport(userId: string): Promise<void> {
   try {
@@ -335,9 +345,48 @@ export async function clearPersonalityReport(userId: string): Promise<void> {
 
 
 
-// 获取八字排盘数据并格式化为提示词
-export async function getAstrologyContext(userInfo: UserInfo): Promise<string> {
+// 获取八字排盘数据并格式化为提示词 - 数据库优先版本
+export async function getAstrologyContext(userInfo: UserInfo, userId?: string): Promise<string> {
   try {
+    // 如果提供了userId，优先从数据库获取格式化的八字上下文
+    if (userId) {
+      try {
+        console.log('🔮 优先从数据库获取格式化八字上下文:', userId)
+        
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
+        const response = await fetch(`${baseUrl}/api/bazi/get`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId: userId,
+            isUserProfileId: true // 假设传入的是user_profiles.id
+          })
+        })
+
+        if (response.ok) {
+          const result = await response.json()
+          if (result.success && result.astrologyContext) {
+            console.log('✅ 从数据库获取格式化八字上下文成功，长度:', result.astrologyContext.length)
+            return result.astrologyContext
+          }
+          // 如果有原始数据但没有格式化上下文，进行格式化
+          if (result.success && result.report) {
+            console.log('⚠️ 数据库中有原始数据但无格式化上下文，进行格式化')
+            return formatAstrologyPrompt(result.report, userInfo)
+          }
+        }
+        
+        console.log('⚠️ 数据库中无八字数据，回退到API调用')
+      } catch (dbError) {
+        console.warn('⚠️ 从数据库获取八字数据失败，回退到API调用:', dbError)
+      }
+    }
+
+    // 如果数据库没有数据或获取失败，调用外部API
+    console.log('🔮 调用外部八字API获取数据')
+    
     // 构建八字排盘请求数据
     const astrologyRequest = {
       name: '用户',
@@ -371,8 +420,67 @@ export async function getAstrologyContext(userInfo: UserInfo): Promise<string> {
   }
 }
 
+// 获取或生成八字数据（数据库优先）
+export async function getOrGenerateBaziData(userInfo: UserInfo, userId: string, isUserProfileId: boolean = true): Promise<any> {
+  try {
+    console.log('🔮 获取或生成八字数据:', { userId, isUserProfileId })
+    
+    // 首先尝试从数据库获取
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
+    const getResponse = await fetch(`${baseUrl}/api/bazi/get`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId: userId,
+        isUserProfileId: isUserProfileId
+      })
+    })
+
+    if (getResponse.ok) {
+      const getResult = await getResponse.json()
+      if (getResult.success && getResult.report) {
+        console.log('✅ 从数据库获取八字数据成功')
+        return getResult.report
+      }
+    }
+
+    console.log('⚠️ 数据库中无八字数据，生成新数据')
+    
+    // 如果数据库没有数据，生成新的
+    const generateResponse = await fetch(`${baseUrl}/api/bazi/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userInfo: userInfo,
+        userId: userId,
+        isUserProfileId: isUserProfileId
+      })
+    })
+
+    if (!generateResponse.ok) {
+      throw new Error('生成八字数据失败')
+    }
+
+    const generateResult = await generateResponse.json()
+    if (generateResult.success && generateResult.report) {
+      console.log('✅ 生成八字数据成功')
+      return generateResult.report.raw_payload
+    }
+
+    throw new Error('生成八字数据失败：无有效数据')
+
+  } catch (error) {
+    console.error('获取或生成八字数据失败:', error)
+    throw error
+  }
+}
+
 // 格式化完整的八字排盘提示词
-function formatAstrologyPrompt(astrologyData: any, userInfo: UserInfo): string {
+export function formatAstrologyPrompt(astrologyData: any, userInfo: UserInfo): string {
   const context = []
   
   // 调试信息

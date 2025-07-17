@@ -63,8 +63,8 @@ enum GenerationStep {
 const stepMessages = {
   [GenerationStep.IDLE]: '',
   [GenerationStep.ANALYZING]: '正在分析出生信息...',
-  [GenerationStep.GENERATING]: '正在生成性格报告...',
-  [GenerationStep.SAVING]: '正在保存报告...',
+  [GenerationStep.GENERATING]: '正在生成报告...',
+  [GenerationStep.SAVING]: '正在处理报告...',
   [GenerationStep.COMPLETED]: '报告生成完成，即将跳转...'
 }
 
@@ -124,6 +124,15 @@ export default function ProfilePage() {
       try {
         console.log('🎯 Profile页面初始化开始')
         
+        // 检查是否已经完成了profile填写，如果是则不允许访问
+        const profileCompleted = sessionStorage.getItem('profile_completed') === 'true'
+        if (profileCompleted) {
+          console.log('❌ 用户已完成profile填写，不允许再次访问')
+          message.warning('您已完成个人信息填写，正在跳转到控制台')
+          router.push('/dashboard')
+          return
+        }
+        
         // 检查是否是新增用户模式
         const isNewUserMode = sessionStorage.getItem('is_adding_new_user') === 'true'
         const verifiedCode = sessionStorage.getItem('verified_invite_code')
@@ -149,8 +158,9 @@ export default function ProfilePage() {
         // 原有的登录用户逻辑
         const loginData = localStorage.getItem('loginData')
         if (!loginData) {
+          console.log('❌ 没有登录信息，跳转主页')
           message.error('请先登录')
-          router.push('/login')
+          router.push('/')
           return
         }
 
@@ -165,8 +175,25 @@ export default function ProfilePage() {
         
         const userProfileData = parsed.user?.profile_data
 
+        // 如果用户已有完整资料，直接跳转dashboard
+        if (userProfileData && userProfileData.name && userProfileData.area && 
+            userProfileData.area.province && userProfileData.area.city && userProfileData.area.district) {
+          console.log('✅ 用户已有完整资料，直接跳转dashboard')
+          message.info('您已完成个人信息填写，正在跳转到控制台')
+          router.push('/dashboard')
+          return
+        }
+
+        // 如果没有任何用户信息，跳转主页
+        if (!parsed.user || !parsed.user.id) {
+          console.log('❌ 没有用户信息，跳转主页')
+          message.error('用户信息异常，请重新登录')
+          router.push('/')
+          return
+        }
+
         if (userProfileData) {
-          console.log('📋 发现已有用户资料，直接预填:', userProfileData)
+          console.log('📋 发现部分用户资料，预填表单:', userProfileData)
 
           // 直接使用登录时获取的用户资料预填表单
           setValue('nickname', userProfileData.name || '')
@@ -231,6 +258,8 @@ export default function ProfilePage() {
         }
       } catch (error) {
         console.error('检查登录状态失败:', error)
+        // 如果出现异常，跳转主页
+        router.push('/')
       }
     }
     
@@ -257,8 +286,12 @@ export default function ProfilePage() {
   }
 
   // 处理地区变化
-  const handleAreaChange = (value: any) => {
-    setValue('area', value, { shouldValidate: true })
+  const handleAreaChange = (value: { province?: string; city?: string; district?: string }) => {
+    setValue('area', {
+      province: value.province || '',
+      city: value.city || '',
+      district: value.district || ''
+    }, { shouldValidate: true })
   }
 
   // 农历转阳历
@@ -420,10 +453,18 @@ export default function ProfilePage() {
           // 清理标记
           sessionStorage.removeItem('verified_invite_code')
           sessionStorage.removeItem('is_adding_new_user')
+          
+          // 阻止用户回退到profile页面
+          sessionStorage.setItem('profile_completed', 'true')
+          window.history.replaceState(null, '', '/dashboard')
           router.push('/dashboard')
         } else {
           // 普通用户，跳转到dashboard页面
           message.success('信息保存成功，性格报告正在后台生成...')
+          
+          // 阻止用户回退到profile页面
+          sessionStorage.setItem('profile_completed', 'true')
+          window.history.replaceState(null, '', '/dashboard')
           router.push('/dashboard')
         }
       } else {
@@ -532,16 +573,20 @@ export default function ProfilePage() {
 
 
           {/* 出生日期时间 */}
-          <Form.Item label="出生日期时间" required>
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm text-gray-600">请选择阳历出生日期时间</span>
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700">
+                <span className="text-red-500 mr-1">*</span>
+                阳历出生日期时间
+              </label>
               <Button
                 type="link"
                 icon={<CalendarOutlined />}
                 onClick={() => setShowLunarModal(true)}
                 className="text-blue-600 hover:text-blue-700"
+                style={{ padding: 0, height: 'auto' }}
               >
-                农历转换成阳历
+                农历日期输入
               </Button>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -634,7 +679,7 @@ export default function ProfilePage() {
             {(errors.year || errors.month || errors.day || errors.hour || errors.minute) && (
               <div className="text-red-500 text-sm mt-1">请完整填写出生日期时间</div>
             )}
-          </Form.Item>
+          </div>
 
           {/* 出生地区 */}
           <Form.Item 
@@ -644,7 +689,7 @@ export default function ProfilePage() {
             required
           >
             <AreaSelector
-              value={watchedValues.area}
+              value={watchedValues.area as { province?: string; city?: string; district?: string }}
               onChange={handleAreaChange}
               placeholder="请选择出生地区"
             />
@@ -680,13 +725,13 @@ export default function ProfilePage() {
                 <div className="mb-4">
                   <LoadingOutlined style={{ fontSize: 48, color: '#1890ff' }} />
                 </div>
-                <h3 className="text-lg font-semibold mb-2">正在生成性格报告</h3>
+                <h3 className="text-lg font-semibold mb-2">AI深度分析中，道友稍后~</h3>
                 <p className="text-gray-600 mb-4">{stepMessages[generationStep]}</p>
 
                 {/* 预计等候时间提示 */}
                 <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <p className="text-blue-800 font-medium text-sm">
-                    性格报告正在生成，预计等候3分钟
+                    多份报告正在生成，预计等候3-5分钟
                   </p>
                 </div>
 
@@ -765,7 +810,7 @@ export default function ProfilePage() {
             <div className="text-xs text-gray-500 mt-4">
               <p>• 农历转阳历功能基于中国传统历法计算</p>
               <p>• 转换结果将自动填入上方的出生日期字段</p>
-              <p>• 如遇闰月等特殊情况，请咨询专业人士</p>
+              <p>• 如遇闰月等特殊情况，请咨询客服处理</p>
             </div>
           </div>
         </Modal>

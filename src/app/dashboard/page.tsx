@@ -322,6 +322,31 @@ export default function DashboardPage() {
       case 'astrology':
         return <AstrologyPage />
       case 'personality':
+        // 确保设置用户数据到localStorage，避免PersonalityPage跳转到profile
+        const currentActiveUser = activeUser || userInfo
+        if (currentActiveUser) {
+          const userData = {
+            nickname: currentActiveUser.name || currentActiveUser.nickname,
+            gender: currentActiveUser.gender === 'male' || currentActiveUser.gender === '男' ? 'male' : 'female',
+            year: currentActiveUser.year,
+            month: currentActiveUser.month,
+            day: currentActiveUser.day,
+            hour: currentActiveUser.hour,
+            minute: currentActiveUser.minute,
+            area: {
+              province: currentActiveUser.area_province || currentActiveUser.area?.province,
+              city: currentActiveUser.area_city || currentActiveUser.area?.city,
+              district: currentActiveUser.area_district || currentActiveUser.area?.district
+            }
+          }
+          // 设置userData到localStorage，确保PersonalityPage能正常加载
+          localStorage.setItem('userData', JSON.stringify(userData))
+          
+          // 如果有activeUser，也设置到localStorage
+          if (activeUser) {
+            localStorage.setItem('activeUser', JSON.stringify(activeUser))
+          }
+        }
         return <PersonalityPage />
       case 'wealth':
         return <WealthPage />

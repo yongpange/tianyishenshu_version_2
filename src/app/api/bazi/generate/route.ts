@@ -104,12 +104,19 @@ export async function POST(request: NextRequest) {
     
     console.log('✅ 八字API调用成功，数据长度:', JSON.stringify(baziData).length)
 
-    // 保存到数据库
+    // 生成格式化的八字上下文
+    console.log('🔮 生成格式化八字上下文...')
+    const { formatAstrologyPrompt } = await import('@/utils/personality-report')
+    const astrologyContext = formatAstrologyPrompt(baziData, userInfo)
+    console.log('✅ 八字上下文生成完成，长度:', astrologyContext.length)
+
+    // 保存到数据库（包含原始数据和格式化上下文）
     const { data: savedReport, error: saveError } = await supabase
       .from('bazi_reports')
       .insert({
         user_id: userId,
         raw_payload: baziData,
+        astrology_context: astrologyContext,
         user_data_hash: userDataHash,
         api_request_id: `bazi_${Date.now()}_${Math.random().toString(36).substring(7)}`
       })

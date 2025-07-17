@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { saveUserProfile, saveUserProfileToUser, createOrGetUser } from '@/lib/user-manager'
+import { supabaseAdmin } from '@/lib/supabase'
 import { UserInfo } from '@/lib/coze-client'
 
 export async function POST(request: NextRequest) {
@@ -90,9 +91,33 @@ export async function POST(request: NextRequest) {
         )
       }
      
-      console.log('🔄 普通模式：根据手机号保存')
-      profile = await saveUserProfile(phoneNumber, userInfo)
-      console.log('✅ 普通用户资料保存成功:', profile.id)
+      console.log('🔄 普通模式：检查是否已有主资料')
+      
+      // 先检查用户是否已有主资料
+      const user = await createOrGetUser(phoneNumber)
+      const { data: existingMainProfile, error: checkError } = await supabaseAdmin
+        .from('user_profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .is('parent_id', null)
+        .single()
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.error('检查主资料失败:', checkError)
+        return NextResponse.json(
+          { error: 'DATABASE_ERROR', message: '检查用户资料失败' },
+          { status: 500 }
+        )
+      }
+
+      if (existingMainProfile) {
+        console.log('✅ 用户已有主资料，直接返回现有资料:', existingMainProfile.id)
+        profile = existingMainProfile
+      } else {
+        console.log('🔄 用户没有主资料，开始保存')
+        profile = await saveUserProfile(phoneNumber, userInfo)
+        console.log('✅ 普通用户资料保存成功:', profile.id)
+      }
     }
 
     // 自动生成八字报告

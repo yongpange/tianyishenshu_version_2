@@ -1594,16 +1594,16 @@ export default function PersonalityReportPage() {
                   <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                     <span className="text-red-600 text-2xl">⚠️</span>
                   </div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">报告加载失败</h3>
-                  <p className="text-gray-600 mb-4">{reportError}</p>
-                  <div className="space-x-3">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">报告加载中</h3>
+                  {/* <p className="text-gray-600 mb-4">{reportError}</p> */}
+                  {/* <div className="space-x-3">
                     <Button type="primary" onClick={regenerateReport}>
                       重新生成
                     </Button>
                     <Button onClick={loadPersonalityReport}>
                       重试加载
                     </Button>
-                  </div>
+                  </div> */}
                 </div>
               ) : reportContent ? (
                 <div className="prose prose-gray max-w-none">

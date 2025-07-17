@@ -119,9 +119,44 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
       }, { status: 500 })
     }
 
-    // 获取八字排盘上下文信息
+    // 获取八字排盘上下文信息 - 数据库优先
     console.log('🔮 获取八字排盘数据...')
-    const astrologyContext = await getAstrologyContext(userInfo)
+    // 确定用户ID for 八字获取
+    let baziUserId: string
+    let isBaziUserProfileId = false
+
+    if (isUserProfileId) {
+      // 使用user_profiles.id
+      baziUserId = userId
+      isBaziUserProfileId = true
+    } else {
+      // 通过手机号查找user_profiles.id
+      const { data: user, error: userError } = await supabaseAdmin
+        .from('users')
+        .select('id')
+        .eq('phone_number', userId)
+        .single()
+
+      if (userError || !user) {
+        throw new Error('找不到用户信息')
+      }
+
+      const { data: userProfile, error: profileError } = await supabaseAdmin
+        .from('user_profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .is('parent_id', null)
+        .single()
+
+      if (profileError || !userProfile) {
+        throw new Error('找不到用户资料')
+      }
+
+      baziUserId = userProfile.id
+      isBaziUserProfileId = true
+    }
+
+    const astrologyContext = await getAstrologyContext(userInfo, baziUserId)
     console.log('✅ 八字排盘数据获取完成')
 
     // 生成性格报告prompt
@@ -224,7 +259,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
 
             console.log('✅ 确定用户资料ID:', userProfileId)
 
-            // 保存到Supabase
+            // 保存到Supabase（包含八字上下文）
             console.log('💾 保存性格报告到数据库...')
             const reportData = createPersonalityReport(
               userId,
@@ -232,7 +267,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
               userInfo,
               result.chat.conversation_id
             )
-            await savePersonalityReport(reportData, userProfileId)
+            await savePersonalityReportWithAstrology(reportData, userProfileId, astrologyContext)
 
             console.log('✅ 性格报告保存成功:', { 
               reportId: reportData.id, 

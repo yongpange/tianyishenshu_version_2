@@ -10,6 +10,7 @@ export interface PersonalityReport {
 
 export interface StorageAdapter {
   savePersonalityReport(userProfileId: string, report: PersonalityReport): Promise<void>
+  savePersonalityReportWithAstrology(userProfileId: string, report: PersonalityReport, astrologyContext: string): Promise<void>
   getPersonalityReport(userId: string): Promise<PersonalityReport | null>
   clearPersonalityReport(userId: string): Promise<void>
 }
@@ -26,6 +27,21 @@ export class LocalStorageAdapter implements StorageAdapter {
       localStorage.setItem(key, JSON.stringify(report))
     } catch (error) {
       console.error('保存性格报告失败:', error)
+      throw new Error('保存报告失败')
+    }
+  }
+
+  async savePersonalityReportWithAstrology(userProfileId: string, report: PersonalityReport, astrologyContext: string): Promise<void> {
+    try {
+      const key = this.getStorageKey(userProfileId)
+      // 在 LocalStorage 中，我们将八字上下文一起存储
+      const reportWithAstrology = {
+        ...report,
+        astrologyContext
+      }
+      localStorage.setItem(key, JSON.stringify(reportWithAstrology))
+    } catch (error) {
+      console.error('保存性格报告（含八字上下文）失败:', error)
       throw new Error('保存报告失败')
     }
   }
@@ -115,6 +131,48 @@ export class SupabaseAdapter implements StorageAdapter {
       }
 
       console.log('✅ 性格报告保存成功')
+    } catch (error) {
+      console.error('保存性格报告失败:', error)
+      throw new Error('保存报告失败')
+    }
+  }
+
+  // 保存性格报告（包含八字上下文）
+  async savePersonalityReportWithAstrology(userProfileId: string, report: PersonalityReport, astrologyContext: string): Promise<void> {
+    try {
+      const supabase = await this.ensureSupabase()
+
+      console.log('💾 保存性格报告（含八字上下文）:', {
+        userProfileId,
+        contentLength: report.content.length,
+        userDataHash: report.userDataHash,
+        astrologyContextLength: astrologyContext.length
+      })
+
+      // 直接使用 user_profiles.id 保存性格报告
+      const reportData = {
+        user_id: userProfileId, // 直接使用 user_profiles.id
+        content: report.content,
+        generated_at: report.generatedAt.toISOString(),
+        user_data_hash: report.userDataHash,
+        coze_conversation_id: report.cozeConversationId,
+        astrology_context: astrologyContext
+      }
+
+      // 使用 upsert 来处理插入或更新，避免唯一约束冲突
+      const { error } = await supabase
+        .from('personality_reports')
+        .upsert(reportData, {
+          onConflict: 'user_id',
+          ignoreDuplicates: false
+        })
+
+      if (error) {
+        console.error('Supabase保存报告失败:', error)
+        throw new Error('保存报告失败')
+      }
+
+      console.log('✅ 性格报告（含八字上下文）保存成功')
     } catch (error) {
       console.error('保存性格报告失败:', error)
       throw new Error('保存报告失败')

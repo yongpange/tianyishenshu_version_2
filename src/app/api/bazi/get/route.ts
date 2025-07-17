@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
       success: true,
       message: '成功获取八字报告',
       report: baziReport.raw_payload,
+      astrologyContext: baziReport.astrology_context,
       generatedAt: baziReport.generated_at,
       userDataHash: baziReport.user_data_hash
     })

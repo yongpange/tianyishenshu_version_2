@@ -83,15 +83,15 @@ export async function POST(request: NextRequest) {
     // 生成验证码
     const code = generateVerificationCode()
 
-    // 暂时不使用腾讯云发送功能，直接将验证码写入数据库
-    // const sendResult = await sendSmsCode(cleanPhone, code)
-    // 
-    // if (!sendResult) {
-    //   return NextResponse.json(
-    //     { success: false, message: '短信发送失败，请稍后重试' },
-    //     { status: 500 }
-    //   )
-    // }
+    // 发送短信
+    const sendResult = await sendSmsCode(cleanPhone, code)
+    
+    if (!sendResult) {
+      return NextResponse.json(
+        { success: false, message: '短信发送失败，请稍后重试' },
+        { status: 500 }
+      )
+    }
 
     // 存储验证码到数据库（5分钟有效期）
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString()
