@@ -115,51 +115,62 @@ export default function ProfilePage() {
 
   // 页面加载时检查登录状态并预填用户信息
   useEffect(() => {
-    try {
-      // 检查是否是新增用户模式
-      const isNewUserMode = sessionStorage.getItem('is_adding_new_user') === 'true'
-      const verifiedCode = sessionStorage.getItem('verified_invite_code')
+    let isInitialized = false
+    
+    const initializeProfile = () => {
+      if (isInitialized) return
+      isInitialized = true
       
-      if (isNewUserMode) {
-        if (!verifiedCode) {
-          message.error('请先验证兑换码')
-          router.push('/add-user/verify-code')
+      try {
+        console.log('🎯 Profile页面初始化开始')
+        
+        // 检查是否是新增用户模式
+        const isNewUserMode = sessionStorage.getItem('is_adding_new_user') === 'true'
+        const verifiedCode = sessionStorage.getItem('verified_invite_code')
+        
+        if (isNewUserMode) {
+          if (!verifiedCode) {
+            message.error('请先验证兑换码')
+            router.push('/add-user/verify-code')
+            return
+          }
+          setIsAddingNewUser(true)
+          setInviteCode(verifiedCode)
+          
+          // 新增用户模式，重置表单为空白状态
+          setValue('nickname', '')
+          setValue('gender', '男' as '男' | '女')
+          setValue('area', { province: '', city: '', district: '' })
+          
+          message.info('新增用户模式：请填写用户信息')
           return
         }
-        setIsAddingNewUser(true)
-        setInviteCode(verifiedCode)
         
-        // 新增用户模式，重置表单为空白状态
-        setValue('nickname', '')
-        setValue('gender', '男' as '男' | '女')
-        setValue('area', { province: '', city: '', district: '' })
+        // 原有的登录用户逻辑
+        const loginData = localStorage.getItem('loginData')
+        if (!loginData) {
+          message.error('请先登录')
+          router.push('/login')
+          return
+        }
+
+        // 检查登录数据中是否包含用户资料
+        const parsed = JSON.parse(loginData)
+        console.log('🔍 登录数据解析结果:', {
+          hasUser: !!parsed.user,
+          hasProfileData: !!parsed.user?.profile_data,
+          redirectTo: parsed.user?.redirect_to,
+          user: parsed.user
+        })
         
-        message.info('新增用户模式：请填写用户信息')
-        return
-      }
-      
-      // 原有的登录用户逻辑
-      const loginData = localStorage.getItem('loginData')
-      if (!loginData) {
-        message.error('请先登录')
-        router.push('/login')
-        return
-      }
+        const userProfileData = parsed.user?.profile_data
 
-      // 检查登录数据中是否包含用户资料
-      const parsed = JSON.parse(loginData)
-      const userProfileData = parsed.user?.profile_data
+        if (userProfileData) {
+          console.log('📋 发现已有用户资料，直接预填:', userProfileData)
 
-      if (userProfileData) {
-        console.log('📋 发现已有用户资料，询问是否预填:', userProfileData)
-
-        // 询问用户是否使用已有资料
-        const useExistingData = confirm('检测到您已有资料信息，是否使用已有资料预填表单？\n点击"确定"使用已有资料，点击"取消"重新填写。')
-
-        if (useExistingData) {
-          // 使用登录时获取的用户资料预填表单
+          // 直接使用登录时获取的用户资料预填表单
           setValue('nickname', userProfileData.name || '')
-          setValue('gender', userProfileData.gender === 'male' ? '男' : userProfileData.gender === 'female' ? '女' : undefined)
+          setValue('gender', userProfileData.gender === 'male' ? '男' : userProfileData.gender === 'female' ? '女' : '男')
           setValue('year', userProfileData.year || 2000)
           setValue('month', userProfileData.month || 1)
           setValue('day', userProfileData.day || 1)
@@ -176,46 +187,57 @@ export default function ProfilePage() {
 
           message.info('已加载您的资料信息')
         } else {
-          // 用户选择重新填写，清理localStorage并使用默认值
-          localStorage.removeItem('userData')
-          message.info('已清空表单，请重新填写资料')
-        }
-      } else {
-        // 如果登录数据中没有资料，检查是否有localStorage数据
-        const savedData = localStorage.getItem('userData')
-        if (savedData) {
-          try {
-            const userData = JSON.parse(savedData)
-            console.log('📋 发现localStorage中的数据，询问是否使用:', userData)
+          // 如果登录数据中没有资料，检查是否有localStorage数据
+          const savedData = localStorage.getItem('userData')
+          if (savedData) {
+            try {
+              const userData = JSON.parse(savedData)
+              console.log('📋 发现localStorage中的数据，询问是否使用:', userData)
 
-            // 询问用户是否使用localStorage中的数据
-            const useLocalData = confirm('检测到本地保存的填写记录，是否继续使用？\n点击"确定"继续填写，点击"取消"重新开始。')
-
-            if (useLocalData) {
-              // 填充表单
-              Object.keys(userData).forEach(key => {
-                if (userData[key] !== undefined) {
-                  setValue(key as keyof ProfileFormData, userData[key])
-                }
-              })
+                             // 直接使用localStorage中的数据，安全地设置表单值
+               if (userData.nickname && typeof userData.nickname === 'string') {
+                 setValue('nickname', userData.nickname)
+               }
+               if (userData.gender && (userData.gender === '男' || userData.gender === '女')) {
+                 setValue('gender', userData.gender)
+               }
+               if (userData.year && typeof userData.year === 'number') {
+                 setValue('year', userData.year)
+               }
+               if (userData.month && typeof userData.month === 'number') {
+                 setValue('month', userData.month)
+               }
+               if (userData.day && typeof userData.day === 'number') {
+                 setValue('day', userData.day)
+               }
+               if (userData.hour && typeof userData.hour === 'number') {
+                 setValue('hour', userData.hour)
+               }
+               if (userData.minute && typeof userData.minute === 'number') {
+                 setValue('minute', userData.minute)
+               }
+               if (userData.area && typeof userData.area === 'object') {
+                 setValue('area', userData.area as { province: string; city: string; district: string })
+               }
               message.info('已恢复您的填写记录')
-            } else {
-              // 清理localStorage
+            } catch (error) {
+              console.error('加载保存的数据失败:', error)
               localStorage.removeItem('userData')
-              message.info('已清空本地记录，请重新填写')
             }
-          } catch (error) {
-            console.error('加载保存的数据失败:', error)
-            localStorage.removeItem('userData')
+          } else {
+            console.log('📋 没有发现已有数据，使用默认值')
+            console.log('💡 提示：如果您已有个人信息但被重定向到此页面，请检查数据库中的 user_profiles 表')
           }
-        } else {
-          console.log('📋 没有发现已有数据，使用默认值')
         }
+      } catch (error) {
+        console.error('检查登录状态失败:', error)
       }
-    } catch (error) {
-      console.error('检查登录状态失败:', error)
     }
-  }, [router, setValue])
+    
+    // 延迟执行避免重复初始化
+    const timer = setTimeout(initializeProfile, 100)
+    return () => clearTimeout(timer)
+  }, [])
 
   // 获取当前登录用户信息
   const getCurrentUser = (): { phoneNumber: string; userId?: string } | null => {

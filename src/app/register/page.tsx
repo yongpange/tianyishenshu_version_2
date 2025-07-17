@@ -9,6 +9,49 @@ interface WechatQRModalProps {
   onClose: () => void
 }
 
+interface PhoneExistsDialogProps {
+  isOpen: boolean
+  onClose: () => void
+  phoneNumber: string
+  onGoToLogin: () => void
+  onReenterPhone: () => void
+}
+
+function PhoneExistsDialog({ isOpen, onClose, phoneNumber, onGoToLogin, onReenterPhone }: PhoneExistsDialogProps) {
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-8 max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+        <div className="text-center">
+          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="text-blue-600 text-2xl">📱</div>
+          </div>
+          <h3 className="text-xl font-bold text-gray-900 mb-2">手机号已注册</h3>
+          <p className="text-gray-600 text-sm mb-6">
+            手机号 {phoneNumber} 已注册天乙神算账户<br />
+            您可以直接登录或重新输入手机号
+          </p>
+          <div className="space-y-3">
+            <button
+              onClick={onGoToLogin}
+              className="w-full py-3 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors"
+            >
+              直接登录
+            </button>
+            <button
+              onClick={onReenterPhone}
+              className="w-full py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              重新输入手机号
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function WechatQRModal({ isOpen, onClose }: WechatQRModalProps) {
   if (!isOpen) return null
 
@@ -83,10 +126,12 @@ export default function RegisterPage() {
   const [phoneNumber, setPhoneNumber] = useState('')
   const [smsCode, setSmsCode] = useState('')
   const [inviteCode, setInviteCode] = useState('')
+  const [inviteCodeMessage, setInviteCodeMessage] = useState('')
   const [rememberMe, setRememberMe] = useState(false)
   const [countdown, setCountdown] = useState(0)
   const [loading, setLoading] = useState(false)
   const [showWechatModal, setShowWechatModal] = useState(false)
+  const [showPhoneExistsDialog, setShowPhoneExistsDialog] = useState(false)
 
   // 从URL参数中获取手机号
   useEffect(() => {
@@ -126,12 +171,9 @@ export default function RegisterPage() {
 
       const checkResult = await checkResponse.json()
 
-      // 如果手机号已注册，提示用户并询问是否跳转到登录页
-      if (checkResult.exists) {
-        const confirmLogin = confirm('该手机号已注册，是否跳转到登录页面？')
-        if (confirmLogin) {
-          window.location.href = '/login'
-        }
+      // 如果手机号已注册并且已使用兑换码，显示选择dialog
+      if (checkResult.exists && checkResult.user?.invite_code_used) {
+        setShowPhoneExistsDialog(true)
         return
       }
 
@@ -144,7 +186,6 @@ export default function RegisterPage() {
 
       if (response.ok) {
         setCountdown(60)
-        alert('验证码已发送')
       } else {
         throw new Error('发送失败')
       }
@@ -165,11 +206,82 @@ export default function RegisterPage() {
     const upperValue = value.toUpperCase().replace(/[^A-Z0-9]/g, '')
     if (upperValue.length <= 16) {
       setInviteCode(upperValue)
+      // 清空提示信息
+      setInviteCodeMessage('')
     }
+  }
+
+  // 验证兑换码
+  const verifyInviteCode = async (code: string) => {
+    if (!code || code.length !== 16) {
+      return false
+    }
+
+    try {
+      const response = await fetch('/api/invite-code/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+      })
+
+      return response.ok
+    } catch (error) {
+      console.error('验证兑换码失败:', error)
+      return false
+    }
+  }
+
+
+
+  // 判断是否可以注册
+  const canRegister = () => {
+    // 严格检查手机号
+    const validPhone = phoneNumber && 
+                      typeof phoneNumber === 'string' && 
+                      phoneNumber.trim().length === 11 && 
+                      /^1[3-9]\d{9}$/.test(phoneNumber.trim())
+    
+    // 严格检查验证码
+    const validSms = smsCode && 
+                    typeof smsCode === 'string' && 
+                    smsCode.trim().length === 6 && 
+                    /^\d{6}$/.test(smsCode.trim())
+    
+    // 严格检查兑换码（只检查格式）
+    const validInvite = inviteCode && 
+                       typeof inviteCode === 'string' && 
+                       inviteCode.trim().length === 16 && 
+                       /^[A-Z0-9]{16}$/.test(inviteCode.trim())
+    
+    return validPhone && validSms && validInvite && loading === false
+  }
+
+  // 判断是否可以添加客服微信
+  const canAddCustomerService = () => {
+    return (!inviteCode || inviteCode.length !== 16) && !loading
+  }
+
+  // 处理跳转到登录页面
+  const handleGoToLogin = () => {
+    window.location.href = `/login?phone=${phoneNumber}&autoSend=true`
+  }
+
+  // 处理重新输入手机号
+  const handleReenterPhone = () => {
+    setPhoneNumber('')
+    setSmsCode('')
+    setCountdown(0)
+    setShowPhoneExistsDialog(false)
   }
 
   // 提交注册
   const handleRegister = async () => {
+    // 额外安全检查
+    if (!canRegister()) {
+      alert('请完成所有必填信息并确保兑换码有效')
+      return
+    }
+    
     if (!phoneNumber || !smsCode || !inviteCode) {
       alert('请填写完整信息')
       return
@@ -187,6 +299,17 @@ export default function RegisterPage() {
 
     try {
       setLoading(true)
+      
+      // 先验证兑换码
+      const isValidInviteCode = await verifyInviteCode(inviteCode)
+      if (!isValidInviteCode) {
+        setInviteCodeMessage('兑换码无效或已被使用')
+        setLoading(false)
+        return
+      }
+      
+
+      
       // 验证短信验证码和兑换码
       const response = await fetch('/api/auth/register', {
         method: 'POST',
@@ -199,21 +322,34 @@ export default function RegisterPage() {
       })
 
       if (response.ok) {
+        const result = await response.json()
+        
         // 保存手机号到localStorage
         const loginData = {
           phoneNumber,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          user: result.user
         }
         localStorage.setItem('loginData', JSON.stringify(loginData))
 
-        alert('注册成功!')
         // 确保注册用户明确设置 isAddingNewUser 为 false
         sessionStorage.setItem('is_adding_new_user', 'false')
-        // 跳转到信息填写页面
-        window.location.href = '/profile'
+        
+        // 根据API返回的跳转指示决定跳转（保持一致性）
+        const redirectTo = result.user?.redirect_to || 'profile'
+        if (redirectTo === 'dashboard') {
+          window.location.href = '/dashboard'
+        } else {
+          // 跳转到信息填写页面
+          window.location.href = '/profile'
+        }
       } else {
         const error = await response.json()
-        alert(error.message || '注册失败')
+        if (error.error === 'PHONE_ALREADY_REGISTERED') {
+          setShowPhoneExistsDialog(true)
+        } else {
+          alert(error.message || '注册失败')
+        }
       }
     } catch (error) {
       alert('注册失败，请重试')
@@ -330,31 +466,41 @@ export default function RegisterPage() {
           <p className="text-sm text-gray-600 mb-4">请输入兑换码</p>
 
           <div className="mb-4">
-            <input
-              type="text"
-              value={inviteCode}
-              onChange={(e) => handleInviteCodeChange(e.target.value)}
-              placeholder="2406AB8F9E2D4C7K"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-center tracking-wider"
-              maxLength={16}
-            />
+            <div className="relative">
+              <input
+                type="text"
+                value={inviteCode}
+                onChange={(e) => handleInviteCodeChange(e.target.value)}
+                placeholder="2406AB8F9E2D4C7K"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-center tracking-wider"
+                maxLength={16}
+              />
+            </div>
             <div className="flex justify-between items-center mt-2">
               <span className="text-xs text-gray-500">
-                {inviteCode.length}/16 {validateInviteCode(inviteCode) ? '✓' : ''}
+                {inviteCode.length}/16
               </span>
               <button
                 onClick={() => setShowWechatModal(true)}
-                className="text-xs text-blue-600 hover:text-blue-700"
+                disabled={!canAddCustomerService()}
+                className="text-xs text-blue-600 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 没有兑换码？联系客服
               </button>
             </div>
+            {/* 兑换码验证提示信息 */}
+            {inviteCodeMessage && (
+              <div className="text-xs mt-2 text-red-500">
+                {inviteCodeMessage}
+              </div>
+            )}
           </div>
 
           {/* WeChat Service Button */}
           <button
             onClick={() => setShowWechatModal(true)}
-            className="w-full py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors mb-4"
+            disabled={!canAddCustomerService()}
+            className="w-full py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors mb-4"
           >
             添加客服微信
           </button>
@@ -362,7 +508,7 @@ export default function RegisterPage() {
           {/* Register Button */}
           <button
             onClick={handleRegister}
-            disabled={loading}
+            disabled={!canRegister()}
             className="w-full py-3 bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {loading ? '注册中...' : '步入玄境'}
@@ -398,6 +544,15 @@ export default function RegisterPage() {
       <WechatQRModal
         isOpen={showWechatModal}
         onClose={() => setShowWechatModal(false)}
+      />
+
+      {/* Phone Exists Dialog */}
+      <PhoneExistsDialog
+        isOpen={showPhoneExistsDialog}
+        onClose={() => setShowPhoneExistsDialog(false)}
+        phoneNumber={phoneNumber}
+        onGoToLogin={handleGoToLogin}
+        onReenterPhone={handleReenterPhone}
       />
     </div>
   )

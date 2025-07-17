@@ -3,15 +3,25 @@
 -- 手机号 → users.phone_number → users.id → user_profiles.user_id → user_profiles.id → conversations.user_id
 -- 手机号 → users.phone_number → users.id → user_profiles.user_id → user_profiles.id → invite_codes.used_by
 -- 创建用户表
-CREATE TABLE users (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  phone_number VARCHAR(20) UNIQUE NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  -- 验证码存储迁入user_profiles表
-  -- invite_code_used VARCHAR(50),
-  permissions TEXT [] DEFAULT ARRAY ['basic']
-);
+create table public.users (
+  id uuid not null default gen_random_uuid (),
+  phone_number character varying(20) not null,
+  created_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null default now(),
+  invite_code_used character varying(50) null,
+  permissions text [] null default array ['basic'::text],
+  is_profile_completed boolean null default false,
+  last_login timestamp with time zone null,
+  latest_verification_code character varying(10) null,
+  verification_code_expires_at timestamp with time zone null,
+  constraint users_pkey primary key (id),
+  constraint users_phone_number_key unique (phone_number)
+) TABLESPACE pg_default;
+create index IF not exists idx_users_phone on public.users using btree (phone_number) TABLESPACE pg_default;
+create index IF not exists idx_users_verification_code on public.users using btree (latest_verification_code) TABLESPACE pg_default;
+create index IF not exists idx_users_verification_expires on public.users using btree (verification_code_expires_at) TABLESPACE pg_default;
+create trigger update_users_updated_at BEFORE
+update on users for EACH row execute FUNCTION update_updated_at_column ();
 -- 创建用户资料表
 create table public.user_profiles (
   id uuid not null default gen_random_uuid (),

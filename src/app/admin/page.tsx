@@ -89,8 +89,8 @@ export default function AdminLogin() {
         </Form>
 
         <div className="mt-6 text-center text-sm text-gray-500">
-          <p>默认账号：admin</p>
-          <p>默认密码：tianyishenshu2024</p>
+          {/* <p>默认账号：admin</p>
+          <p>默认密码：tianyishenshu2024</p> */}
         </div>
       </Card>
     </div>

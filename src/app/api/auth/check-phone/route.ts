@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     // 检查手机号是否已注册
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, phone_number, is_profile_completed')
+      .select('id, phone_number, is_profile_completed, invite_code_used')
       .eq('phone_number', cleanPhone)
       .single()
 
@@ -57,7 +57,8 @@ export async function POST(request: NextRequest) {
       user: {
         id: user.id,
         phone: user.phone_number,
-        is_profile_completed: user.is_profile_completed
+        is_profile_completed: user.is_profile_completed,
+        invite_code_used: user.invite_code_used
       }
     })
 

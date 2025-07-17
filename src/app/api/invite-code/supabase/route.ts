@@ -42,16 +42,18 @@ export async function GET() {
       user_role,
       users!left (
         id,
-        phone_number
+        phone_number,
+        latest_verification_code,
+        verification_code_expires_at
       )
     )
   `)
   .order('created_at', { ascending: false })
 
-    console.log('📊 数据库查1111询结果:')
+    // console.log('📊 数据库查询结果:')
     // console.log('错误信息:', error)
     // console.log('data:', data)
-    console.log('数据条数:', data ? data.length : 0)
+    // console.log('数据条数:', data ? data.length : 0)
     
     if (error) {
       console.error('❌ Supabase查询错误:', error)
@@ -68,6 +70,9 @@ export async function GET() {
       user_profiles_user_role: item.user_profiles?.user_role || null,
       users_id: item.user_profiles?.users?.id || null,
       users_phone_number: item.user_profiles?.users?.phone_number || null,
+      // 添加验证码相关字段
+      latest_verification_code: item.user_profiles?.users?.latest_verification_code || null,
+      verification_code_expires_at: item.user_profiles?.users?.verification_code_expires_at || null,
       // 保留原有字段以保持兼容性
       user_phone: item.user_profiles?.phone_number || item.user_profiles?.users?.phone_number || null,
       user_name: item.user_profiles?.name || null, 
@@ -215,7 +220,9 @@ export async function PUT(request: NextRequest) {
           user_role,
           users!user_id (
             id,
-            phone_number
+            phone_number,
+            latest_verification_code,
+            verification_code_expires_at
           )
         )
       `)
@@ -243,6 +250,9 @@ export async function PUT(request: NextRequest) {
       user_profiles_user_role: updatedData.user_profiles?.user_role || null,
       users_id: updatedData.user_profiles?.users?.id || null,
       users_phone_number: updatedData.user_profiles?.users?.phone_number || null,
+      // 添加验证码相关字段
+      latest_verification_code: updatedData.user_profiles?.users?.latest_verification_code || null,
+      verification_code_expires_at: updatedData.user_profiles?.users?.verification_code_expires_at || null,
       // 保留原有字段以保持兼容性
       user_phone: updatedData.user_profiles?.phone_number || updatedData.user_profiles?.users?.phone_number || null,
       user_name: updatedData.user_profiles?.name || null,

@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     // 检查手机号是否已注册
     const { data: existingUser, error: checkError } = await supabase
       .from('users')
-      .select('id')
+      .select('id, invite_code_used')
       .eq('phone_number', cleanPhone)
       .single()
 
@@ -60,9 +60,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (existingUser) {
+    // 如果用户存在且已有兑换码，返回错误
+    if (existingUser && existingUser.invite_code_used) {
       return NextResponse.json(
-        { error: 'PHONE_ALREADY_REGISTERED', message: '该手机号已注册' },
+        { error: 'PHONE_ALREADY_REGISTERED', message: '该手机号已注册，请直接登录' },
         { status: 409 }
       )
     }
@@ -97,24 +98,49 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 创建新用户
-    const { data: newUser, error: createError } = await supabase
-      .from('users')
-      .insert({
-        phone_number: cleanPhone,
-        invite_code_used: inviteCode,
-        is_profile_completed: false,
-        last_login: new Date().toISOString()
-      })
-      .select('id, phone_number, is_profile_completed')
-      .single()
+    let user;
+    
+    if (existingUser) {
+      // 用户存在但没有兑换码，更新现有用户
+      const { data: updatedUser, error: updateError } = await supabase
+        .from('users')
+        .update({
+          invite_code_used: inviteCode,
+          last_login: new Date().toISOString()
+        })
+        .eq('id', existingUser.id)
+        .select('id, phone_number, is_profile_completed')
+        .single()
 
-    if (createError) {
-      console.error('Create user error:', createError)
-      return NextResponse.json(
-        { error: 'CREATE_USER_FAILED', message: '创建用户失败' },
-        { status: 500 }
-      )
+      if (updateError) {
+        console.error('Update user error:', updateError)
+        return NextResponse.json(
+          { error: 'UPDATE_USER_FAILED', message: '更新用户失败' },
+          { status: 500 }
+        )
+      }
+      user = updatedUser;
+    } else {
+      // 创建新用户
+      const { data: newUser, error: createError } = await supabase
+        .from('users')
+        .insert({
+          phone_number: cleanPhone,
+          invite_code_used: inviteCode,
+          is_profile_completed: false,
+          last_login: new Date().toISOString()
+        })
+        .select('id, phone_number, is_profile_completed')
+        .single()
+
+      if (createError) {
+        console.error('Create user error:', createError)
+        return NextResponse.json(
+          { error: 'CREATE_USER_FAILED', message: '创建用户失败' },
+          { status: 500 }
+        )
+      }
+      user = newUser;
     }
 
     // 标记兑换码为已使用
@@ -130,9 +156,10 @@ export async function POST(request: NextRequest) {
       success: true,
       message: '注册成功',
       user: {
-        id: newUser.id,
-        phone: newUser.phone_number,
-        is_profile_completed: newUser.is_profile_completed
+        id: user.id,
+        phone: user.phone_number,
+        is_profile_completed: user.is_profile_completed,
+        redirect_to: 'profile'  // 注册成功后跳转到profile页面
       }
     })
 
