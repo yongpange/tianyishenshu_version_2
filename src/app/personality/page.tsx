@@ -33,7 +33,8 @@ import {
   PushpinFilled,
   CopyOutlined,
   CheckOutlined,
-  DownOutlined
+  DownOutlined,
+  ArrowUpOutlined
 } from '@ant-design/icons'
 import {
   getUserPhoneNumber,
@@ -42,7 +43,6 @@ import {
   getActiveUser
 } from '@/utils/client-utils'
 import { getUserConversations, saveConversation, deleteConversationFromSupabase } from '@/lib/user-manager'
-import { generateConversationTitle } from '@/utils/textrank'
 
 const { TextArea } = Input
 const { Title, Text, Paragraph } = Typography
@@ -62,6 +62,8 @@ interface ConversationHistory {
   cozeConversationId?: string // Coze对话ID，用于保持对话连续性
   isPinned?: boolean // 是否置顶
   isManualTitle?: boolean // 是否为用户手动设置的标题
+  moduleType?: string // 模块类型
+  dbConversationId?: string // 数据库中的对话ID
 }
 
 // 内容类型枚举
@@ -74,6 +76,15 @@ export default function PersonalityReportPage() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [currentMessage, setCurrentMessage] = useState('')
   const [loading, setLoading] = useState(false)
+  const [isTyping, setIsTyping] = useState(false) // AI正在回复的状态
+  // const [canAbort, setCanAbort] = useState(false) // 是否可以中断请求
+  // const [abortController, setAbortController] = useState<AbortController | null>(null)
+  
+  // 流式响应相关状态（用于暂停时保存内容）
+  const [currentStreamingContent, setCurrentStreamingContent] = useState<string>('')
+  const [currentBotMessageId, setCurrentBotMessageId] = useState<string | null>(null)
+  const [currentDbConversationId, setCurrentDbConversationId] = useState<string | null>(null)
+
   const [drawerVisible, setDrawerVisible] = useState(false)
   const [reportContent, setReportContent] = useState<string | null>(null)
   const [reportLoading, setReportLoading] = useState(true)
@@ -88,6 +99,9 @@ export default function PersonalityReportPage() {
 
   // 新增状态：中间聊天记录区域的显示/隐藏
   const [chatHistoryVisible, setChatHistoryVisible] = useState(true)
+  
+  // 对话历史加载状态
+  const [conversationsLoading, setConversationsLoading] = useState(true)
 
   // 智能滚动状态
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true)
@@ -441,12 +455,56 @@ export default function PersonalityReportPage() {
     if (!reportContent) return
 
     try {
-      await navigator.clipboard.writeText(reportContent)
-      setCopied(true)
-      message.success('报告已复制到剪贴板')
-      setTimeout(() => setCopied(false), 2000)
+      // 优先尝试现代 clipboard API
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(reportContent)
+        setCopied(true)
+        message.success('报告已复制到剪贴板')
+        setTimeout(() => setCopied(false), 2000)
+        return
+      }
+
+      // 备用方案：使用 textArea 元素
+      const textArea = document.createElement('textarea')
+      textArea.value = reportContent
+      textArea.style.position = 'fixed'
+      textArea.style.left = '-999999px'
+      textArea.style.top = '-999999px'
+      document.body.appendChild(textArea)
+      textArea.focus()
+      textArea.select()
+      
+      const successful = document.execCommand('copy')
+      document.body.removeChild(textArea)
+      
+      if (successful) {
+        setCopied(true)
+        message.success('报告已复制到剪贴板')
+        setTimeout(() => setCopied(false), 2000)
+      } else {
+        throw new Error('execCommand copy failed')
+      }
     } catch (error) {
-      message.error('复制失败，请手动选择文本复制')
+      console.error('❌ 复制失败:', error)
+      
+      // 最后的备用方案：显示选择提示
+      Modal.info({
+        title: '复制报告内容',
+        content: (
+          <div>
+            <p>自动复制失败，请手动复制以下内容：</p>
+            <TextArea
+              value={reportContent}
+              readOnly
+              autoSize={{ minRows: 10, maxRows: 20 }}
+              style={{ marginTop: 8 }}
+              onFocus={(e) => e.target.select()}
+            />
+          </div>
+        ),
+        width: 600,
+        okText: '关闭'
+      })
     }
   }
 
@@ -540,43 +598,96 @@ export default function PersonalityReportPage() {
   // 加载对话历史
   const loadConversations = async () => {
     try {
-      // 优先使用当前激活用户的手机号
+      setConversationsLoading(true) // 开始加载
+      
+      // 获取当前激活用户的资料ID
       const activeUser = getActiveUser()
-      let userId: string | null = null
+      let userProfileId: string | null = null
       
-      if (activeUser) {
-        // 如果有激活用户，使用激活用户的手机号
-        userId = activeUser.phone_number
-        console.log('📋 使用激活用户的手机号加载对话历史:', userId)
+      if (activeUser && activeUser.id) {
+        userProfileId = activeUser.id
+        console.log('📋 使用激活用户的user_profiles.id加载对话历史:', userProfileId)
       } else {
-        // 备用方案：使用主用户的手机号
-        userId = getUserPhoneNumber()
-        console.log('📋 使用主用户的手机号加载对话历史:', userId)
+        console.warn('⚠️ 无法获取用户资料ID，跳过对话历史加载')
+        setConversationsLoading(false)
+        return
       }
-      
-      if (!userId) return
 
-      // 尝试从Supabase加载对话历史
-      let supabaseConversations: any[] = []
+      // 从数据库加载对话列表
+      const conversationsResponse = await fetch('/api/conversations/list', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userProfileId: userProfileId,
+          moduleType: 'personality'
+        })
+      })
+
+      const conversationsResult = await conversationsResponse.json()
+
+      if (!conversationsResult.success) {
+        throw new Error(conversationsResult.message || '获取对话列表失败')
+      }
+
+      const dbConversations = conversationsResult.conversations || []
+      console.log('📋 从数据库获取到对话:', dbConversations.length, '个')
+
+      // 转换为前端格式并加载每个对话的完整消息
+      const formattedConversations = await Promise.all(
+        dbConversations.map(async (dbConv: any) => {
+          // 获取该对话的所有消息
+          const messagesResponse = await fetch('/api/messages/list', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              conversationId: dbConv.id
+            })
+          })
+
+          const messagesResult = await messagesResponse.json()
+          
+          let chatMessages: ChatMessage[] = []
+          if (messagesResult.success && messagesResult.messages) {
+            chatMessages = messagesResult.messages.map((dbMsg: any) => ({
+              id: dbMsg.metadata?.frontend_id || dbMsg.id,
+              type: dbMsg.role === 'user' ? 'user' : 'bot',
+              content: dbMsg.content,
+              timestamp: new Date(dbMsg.created_at)
+            }))
+          }
+
+          return {
+            id: `frontend_${dbConv.id}`, // 前端临时ID
+            dbConversationId: dbConv.id, // 数据库ID
+            title: dbConv.title,
+            messages: chatMessages,
+            createdAt: new Date(dbConv.created_at),
+            cozeConversationId: dbConv.coze_conversation_id,
+            isPinned: dbConv.is_pinned,
+            isManualTitle: dbConv.is_manual_title,
+            moduleType: dbConv.module_type
+          }
+        })
+      )
+
+      setConversations(formattedConversations)
+      
+      // 注释掉自动激活第一个对话，让用户看到欢迎界面
+      // if (formattedConversations.length > 0) {
+      //   setActiveConversationId(formattedConversations[0].id)
+      // }
+
+      console.log('✅ 对话历史加载成功:', formattedConversations.length, '个对话')
+
+    } catch (error) {
+      console.error('❌ 从数据库加载对话历史失败:', error)
+      
+      // 降级到localStorage
       try {
-        supabaseConversations = await getUserConversations(userId)
-      } catch (error) {
-        console.warn('⚠️ 从Supabase加载对话历史失败，使用本地存储:', error)
-      }
-
-      if (supabaseConversations.length > 0) {
-        const formattedConversations = supabaseConversations.map((conv: any) => ({
-          ...conv,
-          createdAt: new Date(conv.created_at),
-          messages: conv.messages.map((msg: any) => ({
-            ...msg,
-            timestamp: new Date(msg.timestamp)
-          }))
-        }))
-        setConversations(formattedConversations)
-        setActiveConversationId(formattedConversations[0].id)
-      } else {
-        // 如果Supabase没有数据，尝试从localStorage加载
         const savedConversations = localStorage.getItem('personality_conversations')
         if (savedConversations) {
           const conversations = JSON.parse(savedConversations)
@@ -589,30 +700,17 @@ export default function PersonalityReportPage() {
             }))
           }))
           setConversations(fixedConversations)
-          if (fixedConversations.length > 0) {
-            setActiveConversationId(fixedConversations[0].id)
-          }
+          // 注释掉自动激活第一个对话，让用户看到欢迎界面
+          // if (fixedConversations.length > 0) {
+          //   setActiveConversationId(fixedConversations[0].id)
+          // }
+          console.log('📋 从本地存储加载对话历史:', fixedConversations.length, '个对话')
         }
+      } catch (localError) {
+        console.error('❌ 从本地存储加载对话历史也失败:', localError)
       }
-    } catch (error) {
-      console.error('加载对话历史失败:', error)
-      // 降级到localStorage
-      const savedConversations = localStorage.getItem('personality_conversations')
-      if (savedConversations) {
-        const conversations = JSON.parse(savedConversations)
-        const fixedConversations = conversations.map((conv: any) => ({
-          ...conv,
-          createdAt: new Date(conv.createdAt),
-          messages: conv.messages.map((msg: any) => ({
-            ...msg,
-            timestamp: new Date(msg.timestamp)
-          }))
-        }))
-        setConversations(fixedConversations)
-        if (fixedConversations.length > 0) {
-          setActiveConversationId(fixedConversations[0].id)
-        }
-      }
+    } finally {
+      setConversationsLoading(false) // 加载完成
     }
   }
 
@@ -702,6 +800,7 @@ export default function PersonalityReportPage() {
       setReportLoading(true)
       setReportError(null)
       setIsGenerating(false)
+      setConversationsLoading(true) // 重置对话历史加载状态
       
       // 停止当前轮询
       stopPolling()
@@ -752,63 +851,26 @@ export default function PersonalityReportPage() {
     message.info('功能开发中，敬请期待')
   }
 
-  // 创建新对话
+  // 重置聊天界面 - 不创建新对话，只刷新到初始状态
   const createNewConversation = async () => {
-    console.log('🆕 创建新对话...')
+    console.log('🔄 重置聊天界面到初始状态...')
 
     if (!userInfo) {
-      console.warn('⚠️ 用户信息缺失，无法创建对话')
+      console.warn('⚠️ 用户信息缺失，无法开启对话')
       alert('请先完善个人信息后再开始对话')
       return
     }
 
-    const newConversation: ConversationHistory = {
-      id: Date.now().toString(),
-      title: '新对话',
-      messages: [],
-      createdAt: new Date()
-    }
+    // 重置为初始状态：清除活跃对话ID，显示欢迎界面
+    setActiveConversationId(null)
+    setCurrentContent('chat') // 确保切换到聊天界面
 
-    // 创建欢迎消息，说明AI已了解用户基本情况
-    const welcomeMessage: ChatMessage = {
-      id: (Date.now() + 1).toString(),
-      type: 'bot',
-      content: `您好 ${userInfo.nickname}！我已了解您的基本信息：\n\n📅 出生时间：${userInfo.year}年${userInfo.month}月${userInfo.day}日 ${userInfo.hour}:${String(userInfo.minute).padStart(2, '0')}\n📍 出生地点：${formatAreaDisplay(userInfo.area)}\n👤 性别：${userInfo.gender === 'male' ? '男' : '女'}\n\n我将基于这些信息为您提供专业的命理分析和人生指导。请问您想了解什么方面的内容呢？`,
-      timestamp: new Date()
-    }
-
-    // 将欢迎消息添加到新对话中
-    newConversation.messages = [welcomeMessage]
-
-    const updatedConversations = [newConversation, ...conversations]
-    setConversations(updatedConversations)
-    setActiveConversationId(newConversation.id)
-
-    console.log('✅ 新对话已创建:', newConversation)
-    console.log('📋 更新后的对话列表:', updatedConversations)
-    console.log('🎯 活跃对话ID设置为:', newConversation.id)
-
-    // 确保切换到聊天界面
-    setCurrentContent('chat')
-
-    // 保存到本地存储
-    localStorage.setItem('personality_conversations', JSON.stringify(updatedConversations))
-
-    // 保存到Supabase（重新启用）
-    try {
-      const userId = getUserPhoneNumber()
-      if (userId) {
-        await saveConversation(userId, newConversation)
-        console.log('✅ 新对话已保存到Supabase')
-      }
-    } catch (error) {
-      console.warn('⚠️ 保存新对话到Supabase失败，但不影响聊天功能:', error)
-    }
+    console.log('✅ 聊天界面已重置为初始状态')
   }
 
-  // 更新对话标题（使用TextRank算法）
-  const updateConversationTitle = (conversationId: string, messages: ChatMessage[], currentConversations: ConversationHistory[]) => {
-    if (messages.length >= 2) { // 至少有一轮对话才更新标题
+  // 更新对话标题（使用用户第一个提问内容）
+  const updateConversationTitle = async (conversationId: string, messages: ChatMessage[], currentConversations: ConversationHistory[]) => {
+    if (messages.length >= 1) { // 有用户消息就更新标题
       // 检查是否为用户手动设置的标题，如果是则不自动更新
       const currentConv = currentConversations.find(conv => conv.id === conversationId)
       if (currentConv?.isManualTitle) {
@@ -816,8 +878,26 @@ export default function PersonalityReportPage() {
         return
       }
 
-      const title = generateConversationTitle(messages)
+      // 检查是否已经是用户第一个问题了，避免重复更新
+      if (currentConv?.title && currentConv.title !== '新对话') {
+        console.log('🏷️ 标题已设置，跳过更新:', currentConv.title)
+        return
+      }
 
+      // 找到第一个用户消息作为标题
+      const firstUserMessage = messages.find(msg => msg.type === 'user')
+      if (!firstUserMessage) {
+        console.log('🏷️ 未找到用户消息，跳过标题更新')
+        return
+      }
+
+      // 限制标题长度，如果太长则截取并添加省略号
+      let title = firstUserMessage.content.trim()
+      if (title.length > 20) {
+        title = title.substring(0, 20) + '...'
+      }
+
+      // 1. 立即更新页面显示
       const updatedConversations = currentConversations.map(conv => {
         if (conv.id === conversationId) {
           return { ...conv, title }
@@ -828,48 +908,97 @@ export default function PersonalityReportPage() {
       setConversations(updatedConversations)
       localStorage.setItem('personality_conversations', JSON.stringify(updatedConversations))
 
-      // 暂时注释掉Supabase保存，避免重复创建对话
-      // 同时更新到Supabase
-      // const updatedConv = updatedConversations.find(conv => conv.id === conversationId)
-      // if (updatedConv) {
-      //   const userId = getUserPhoneNumber()
-      //   if (userId) {
-      //     saveConversation(userId, updatedConv).catch(error => {
-      //       console.warn('⚠️ 更新对话标题到Supabase失败，但不影响聊天功能:', error)
-      //     })
-      //   }
-      // }
+      console.log('🏷️ 对话标题已立即更新页面显示:', title)
+
+      // 2. 异步更新数据库（不阻塞页面）
+      if (currentConv?.dbConversationId) {
+        console.log('💾 开始异步更新数据库中的对话标题')
+        
+        const updateDatabase = async () => {
+          try {
+            const updateResponse = await fetch('/api/conversations/update', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                conversationId: currentConv.dbConversationId,
+                title: title,
+                isManualTitle: false
+              })
+            })
+
+            const updateResult = await updateResponse.json()
+
+            if (updateResult.success) {
+              console.log('✅ 对话标题已成功写入数据库:', title)
+            } else {
+              console.warn('⚠️ 对话标题数据库更新失败:', updateResult.message)
+            }
+
+          } catch (error) {
+            console.error('❌ 异步更新对话标题失败:', error)
+          }
+        }
+
+        // 启动异步更新（不等待完成）
+        updateDatabase()
+      } else {
+        console.log('💾 对话还没有数据库ID，跳过数据库更新')
+      }
     }
   }
 
   // 置顶对话
   const pinConversation = async (conversationId: string) => {
-    const updatedConversations = conversations.map(conv => {
-      if (conv.id === conversationId) {
-        return { ...conv, isPinned: !conv.isPinned }
+    try {
+      // 获取对话信息
+      const conversation = conversations.find(conv => conv.id === conversationId)
+      if (!conversation?.dbConversationId) {
+        console.error('❌ 无法找到对话的数据库ID')
+        message.error('操作失败：对话信息错误')
+        return
       }
-      return conv
-    })
 
-    setConversations(updatedConversations)
-    localStorage.setItem('personality_conversations', JSON.stringify(updatedConversations))
+      const newPinnedStatus = !conversation.isPinned
 
-    // 更新到Supabase
-    // 暂时注释掉，避免重复创建对话问题
-    // const updatedConv = updatedConversations.find(conv => conv.id === conversationId)
-    // if (updatedConv) {
-    //   try {
-    //     const userId = getUserPhoneNumber()
-    //     if (userId) {
-    //       await saveConversation(userId, updatedConv)
-    //     }
-    //   } catch (error) {
-    //     console.error('更新置顶状态到Supabase失败:', error)
-    //   }
-    // }
+      // 调用更新API
+      const updateResponse = await fetch('/api/conversations/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          conversationId: conversation.dbConversationId,
+          isPinned: newPinnedStatus
+        })
+      })
 
-    const updatedConv = updatedConversations.find(conv => conv.id === conversationId)
-    message.success(updatedConv?.isPinned ? '已置顶' : '已取消置顶')
+      const updateResult = await updateResponse.json()
+
+      if (!updateResult.success) {
+        throw new Error(updateResult.message || '更新置顶状态失败')
+      }
+
+      console.log('✅ 置顶状态已更新到数据库')
+
+      // 更新前端状态
+      const updatedConversations = conversations.map(conv => {
+        if (conv.id === conversationId) {
+          return { ...conv, isPinned: newPinnedStatus }
+        }
+        return conv
+      })
+
+      setConversations(updatedConversations)
+      localStorage.setItem('personality_conversations', JSON.stringify(updatedConversations))
+
+      message.success(newPinnedStatus ? '已置顶' : '已取消置顶')
+
+    } catch (error) {
+      console.error('❌ 更新置顶状态失败:', error)
+      message.error(`操作失败: ${error instanceof Error ? error.message : '未知错误'}`)
+    }
   }
 
   // 开始重命名对话
@@ -885,41 +1014,63 @@ export default function PersonalityReportPage() {
       return
     }
 
-    const updatedConversations = conversations.map(conv => {
-      if (conv.id === renamingConversationId) {
-        return { 
-          ...conv, 
-          title: newTitle.trim(),
-          isManualTitle: true // 标记为用户手动设置的标题
-        }
+    try {
+      // 获取对话信息
+      const conversation = conversations.find(conv => conv.id === renamingConversationId)
+      if (!conversation?.dbConversationId) {
+        console.error('❌ 无法找到对话的数据库ID')
+        message.error('重命名失败：对话信息错误')
+        return
       }
-      return conv
-    })
 
-    setConversations(updatedConversations)
-    localStorage.setItem('personality_conversations', JSON.stringify(updatedConversations))
+      // 调用更新API
+      const updateResponse = await fetch('/api/conversations/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          conversationId: conversation.dbConversationId,
+          title: newTitle.trim(),
+          isManualTitle: true
+        })
+      })
 
-    // 更新到Supabase
-    // 暂时注释掉，避免重复创建对话问题
-    // const updatedConv = updatedConversations.find(conv => conv.id === renamingConversationId)
-    // if (updatedConv) {
-    //   try {
-    //     const userId = getUserPhoneNumber()
-    //     if (userId) {
-    //       await saveConversation(userId, updatedConv)
-    //     }
-    //   } catch (error) {
-    //     console.error('更新对话标题到Supabase失败:', error)
-    //   }
-    // }
+      const updateResult = await updateResponse.json()
 
-    setRenameModalVisible(false)
-    setRenamingConversationId(null)
-    setNewTitle('')
-    message.success('重命名成功')
+      if (!updateResult.success) {
+        throw new Error(updateResult.message || '重命名失败')
+      }
+
+      console.log('✅ 对话标题已更新到数据库')
+
+      // 更新前端状态
+      const updatedConversations = conversations.map(conv => {
+        if (conv.id === renamingConversationId) {
+          return { 
+            ...conv, 
+            title: newTitle.trim(),
+            isManualTitle: true
+          }
+        }
+        return conv
+      })
+
+      setConversations(updatedConversations)
+      localStorage.setItem('personality_conversations', JSON.stringify(updatedConversations))
+
+      setRenameModalVisible(false)
+      setRenamingConversationId(null)
+      setNewTitle('')
+      message.success('重命名成功')
+
+    } catch (error) {
+      console.error('❌ 重命名对话失败:', error)
+      message.error(`重命名失败: ${error instanceof Error ? error.message : '未知错误'}`)
+    }
   }
 
-  // 删除对话
+  // 删除对话 - 页面优先响应
   const deleteConversation = async (conversationId: string) => {
     Modal.confirm({
       title: '确认删除',
@@ -928,31 +1079,88 @@ export default function PersonalityReportPage() {
       okType: 'danger',
       cancelText: '取消',
       onOk: async () => {
-        const updatedConversations = conversations.filter(conv => conv.id !== conversationId)
-        setConversations(updatedConversations)
-        localStorage.setItem('personality_conversations', JSON.stringify(updatedConversations))
-
-        // 如果删除的是当前活跃对话，切换到第一个对话或清空
-        if (activeConversationId === conversationId) {
-          if (updatedConversations.length > 0) {
-            setActiveConversationId(updatedConversations[0].id)
-          } else {
-            setActiveConversationId(null)
+        return new Promise<void>((resolve) => {
+          // 获取要删除的对话信息
+          const conversationToDelete = conversations.find(conv => conv.id === conversationId)
+          if (!conversationToDelete) {
+            console.error('❌ 无法找到要删除的对话')
+            message.error('删除失败：对话不存在')
+            resolve()
+            return
           }
-        }
 
-        // 从Supabase删除
-        try {
-          const userId = getUserPhoneNumber()
-          if (userId) {
-            await deleteConversationFromSupabase(userId, conversationId)
-            console.log('✅ 已从Supabase删除对话:', conversationId)
+          console.log('🗑️ 开始删除对话:', conversationToDelete.title)
+
+          // 1. 先在页面上删除对话
+          const updatedConversations = conversations.filter(conv => conv.id !== conversationId)
+          setConversations(updatedConversations)
+          localStorage.setItem('personality_conversations', JSON.stringify(updatedConversations))
+
+          // 如果删除的是当前活跃对话，切换到第一个对话或清空
+          if (activeConversationId === conversationId) {
+            if (updatedConversations.length > 0) {
+              setActiveConversationId(updatedConversations[0].id)
+            } else {
+              setActiveConversationId(null)
+            }
           }
-        } catch (error) {
-          console.warn('⚠️ 从Supabase删除对话失败，但不影响功能:', error)
-        }
 
-        message.success('删除成功')
+          console.log('✅ 页面对话已删除，开始同步到数据库')
+
+          // 2. 异步从数据库删除（如果有数据库ID的话）
+          const performDatabaseDelete = async () => {
+            if (conversationToDelete.dbConversationId) {
+              try {
+                // 获取用户资料ID
+                const activeUser = getActiveUser()
+                if (!activeUser?.id) {
+                  console.warn('⚠️ 无法获取用户资料ID，跳过数据库删除')
+                  return
+                }
+
+                // 调用删除API
+                const deleteResponse = await fetch('/api/conversations/delete', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    conversationId: conversationToDelete.dbConversationId,
+                    userProfileId: activeUser.id
+                  })
+                })
+
+                const deleteResult = await deleteResponse.json()
+
+                if (deleteResult.success) {
+                  console.log('✅ 对话已从数据库删除')
+                } else {
+                  console.warn('⚠️ 数据库删除失败，但页面已更新:', deleteResult.message)
+                }
+
+              } catch (error) {
+                console.error('❌ 数据库删除失败:', error)
+                console.warn('⚠️ 对话将仅在本地删除，数据库中可能仍存在')
+              }
+            } else {
+              console.log('📋 对话仅存在于本地，无需数据库操作')
+            }
+          }
+
+          // 稍微延迟一下确保页面更新完成，然后关闭对话框并显示成功消息
+          setTimeout(async () => {
+            // 执行数据库删除（不等待结果）
+            performDatabaseDelete()
+            
+            // 关闭对话框
+            resolve()
+            
+            // 在对话框关闭后显示成功消息
+            setTimeout(() => {
+              message.success('删除成功')
+            }, 100)
+          }, 100)
+        })
       }
     })
   }
@@ -970,19 +1178,68 @@ export default function PersonalityReportPage() {
       return
     }
 
-    if (!activeConversationId) {
-      console.warn('⚠️ 没有活跃的对话，尝试创建新对话')
-      createNewConversation()
-      return
-    }
-
     if (!userInfo) {
       console.warn('⚠️ 用户信息缺失')
       alert('用户信息缺失，请先完善个人信息')
       return
     }
 
+    // 确定用户资料ID
+    const activeUser = getActiveUser()
+    if (!activeUser?.id) {
+      console.error('❌ 无法获取用户资料ID')
+      alert('无法获取用户信息，请重新登录')
+      return
+    }
+
+    // 检查用户聊天剩余次数
+    console.log('🔍 检查用户聊天剩余次数...')
+    try {
+      const { createClient } = await import('@supabase/supabase-js')
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
+
+      const { data: userProfile, error: fetchError } = await supabase
+        .from('user_profiles')
+        .select('chat_remaining_count')
+        .eq('id', activeUser.id)
+        .single()
+
+      if (fetchError) {
+        console.error('❌ 获取用户聊天次数失败:', fetchError)
+        message.error('无法获取用户信息，请重试')
+        return
+      }
+
+      if (!userProfile) {
+        console.error('❌ 用户资料不存在')
+        message.error('用户资料不存在，请重新登录')
+        return
+      }
+
+      console.log('💬 用户聊天剩余次数:', userProfile.chat_remaining_count)
+
+      if (userProfile.chat_remaining_count <= 0) {
+        console.warn('⚠️ 用户聊天次数已用完')
+        message.warning({
+          content: '您的聊天次数已用完，请联系客服充值后继续使用',
+          duration: 6
+        })
+        return
+      }
+
+      console.log('✅ 聊天次数检查通过，剩余次数:', userProfile.chat_remaining_count)
+    } catch (error) {
+      console.error('❌ 检查聊天次数失败:', error)
+      message.error('检查聊天权限失败，请重试')
+      return
+    }
+
+    // 设置loading状态
     setLoading(true)
+    // setCanAbort(false)
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -993,28 +1250,179 @@ export default function PersonalityReportPage() {
 
     // 保存当前消息内容，用于错误恢复
     const messageContent = currentMessage.trim()
+    setCurrentMessage('') // 清空输入框
 
-    // 更新对话
-    const updatedConversations = conversations.map(conv => {
-      if (conv.id === activeConversationId) {
+    let currentActiveConversationId = activeConversationId
+    let workingConversations = [...conversations]
+
+    // 检查是否需要创建新对话（在发送消息时）
+    if (!activeConversationId) {
+      console.log('🆕 用户发送消息时自动创建新对话')
+      
+      // 创建新对话对象
+      const tempId = Date.now().toString()
+      const newConversation: ConversationHistory = {
+        id: tempId,
+        title: '新对话',
+        messages: [],
+        createdAt: new Date(),
+        moduleType: 'personality'
+      }
+
+      // 更新工作变量
+      workingConversations = [newConversation, ...conversations]
+      currentActiveConversationId = newConversation.id
+      
+      // 立即更新状态，让界面显示新对话
+      setConversations(workingConversations)
+      setActiveConversationId(currentActiveConversationId)
+      localStorage.setItem('personality_conversations', JSON.stringify(workingConversations))
+
+      console.log('✅ 自动创建对话成功，ID:', newConversation.id)
+    }
+
+    // 1. 立即显示用户消息并更新标题（如果是第一条消息）
+    console.log('📺 1. 立即显示用户消息')
+    
+    // 检查是否为新创建的对话的第一条消息
+    const isFirstMessageInNewConversation = workingConversations.find(conv => conv.id === currentActiveConversationId)?.messages.length === 0
+    
+    // 如果是第一条消息，准备新标题
+    let newTitle = ''
+    if (isFirstMessageInNewConversation) {
+      newTitle = userMessage.content.trim()
+      if (newTitle.length > 20) {
+        newTitle = newTitle.substring(0, 20) + '...'
+      }
+      console.log('🏷️ 新对话第一条消息，设置标题为:', newTitle)
+    }
+    
+    const updatedConversations = workingConversations.map(conv => {
+      if (conv.id === currentActiveConversationId) {
         return {
           ...conv,
+          title: isFirstMessageInNewConversation ? newTitle : conv.title, // 立即更新标题
           messages: [...conv.messages, userMessage]
         }
       }
       return conv
     })
-    console.log('🔄 更新后的对话列表:', updatedConversations)
-    // 保存到本地存储
     setConversations(updatedConversations)
-    setCurrentMessage('') // 清空输入框
+    localStorage.setItem('personality_conversations', JSON.stringify(updatedConversations))
 
-    // 调用 Coze 智能体 API
+    // 2. 立即显示AI loading状态
+    console.log('🤖 2. 立即显示AI回复loading')
+    const typingMessageId = (Date.now() + 1).toString()
+    const typingMessage: ChatMessage = {
+      id: typingMessageId,
+      type: 'bot',
+      content: '正在思考中...',
+      timestamp: new Date()
+    }
+
+    const conversationsWithTyping = updatedConversations.map(conv => {
+      if (conv.id === currentActiveConversationId) {
+        return {
+          ...conv,
+          messages: [...conv.messages, typingMessage]
+        }
+      }
+      return conv
+    })
+    setConversations(conversationsWithTyping)
+    setIsTyping(true)
+
+    // 3. 后台处理数据库操作（不阻塞UI）
+    let dbConversationId: string | undefined
+    
+    const handleDatabaseOperations = async () => {
+      try {
+        // 检查是否需要创建数据库对话
+        const currentConversation = updatedConversations.find(conv => conv.id === currentActiveConversationId)
+        
+        if (!currentConversation?.dbConversationId) {
+          console.log('💾 3a. 后台创建数据库对话')
+          // 使用已在页面上设置的标题，保持一致性
+          const conversationTitle = currentConversation?.title || '新对话'
+          console.log('💾 使用标题:', conversationTitle)
+
+          const createResponse = await fetch('/api/conversations/create', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              userProfileId: activeUser.id,
+              title: conversationTitle,
+              moduleType: 'personality'
+            })
+          })
+
+          const createResult = await createResponse.json()
+
+          if (!createResult.success) {
+            throw new Error(createResult.message || '创建对话失败')
+          }
+
+          const dbConversation = createResult.conversation
+          console.log('✅ 后台数据库对话创建成功:', dbConversation.id)
+
+          // 更新前端对话对象的数据库ID
+          setConversations(prevConversations => 
+            prevConversations.map(conv => 
+              conv.id === currentActiveConversationId 
+                ? { ...conv, dbConversationId: dbConversation.id, createdAt: new Date(dbConversation.created_at) }
+                : conv
+            )
+          )
+
+          dbConversationId = dbConversation.id
+        } else {
+          dbConversationId = currentConversation.dbConversationId
+        }
+
+        // 保存用户消息到数据库
+        console.log('💾 3b. 后台保存用户消息')
+        const userMessageResponse = await fetch('/api/messages/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            conversationId: dbConversationId,
+            role: 'user',
+            content: userMessage.content,
+            metadata: {
+              frontend_id: userMessage.id
+            }
+          })
+        })
+
+        const userMessageResult = await userMessageResponse.json()
+
+        if (!userMessageResult.success) {
+          throw new Error('保存用户消息失败')
+        }
+
+        console.log('✅ 后台用户消息保存成功')
+        return dbConversationId
+
+      } catch (error) {
+        console.error('❌ 后台数据库操作失败:', error)
+        // 数据库操作失败不影响聊天继续，只是记录错误
+        return undefined
+      }
+    }
+
+    // 启动后台数据库操作（不等待完成）
+    const dbOperationPromise = handleDatabaseOperations()
+
+    // 5. 发起AI请求
     try {
-      console.log('🚀 调用 Coze API...')
+      console.log('🚀 5. 调用 Coze API...')
 
       // 直接从updatedConversations中获取当前对话，而不是使用可能过时的conversations状态
-      const currentConv = updatedConversations.find(conv => conv.id === activeConversationId)
+      const currentConv = updatedConversations.find(conv => conv.id === currentActiveConversationId)
       const isFirstMessage = !currentConv?.cozeConversationId
 
       // 确保用户信息存在
@@ -1029,16 +1437,29 @@ export default function PersonalityReportPage() {
       const userId = getUserPhoneNumber()
       const consistentUserId = userId ? `user_${userId}` : `user_${Date.now()}`
 
-      // 只在第一次发送消息时传递用户信息，后续依赖Coze的对话记忆
+      // 获取用户的占星上下文信息（替代外部API调用）
+      let astrologyContext = null
+      if (isFirstMessage) {
+        astrologyContext = await getUserAstrologyContext()
+        console.log('🔮 获取到占星上下文:', astrologyContext ? '有数据' : '无数据')
+      }
+
+      // 只在第一次发送消息时传递用户信息和占星上下文，后续依赖Coze的对话记忆
       const requestBody = {
         message: userMessage.content,
         userInfo: isFirstMessage ? userInfo : undefined, // 只在首次传递用户信息
+        astrologyContext: isFirstMessage ? astrologyContext : undefined, // 传递占星上下文而不是调用外部API
         conversationId: currentConv?.cozeConversationId, // 保持对话连续性
         userId: consistentUserId, // 传递一致的用户ID
       }
 
       console.log('📦 请求体:', requestBody)
       console.log('🔄 是否首次消息:', isFirstMessage)
+
+      // 创建AbortController支持中断
+      // const controller = new AbortController()
+      // setAbortController(controller)
+      // setCanAbort(true)
 
       // 使用流式请求
       const response = await fetch('/api/coze/chat', {
@@ -1047,6 +1468,7 @@ export default function PersonalityReportPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(requestBody),
+        // signal: controller.signal // 注释掉signal参数
       })
 
       console.log('📡 API响应状态:', response.status)
@@ -1060,30 +1482,27 @@ export default function PersonalityReportPage() {
       if (contentType?.includes('text/event-stream')) {
         console.log('🌊 开始处理流式响应...')
 
-        // 创建一个临时的bot消息用于实时更新
-        const botMessageId = (Date.now() + 1).toString()
+        // 使用现有的typing消息作为bot回复消息
+        const botMessageId = typingMessageId
         let streamingContent = ''
         let finalConversationId = ''
         let finalChatId = ''
 
-        // 先添加一个空的bot消息
-        const initialBotMessage: ChatMessage = {
-          id: botMessageId,
-          type: 'bot',
-          content: '',
-          timestamp: new Date()
+        // 设置流式响应状态变量（用于暂停时保存）
+        setCurrentBotMessageId(botMessageId)
+        setCurrentStreamingContent('') // 确保清空之前的内容
+        
+        // 等待数据库操作完成，获取数据库对话ID
+        try {
+          const dbConversationId = await dbOperationPromise
+          setCurrentDbConversationId(dbConversationId || null)
+          console.log('📋 已设置数据库对话ID用于暂停保存:', dbConversationId)
+        } catch (error) {
+          console.warn('⚠️ 获取数据库对话ID失败，暂停保存可能受影响:', error)
         }
 
-        const initialConversations = updatedConversations.map(conv => {
-          if (conv.id === activeConversationId) {
-            return {
-              ...conv,
-              messages: [...conv.messages, initialBotMessage],
-            }
-          }
-          return conv
-        })
-        setConversations(initialConversations)
+        // 移除typing状态，准备接收实际内容
+        setIsTyping(false)
 
         // 处理流式数据
         const reader = response.body?.getReader()
@@ -1109,10 +1528,13 @@ export default function PersonalityReportPage() {
                       finalConversationId = data.conversationId || finalConversationId
                       finalChatId = data.chatId || finalChatId
 
-                      // 实时更新消息内容
+                      // 同步更新流式内容状态，用于暂停时保存
+                      setCurrentStreamingContent(streamingContent)
+
+                      // 实时更新消息内容，使用现有的typing消息
                       setConversations(prevConversations =>
                         prevConversations.map(conv => {
-                          if (conv.id === activeConversationId) {
+                          if (conv.id === currentActiveConversationId) {
                             return {
                               ...conv,
                               messages: conv.messages.map(msg =>
@@ -1131,10 +1553,10 @@ export default function PersonalityReportPage() {
                       finalConversationId = data.conversationId || finalConversationId
                       finalChatId = data.chatId || finalChatId
 
-                      // 最终更新
+                      // 立即更新前端状态和清除UI加载状态
                       setConversations(prevConversations => {
                         const finalConversations = prevConversations.map(conv => {
-                          if (conv.id === activeConversationId) {
+                          if (conv.id === currentActiveConversationId) {
                             return {
                               ...conv,
                               messages: conv.messages.map(msg =>
@@ -1148,26 +1570,95 @@ export default function PersonalityReportPage() {
                           return conv
                         })
 
-                        // 更新对话标题和保存
-                        const currentConv = finalConversations.find(conv => conv.id === activeConversationId)
-                        if (currentConv) {
-                          updateConversationTitle(activeConversationId, currentConv.messages, finalConversations)
-
-                          // 保存到Supabase
-                          const userId = getUserPhoneNumber()
-                          if (userId) {
-                            saveConversation(userId, currentConv)
-                              .then(() => console.log('✅ 对话已保存到Supabase'))
-                              .catch(error => console.warn('⚠️ 保存对话到Supabase失败:', error))
-                          }
-                        }
+                        // 标题已在用户发送消息时设置，此处无需更新
+                        
+                        // 保存到本地存储作为备份
                         localStorage.setItem('personality_conversations', JSON.stringify(finalConversations))
 
                         return finalConversations
                       })
+
+                      // 立即清除加载状态，恢复输入框可用性
+                      setIsTyping(false)
+                      // setCanAbort(false)
+                      // setAbortController(null)
+
+                      // 后台异步执行数据库保存操作（不阻塞UI）
+                      const saveToDatabase = async () => {
+                        console.log('💾 后台异步保存AI回复到数据库')
+                        
+                        // 保存AI回复消息
+                        try {
+                          const botMessageResponse = await fetch('/api/messages/create', {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                              conversationId: dbConversationId as string,
+                              role: 'assistant',
+                              content: data.fullResponse || streamingContent,
+                              metadata: {
+                                frontend_id: botMessageId,
+                                coze_conversation_id: finalConversationId,
+                                coze_chat_id: finalChatId
+                              }
+                            })
+                          })
+
+                          const botMessageResult = await botMessageResponse.json()
+
+                          if (botMessageResult.success) {
+                            console.log('✅ AI回复已异步保存到数据库')
+                          } else {
+                            console.warn('⚠️ AI回复异步保存失败:', botMessageResult.message)
+                          }
+                        } catch (saveError) {
+                          console.warn('⚠️ 异步保存AI回复失败:', saveError)
+                        }
+
+                        // 更新Coze对话ID
+                        if (finalConversationId && dbConversationId) {
+                          try {
+                            await fetch('/api/conversations/update', {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json',
+                              },
+                              body: JSON.stringify({
+                                conversationId: dbConversationId as string,
+                                cozeConversationId: finalConversationId
+                              })
+                            })
+                            console.log('✅ Coze对话ID已异步更新到数据库')
+                          } catch (updateError) {
+                            console.warn('⚠️ 异步更新Coze对话ID失败:', updateError)
+                          }
+                        }
+
+                        // 更新用户聊天次数
+                        try {
+                          await updateUserChatCredits()
+                          console.log('✅ 用户聊天次数已异步更新')
+                        } catch (error) {
+                          console.warn('⚠️ 异步更新聊天次数失败:', error)
+                        }
+                      }
+
+                      // 启动后台异步保存（不等待完成）
+                      saveToDatabase().catch(error => {
+                        console.error('❌ 后台数据库操作失败:', error)
+                      })
+
                       break
                     } else if (data.type === 'error') {
                       console.error('❌ 流式响应错误:', data.error)
+                      
+                      // 清除状态
+                      setIsTyping(false)
+                      // setCanAbort(false)
+                      // setAbortController(null)
+                      
                       throw new Error(data.error || 'AI回复失败，请重试')
                     }
                   } catch (parseError) {
@@ -1187,77 +1678,283 @@ export default function PersonalityReportPage() {
         console.log('🔑 聊天页面AI返回的data: ', data)
 
         if (data.success) {
-          const botMessage: ChatMessage = {
-            id: (Date.now() + 1).toString(),
-            type: 'bot',
-            content: data.response,
-            timestamp: new Date()
+          console.log('🤖 AI回复内容:', data.response)
+
+          // 立即更新前端状态和清除UI加载状态
+          setConversations(prevConversations => {
+            const finalConversations = prevConversations.map(conv => {
+              if (conv.id === currentActiveConversationId) {
+                return {
+                  ...conv,
+                  messages: conv.messages.map(msg =>
+                    msg.id === typingMessageId
+                      ? { ...msg, content: data.response }
+                      : msg
+                  ),
+                  cozeConversationId: conv.cozeConversationId || data.conversationId,
+                }
+              }
+              return conv
+            })
+
+            // 标题已在用户发送消息时设置，此处无需更新
+
+            // 保存到本地存储
+            localStorage.setItem('personality_conversations', JSON.stringify(finalConversations))
+
+            return finalConversations
+          })
+
+          // 立即清除加载状态，恢复输入框可用性
+          setIsTyping(false)
+          // setCanAbort(false)
+          // setAbortController(null)
+
+          // 后台异步执行数据库保存操作（不阻塞UI）
+          const saveToDatabase = async () => {
+            console.log('💾 后台异步保存AI回复到数据库')
+            
+            // 保存AI回复消息
+            try {
+              const botMessageResponse = await fetch('/api/messages/create', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  conversationId: dbConversationId as string,
+                  role: 'assistant',
+                  content: data.response,
+                  metadata: {
+                    frontend_id: typingMessageId,
+                    coze_conversation_id: data.conversationId
+                  }
+                })
+              })
+
+              const botMessageResult = await botMessageResponse.json()
+
+              if (botMessageResult.success) {
+                console.log('✅ AI回复已异步保存到数据库')
+              } else {
+                console.warn('⚠️ AI回复异步保存失败:', botMessageResult.message)
+              }
+            } catch (saveError) {
+              console.warn('⚠️ 异步保存AI回复失败:', saveError)
+            }
+
+            // 更新用户聊天次数
+            try {
+              await updateUserChatCredits()
+              console.log('✅ 用户聊天次数已异步更新')
+            } catch (error) {
+              console.warn('⚠️ 异步更新聊天次数失败:', error)
+            }
           }
 
-          console.log('🤖 AI回复消息:', botMessage)
+          // 启动后台异步保存（不等待完成）
+          saveToDatabase().catch(error => {
+            console.error('❌ 后台数据库操作失败:', error)
+          })
 
-          const finalConversations = updatedConversations.map(conv => {
+        } else {
+          throw new Error(data.error || 'AI回复失败，请重试')
+        }
+      }
+    } catch (error: any) {
+      console.error('❌ 消息发送失败:', error)
+      
+      // 清除状态
+      setIsTyping(false)
+      // setCanAbort(false)
+      // setAbortController(null)
+      
+      // 移除占位消息，恢复页面状态
+      setConversations(updatedConversations)
+      
+      if (error.name === 'AbortError') {
+        console.log('🛑 用户中断了对话')
+        message.info('对话已中断')
+      } else {
+        message.error(error.message || 'AI回复失败，请重试')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // 更新用户聊天次数
+  const updateUserChatCredits = async () => {
+    try {
+      const activeUser = getActiveUser()
+      if (!activeUser?.id) {
+        console.warn('⚠️ 无法获取用户资料ID，跳过聊天次数更新')
+        return
+      }
+
+      // 调用API更新聊天次数
+      const response = await fetch('/api/user-profiles/update-chat-credits', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userProfileId: activeUser.id
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        console.log('✅ 聊天次数更新成功:', result.credits)
+        
+        // 触发用户信息更新事件
+        window.dispatchEvent(new CustomEvent('chatCreditsUpdated', {
+          detail: result.credits
+        }))
+      } else {
+        console.warn('⚠️ 聊天次数更新失败:', result.message)
+      }
+    } catch (error) {
+      console.error('❌ 更新聊天次数失败:', error)
+    }
+  }
+
+  // 中断当前请求（已注释）
+  /*
+  const abortCurrentRequest = async () => {
+    if (abortController && canAbort) {
+      console.log('⏹️ 用户主动中断请求')
+      
+      // 1. 中断网络请求
+      abortController.abort()
+      setCanAbort(false)
+      setAbortController(null)
+      setIsTyping(false)
+      setLoading(false)
+
+      // 2. 保存已输出的内容到数据库（如果有内容的话）
+      if (currentStreamingContent && currentBotMessageId && currentDbConversationId) {
+        console.log('💾 保存被中断的AI回复到数据库')
+        
+        try {
+          const saveResponse = await fetch('/api/messages/create', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+                      body: JSON.stringify({
+            conversationId: currentDbConversationId,
+            role: 'assistant',
+            content: currentStreamingContent + '\n\n*[回复被用户中断]*',
+            metadata: {
+              frontend_id: currentBotMessageId,
+              interrupted: true,
+              interrupted_at: new Date().toISOString()
+            }
+          })
+          })
+
+          const saveResult = await saveResponse.json()
+
+          if (saveResult.success) {
+            console.log('✅ 被中断的回复已保存到数据库')
+          } else {
+            console.error('❌ 保存被中断的回复失败:', saveResult.message)
+          }
+
+        } catch (error) {
+          console.error('❌ 保存被中断的回复异常:', error)
+        }
+
+        // 3. 更新前端消息内容，标记为被中断
+        setConversations(prevConversations => 
+          prevConversations.map(conv => {
             if (conv.id === activeConversationId) {
               return {
                 ...conv,
-                messages: [...conv.messages, botMessage],
-                cozeConversationId: conv.cozeConversationId || data.conversationId,
+                messages: conv.messages.map(msg => 
+                  msg.id === currentBotMessageId 
+                    ? { 
+                        ...msg, 
+                        content: currentStreamingContent + '\n\n*[回复被用户中断]*',
+                        timestamp: new Date()
+                      }
+                    : msg
+                )
               }
             }
             return conv
           })
-          console.log('🔄 更新后的对话列表:', finalConversations)
-          setConversations(finalConversations)
+        )
 
-          // 更新对话标题
-          const currentConv = finalConversations.find(conv => conv.id === activeConversationId)
-          if (currentConv) {
-            updateConversationTitle(activeConversationId, currentConv.messages, finalConversations)
-
-            // 保存到Supabase
-            try {
-              const userId = getUserPhoneNumber()
-              if (userId) {
-                await saveConversation(userId, currentConv)
-                console.log('✅ 对话已保存到Supabase')
-              }
-            } catch (error) {
-              console.warn('⚠️ 保存对话到Supabase失败，但不影响聊天功能:', error)
+        // 4. 保存到localStorage
+        setTimeout(() => {
+          const updatedConversations = JSON.parse(localStorage.getItem('personality_conversations') || '[]')
+          const conversationIndex = updatedConversations.findIndex((conv: any) => conv.id === activeConversationId)
+          if (conversationIndex >= 0) {
+            const messageIndex = updatedConversations[conversationIndex].messages.findIndex((msg: any) => msg.id === currentBotMessageId)
+            if (messageIndex >= 0) {
+              updatedConversations[conversationIndex].messages[messageIndex].content = currentStreamingContent + '\n\n*[回复被用户中断]*'
+              localStorage.setItem('personality_conversations', JSON.stringify(updatedConversations))
             }
           }
-          localStorage.setItem('personality_conversations', JSON.stringify(finalConversations))
-          console.log('✅ 传统消息发送成功')
-        } else {
-          throw new Error(data.error || 'AI服务响应失败')
-        }
+        }, 100)
       }
-    } catch (error) {
-      console.error('❌ 调用 Coze API 失败:', error)
 
-      // 恢复用户输入的消息
-      setCurrentMessage(messageContent)
+      // 5. 清理状态
+      setCurrentStreamingContent('')
+      setCurrentBotMessageId(null)
+      setCurrentDbConversationId(null)
 
-      // 从对话中移除用户消息（因为发送失败）
-      // 注意：这里应该使用 updatedConversations 而不是原始的 conversations
-      const revertedConversations = updatedConversations.map(conv => {
-        if (conv.id === activeConversationId) {
-          return {
-            ...conv,
-            messages: conv.messages.filter(msg => msg.id !== userMessage.id)
-          }
+      console.log('✅ 请求已中断，状态已清理')
+    }
+  }
+  */
+
+  // 获取用户的占星上下文信息
+  const getUserAstrologyContext = async () => {
+    try {
+      const activeUser = getActiveUser()
+      let userId: string
+      let isUserProfileId = false
+
+      if (activeUser && activeUser.id) {
+        userId = activeUser.id
+        isUserProfileId = true
+      } else {
+        const phoneNumber = getUserPhoneNumber()
+        if (!phoneNumber) {
+          return null
         }
-        return conv
+        userId = phoneNumber
+      }
+
+      console.log('🔮 获取用户占星上下文:', { userId, isUserProfileId })
+
+      const response = await fetch('/api/bazi/get', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          userId,
+          isUserProfileId 
+        })
       })
 
-      setConversations(revertedConversations)
+      const result = await response.json()
 
-      // 显示错误消息
-      message.error(`发送失败：${error instanceof Error ? error.message : String(error)}`)
-
-      // 保存恢复后的对话状态
-      localStorage.setItem('personality_conversations', JSON.stringify(revertedConversations))
-    } finally {
-      setLoading(false)
+      if (result.success && result.astrologyContext) {
+        console.log('✅ 成功获取占星上下文')
+        return result.astrologyContext
+      } else {
+        console.warn('⚠️ 未找到占星上下文:', result.message)
+        return null
+      }
+    } catch (error) {
+      console.error('❌ 获取占星上下文失败:', error)
+      return null
     }
   }
 
@@ -1267,6 +1964,19 @@ export default function PersonalityReportPage() {
   }
 
   // 调试信息（开发环境）
+  // Typing动画组件
+  const TypingIndicator = () => (
+    <div className="flex items-center space-x-1 text-gray-500">
+      <span className="text-sm ml-2">AI深度分析中，预计2分钟，道友稍后~</span>
+      <div className="flex space-x-1">
+        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+      </div>
+
+    </div>
+  )
+
   const debugInfo = {
     isAutoScrollEnabled,
     isUserScrolling,
@@ -1316,9 +2026,27 @@ export default function PersonalityReportPage() {
   }
 
   return (
-    <div className="bg-white flex overflow-hidden h-screen">
+    <div className="bg-white flex overflow-hidden h-full">
+      {/* 自定义滚动条样式 */}
+      <style jsx>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #f3f4f6;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #ffffff;
+          border-radius: 4px;
+          border: 1px solid #e5e7eb;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #f9fafb;
+        }
+      `}</style>
+      
       {/* 移动端顶部导航 */}
-      <div className="md:hidden fixed top-0 left-0 right-0 bg-white shadow-lg border-b border-gray-200 p-4 z-20">
+      <div className="md:hidden fixed top-0 left-0 right-0 bg-white shadow-lg border-b border-gray-200 px-3 py-2 z-20">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center">
@@ -1340,13 +2068,13 @@ export default function PersonalityReportPage() {
       </div>
 
       {/* 中间聊天记录区域 */}
-      <div className={`bg-white border-r border-gray-200 transition-all duration-300 h-screen overflow-hidden ${
+      <div className={`bg-white border-r border-gray-200 transition-all duration-300 h-full overflow-hidden ${
         chatHistoryVisible ? 'w-80' : 'w-0'
       }`}>
         {chatHistoryVisible && (
-          <div className="flex flex-col h-screen">
+          <div className="flex flex-col h-full">
             {/* 标题区域 */}
-            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+            <div className="p-3 border-b border-gray-100 flex items-center justify-between">
               <h2 className="text-lg font-medium text-gray-900">性格内观</h2>
               <Button
                 type="text"
@@ -1358,9 +2086,11 @@ export default function PersonalityReportPage() {
             </div>
 
             {/* 功能按钮区域 */}
-            <div className="p-4 space-y-3">
+            <div className="p-3 space-y-2">
               <div
-                onClick={() => setCurrentContent('report')}
+                onClick={() => {
+                  setCurrentContent('report')
+                }}
                 className={`flex items-center space-x-3 p-3 rounded-lg cursor-pointer transition-all duration-200 ${
                   currentContent === 'report'
                     ? 'bg-gray-100 text-gray-900'
@@ -1375,6 +2105,7 @@ export default function PersonalityReportPage() {
                 onClick={() => {
                   console.log('🔄 点击开启新对话按钮')
                   createNewConversation()
+                  setCurrentContent('chat') // 切换到聊天视图
                 }}
                 className={`flex items-center space-x-3 p-3 rounded-lg cursor-pointer transition-all duration-200 ${
                   currentContent === 'chat'
@@ -1383,28 +2114,48 @@ export default function PersonalityReportPage() {
                 }`}
               >
                 <MessageOutlined className="text-lg" />
-                <span className="font-medium">开启新对话</span>
+                <span className="font-medium">性格内观对话</span>
               </div>
             </div>
 
-            {/* 对话历史区域 */}
-            {currentContent === 'chat' && (
-              <div className="flex-1 overflow-hidden">
-                <div className="p-4 border-b border-gray-100">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-700">对话历史</span>
-                    <Button
-                      type="text"
-                      icon={<PlusOutlined />}
-                      onClick={createNewConversation}
-                      className="text-gray-500 hover:text-gray-700"
-                      size="small"
-                    />
-                  </div>
+            {/* 对话历史区域 - 始终显示 */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="p-3 border-b border-gray-100 flex-shrink-0">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">对话历史</span>
+                  <Button
+                    type="text"
+                    icon={<PlusOutlined />}
+                    onClick={() => {
+                      console.log('🔄 点击新对话按钮')
+                      createNewConversation()
+                    }}
+                    className="text-gray-500 hover:text-gray-700"
+                    size="small"
+                  >
+                    新对话
+                  </Button>
                 </div>
+              </div>
 
-                <div className="flex-1 overflow-y-auto p-4 space-y-2" style={{ overscrollBehavior: 'contain' }}>
-                  {conversations
+              <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar min-h-0" style={{ overscrollBehavior: 'contain' }}>
+                {conversationsLoading ? (
+                  // 加载中状态
+                  <div className="flex flex-col items-center justify-center py-8">
+                    <Spin size="default" />
+                    <p className="text-gray-500 text-sm mt-3">加载对话历史中...</p>
+                  </div>
+                ) : conversations.length === 0 ? (
+                  // 无对话状态
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                      <MessageOutlined className="text-gray-400 text-lg" />
+                    </div>
+                    <p className="text-gray-500 text-sm">暂无对话历史</p>
+                    <p className="text-gray-400 text-xs mt-1">开始新对话试试吧</p>
+                  </div>
+                ) : (
+                  conversations
                     .sort((a, b) => {
                       // 置顶的对话排在前面
                       if (a.isPinned && !b.isPinned) return -1
@@ -1413,71 +2164,74 @@ export default function PersonalityReportPage() {
                       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
                     })
                     .map((conversation) => (
-                    <div
-                      key={conversation.id}
-                      className={`group relative p-3 rounded-lg transition-all duration-200 cursor-pointer ${
-                        activeConversationId === conversation.id
-                          ? 'bg-gray-100 border border-gray-200'
-                          : 'hover:bg-gray-50 border border-transparent'
-                      }`}
-                      onClick={() => setActiveConversationId(conversation.id)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2 flex-1 min-w-0">
-                          {conversation.isPinned && (
-                            <PushpinFilled className="text-gray-600 text-xs flex-shrink-0" />
-                          )}
-                          <div className="font-medium text-sm text-gray-900 truncate">
-                            {conversation.title}
-                          </div>
+                  <div
+                    key={conversation.id}
+                    className={`group relative p-3 rounded-lg transition-all duration-200 cursor-pointer ${
+                      activeConversationId === conversation.id && currentContent === 'chat'
+                        ? 'bg-gray-100 border border-gray-200'
+                        : 'hover:bg-gray-50 border border-transparent'
+                    }`}
+                    onClick={() => {
+                      setActiveConversationId(conversation.id)
+                      setCurrentContent('chat') // 切换到聊天视图
+                    }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2 flex-1 min-w-0">
+                        {conversation.isPinned && (
+                          <PushpinFilled className="text-gray-600 text-xs flex-shrink-0" />
+                        )}
+                        <div className="font-medium text-sm text-gray-900 truncate">
+                          {conversation.title}
                         </div>
-                        <Dropdown
-                          menu={{
-                            items: [
-                              {
-                                key: 'pin',
-                                label: conversation.isPinned ? '取消置顶' : '置顶',
-                                icon: conversation.isPinned ? <PushpinOutlined /> : <PushpinFilled />,
-                                onClick: () => pinConversation(conversation.id)
-                              },
-                              {
-                                key: 'rename',
-                                label: '重命名',
-                                icon: <EditOutlined />,
-                                onClick: () => startRenameConversation(conversation.id, conversation.title)
-                              },
-                              {
-                                type: 'divider'
-                              },
-                              {
-                                key: 'delete',
-                                label: '删除',
-                                icon: <DeleteOutlined />,
-                                danger: true,
-                                onClick: () => deleteConversation(conversation.id)
-                              }
-                            ]
-                          }}
-                          trigger={['click']}
-                          placement="bottomRight"
-                        >
-                          <Button
-                            type="text"
-                            size="small"
-                            icon={<MoreOutlined />}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        </Dropdown>
                       </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        {formatDate(conversation.createdAt)}
-                      </div>
+                      <Dropdown
+                        menu={{
+                          items: [
+                            {
+                              key: 'pin',
+                              label: conversation.isPinned ? '取消置顶' : '置顶',
+                              icon: conversation.isPinned ? <PushpinOutlined /> : <PushpinFilled />,
+                              onClick: () => pinConversation(conversation.id)
+                            },
+                            {
+                              key: 'rename',
+                              label: '重命名',
+                              icon: <EditOutlined />,
+                              onClick: () => startRenameConversation(conversation.id, conversation.title)
+                            },
+                            {
+                              type: 'divider'
+                            },
+                            {
+                              key: 'delete',
+                              label: '删除',
+                              icon: <DeleteOutlined />,
+                              danger: true,
+                              onClick: () => deleteConversation(conversation.id)
+                            }
+                          ]
+                        }}
+                        trigger={['click']}
+                        placement="bottomRight"
+                      >
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<MoreOutlined />}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </Dropdown>
                     </div>
-                  ))}
-                </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {formatDate(conversation.createdAt)}
+                    </div>
+                                      </div>
+                  ))
+                )}
               </div>
-            )}
+            </div>
           </div>
         )}
       </div>
@@ -1496,12 +2250,12 @@ export default function PersonalityReportPage() {
       )}
 
       {/* 右侧内容区域 */}
-      <div className="flex-1 pt-16 md:pt-0 h-screen overflow-hidden bg-white">
+      <div className="flex-1 pt-8 md:pt-0 h-full overflow-hidden bg-white">
         {currentContent === 'report' ? (
           /* 性格报告展示区域 */
-          <div className="h-screen flex flex-col">
+          <div className="h-full flex flex-col">
             {/* 报告标题栏 */}
-            <div className="p-6 border-b border-gray-100">
+            <div className="p-4 border-b border-gray-100">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
@@ -1545,7 +2299,7 @@ export default function PersonalityReportPage() {
             </div>
 
             {/* 报告内容区域 - 独立滚动 */}
-            <div className="flex-1 overflow-y-auto p-6" style={{ overscrollBehavior: 'contain' }}>
+            <div className="flex-1 overflow-y-auto p-4" style={{ overscrollBehavior: 'contain' }}>
               {reportLoading ? (
                 <div className="flex flex-col items-center justify-center py-20">
                   {isGenerating ? (
@@ -1645,18 +2399,18 @@ export default function PersonalityReportPage() {
                     <FileTextOutlined className="text-gray-400 text-2xl" />
                   </div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">暂无性格报告</h3>
-                  <p className="text-gray-600 mb-4">点击按钮生成您的专属性格分析报告</p>
-                  <Button type="primary" onClick={regenerateReport}>
+                  <p className="text-gray-600 mb-4">请联系管理员生成您的专属性格分析报告</p>
+                  {/* <Button type="primary" onClick={regenerateReport}>
                     生成报告
-                  </Button>
+                  </Button> */}
                 </div>
               )}
             </div>
           </div>
         ) : (
           /* 聊天对话区域 */
-          <div className="h-screen flex flex-col">
-            {/* 聊天标题栏 */}
+          <div className="h-full flex flex-col">
+            {/* 聊天标题栏
             <div className="p-6 border-b border-gray-100">
               <div className="flex items-center space-x-3">
                 <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
@@ -1675,16 +2429,40 @@ export default function PersonalityReportPage() {
                   </Paragraph>
                 </div>
               )}
-            </div>
+            </div> */}
 
             {/* 聊天消息区域 - 独立滚动 */}
             <div
               ref={chatContainerRef}
-              className="flex-1 overflow-y-auto p-6 relative"
-              style={{ overscrollBehavior: 'contain' }}
+              className="flex-1 overflow-y-auto p-4 relative custom-scrollbar"
+              style={{ 
+                overscrollBehavior: 'contain'
+              }}
               onScroll={handleScroll}
             >
-              {getCurrentConversation()?.messages.map((message, index) => (
+              {!activeConversationId || !getCurrentConversation()?.messages.length ? (
+                // 默认欢迎界面
+                <div className="flex flex-col items-center justify-center h-full text-center">
+                  <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center mb-6">
+                    <span className="text-white text-2xl">🤖</span>
+                  </div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-4">
+                    您好 {(() => {
+                      const activeUser = getActiveUser()
+                      return activeUser?.name || userInfo?.nickname || userInfo?.name || '用户'
+                    })()}，很高兴见到您！
+                  </h2>
+                  <p className="text-gray-600 mb-8 max-w-md">
+                    我已了解您的基本信息，可以为您提供专业的命理分析和人生指导，请把您的问题交给我吧~
+                  </p>
+                  <div className="bg-gray-100 rounded-lg p-4 max-w-md">
+                    <p className="text-sm text-gray-600">
+                      💡 输入您的问题并发送，我会为您创建一个新的对话并开始回答
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                getCurrentConversation()?.messages.map((message, index) => (
                 <div key={message.id} className={`mb-6 ${message.type === 'user' ? 'flex justify-end' : 'flex justify-start'}`}>
                   <div className={`max-w-[80%] ${message.type === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-900'} rounded-lg p-4`}>
                     <div className={`flex items-center space-x-2 mb-2 ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -1697,43 +2475,48 @@ export default function PersonalityReportPage() {
                         {message.type === 'user' ? '您' : 'AI助手'}
                       </span>
                     </div>
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                        em: ({ children }) => <em className="italic">{children}</em>,
-                        ul: ({ children }) => <ul className="list-disc list-inside mb-2">{children}</ul>,
-                        ol: ({ children }) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
-                        li: ({ children }) => <li className="mb-1">{children}</li>,
-                        code: ({ children }) => (
-                          <code className={`px-2 py-1 rounded text-sm font-mono ${
-                            message.type === 'user' 
-                              ? 'bg-blue-700 text-blue-100' 
-                              : 'bg-gray-200 text-gray-800'
-                          }`}>
-                            {children}
-                          </code>
-                        ),
-                        blockquote: ({ children }) => (
-                          <blockquote className={`border-l-4 pl-4 italic mb-2 ${
-                            message.type === 'user' 
-                              ? 'border-blue-300 text-blue-100' 
-                              : 'border-gray-300 text-gray-600'
-                          }`}>
-                            {children}
-                          </blockquote>
-                        ),
-                      }}
-                    >
-                      {message.content}
-                    </ReactMarkdown>
+                    {message.type === 'bot' && message.content === '正在思考中...' ? (
+                      <TypingIndicator />
+                    ) : (
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                          strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                          em: ({ children }) => <em className="italic">{children}</em>,
+                          ul: ({ children }) => <ul className="list-disc list-inside mb-2">{children}</ul>,
+                          ol: ({ children }) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
+                          li: ({ children }) => <li className="mb-1">{children}</li>,
+                          code: ({ children }) => (
+                            <code className={`px-2 py-1 rounded text-sm font-mono ${
+                              message.type === 'user' 
+                                ? 'bg-blue-700 text-blue-100' 
+                                : 'bg-gray-200 text-gray-800'
+                            }`}>
+                              {children}
+                            </code>
+                          ),
+                          blockquote: ({ children }) => (
+                            <blockquote className={`border-l-4 pl-4 italic mb-2 ${
+                              message.type === 'user' 
+                                ? 'border-blue-300 text-blue-100' 
+                                : 'border-gray-300 text-gray-600'
+                            }`}>
+                              {children}
+                            </blockquote>
+                          ),
+                        }}
+                      >
+                        {message.content}
+                      </ReactMarkdown>
+                    )}
                     <div className={`text-xs mt-2 ${message.type === 'user' ? 'text-blue-200' : 'text-gray-500'}`}>
                       {formatTime(message.timestamp)}
                     </div>
                   </div>
                 </div>
-              ))}
+                ))
+              )}
               <div ref={messagesEndRef} />
 
               {/* 回到底部按钮 */}
@@ -1758,33 +2541,48 @@ export default function PersonalityReportPage() {
               )}
             </div>
 
-            {/* 输入框区域 */}
-            <div className="p-6 border-t border-gray-100">
-              <div className="flex space-x-3">
-                <TextArea
-                  value={currentMessage}
-                  onChange={(e) => setCurrentMessage(e.target.value)}
-                  placeholder="请输入您的问题..."
-                  autoSize={{ minRows: 1, maxRows: 4 }}
-                  className="flex-1"
-                  disabled={loading}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      sendMessage()
-                    }
-                  }}
-                />
-                <Button
-                  type="primary"
-                  icon={<SendOutlined />}
-                  onClick={sendMessage}
-                  loading={loading}
-                  disabled={!currentMessage.trim()}
-                  className="self-end"
-                >
-                  发送
-                </Button>
+            {/* 输入框区域 - 简洁样式 */}
+            <div className="px-4 py-2 bg-white">
+              <div className="max-w-4xl mx-auto">
+                <div className="relative">
+                  <TextArea
+                    value={currentMessage}
+                    onChange={(e) => setCurrentMessage(e.target.value)}
+                    placeholder="请输入您的问题..."
+                    autoSize={{ minRows: 2, maxRows: 8 }}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 pr-12 resize-none focus:border-blue-400 focus:outline-none"
+                    disabled={loading || isTyping}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        if (currentMessage.trim() && !loading && !isTyping) {
+                          sendMessage()
+                        }
+                      }
+                    }}
+                  />
+                  {/* 按钮在TextArea内部右下角 */}
+                  <div className="absolute bottom-2 right-2">
+                    <Button
+                      type={currentMessage.trim() ? "primary" : "default"}
+                      shape="circle"
+                      icon={<ArrowUpOutlined />}
+                      onClick={sendMessage}
+                      loading={loading}
+                      disabled={!currentMessage.trim() || loading || isTyping}
+                      className={`w-8 h-8 flex items-center justify-center transition-all duration-200 shadow-sm ${
+                        currentMessage.trim() && !loading && !isTyping
+                          ? 'bg-blue-500 hover:bg-blue-600 border-blue-500 text-white' 
+                          : 'bg-gray-200 border-gray-200 text-gray-400'
+                      }`}
+                      title={currentMessage.trim() ? "发送消息" : "请输入消息"}
+                    />
+                  </div>
+                </div>
+                {/* 输入提示 */}
+                <div className="text-xs text-gray-400 mt-2 text-center">
+                  Enter 发送，Shift + Enter 换行
+                </div>
               </div>
             </div>
           </div>
@@ -1841,6 +2639,7 @@ export default function PersonalityReportPage() {
             onClick={() => {
               console.log('🔄 移动端点击开启新对话按钮')
               createNewConversation()
+              setCurrentContent('chat')
               setDrawerVisible(false)
             }}
             className={`flex items-center space-x-3 p-3 rounded-lg cursor-pointer transition-all duration-200 ${
@@ -1850,46 +2649,66 @@ export default function PersonalityReportPage() {
             }`}
           >
             <MessageOutlined className="text-lg" />
-            <span className="font-medium">开启新对话</span>
+            <span className="font-medium">性格内观对话</span>
           </div>
         </div>
 
-        {/* 对话历史 */}
-        {currentContent === 'chat' && conversations.length > 0 && (
-          <div>
-            <div className="flex items-center justify-between mb-4">
+        {/* 对话历史 - 始终显示 */}
+        {(conversationsLoading || conversations.length > 0) && (
+          <div className="flex flex-col max-h-96 overflow-hidden">
+            <div className="flex items-center justify-between mb-4 flex-shrink-0">
               <span className="text-sm font-medium text-gray-700">对话历史</span>
               <Button
                 type="text"
                 icon={<PlusOutlined />}
                 size="small"
                 onClick={() => {
+                  console.log('🔄 点击新对话按钮')
                   createNewConversation()
                   setDrawerVisible(false)
                 }}
                 className="text-gray-500 hover:text-gray-700"
-              />
+              >
+                新对话
+              </Button>
             </div>
 
-            <div className="space-y-2">
-              {conversations
-                .sort((a, b) => {
-                  // 置顶的对话排在前面
-                  if (a.isPinned && !b.isPinned) return -1
-                  if (!a.isPinned && b.isPinned) return 1
-                  // 其他按创建时间排序（最新在上）
-                  return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-                })
-                .map((conversation) => (
+            <div className="space-y-2 overflow-y-auto custom-scrollbar" style={{ overscrollBehavior: 'contain' }}>
+              {conversationsLoading ? (
+                // 加载中状态
+                <div className="flex flex-col items-center justify-center py-6">
+                  <Spin size="default" />
+                  <p className="text-gray-500 text-sm mt-3">加载对话历史中...</p>
+                </div>
+              ) : conversations.length === 0 ? (
+                // 无对话状态
+                <div className="flex flex-col items-center justify-center py-6 text-center">
+                  <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                    <MessageOutlined className="text-gray-400" />
+                  </div>
+                  <p className="text-gray-500 text-sm">暂无对话历史</p>
+                  <p className="text-gray-400 text-xs mt-1">开始新对话试试吧</p>
+                </div>
+              ) : (
+                conversations
+                  .sort((a, b) => {
+                    // 置顶的对话排在前面
+                    if (a.isPinned && !b.isPinned) return -1
+                    if (!a.isPinned && b.isPinned) return 1
+                    // 其他按创建时间排序（最新在上）
+                    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                  })
+                  .map((conversation) => (
                 <div
                   key={conversation.id}
                   className={`group relative p-3 rounded-lg transition-all duration-200 cursor-pointer ${
-                    activeConversationId === conversation.id
+                    activeConversationId === conversation.id && currentContent === 'chat'
                       ? 'bg-gray-100 border border-gray-200'
                       : 'hover:bg-gray-50 border border-transparent'
                   }`}
                   onClick={() => {
                     setActiveConversationId(conversation.id)
+                    setCurrentContent('chat') // 切换到聊天视图
                     setDrawerVisible(false)
                   }}
                 >
@@ -1945,9 +2764,10 @@ export default function PersonalityReportPage() {
                     {formatDate(conversation.createdAt)}
                   </div>
                 </div>
-              ))}
-            </div>
+              ))
+            )}
           </div>
+        </div>
         )}
       </Drawer>
 

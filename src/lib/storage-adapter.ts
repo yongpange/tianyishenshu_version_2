@@ -311,6 +311,10 @@ export class StorageManager {
     return this.adapter.savePersonalityReport(userProfileId, report)
   }
 
+  async savePersonalityReportWithAstrology(userProfileId: string, report: PersonalityReport, astrologyContext: string): Promise<void> {
+    return this.adapter.savePersonalityReportWithAstrology(userProfileId, report, astrologyContext)
+  }
+
   async getPersonalityReport(userId: string): Promise<PersonalityReport | null> {
     return this.adapter.getPersonalityReport(userId)
   }

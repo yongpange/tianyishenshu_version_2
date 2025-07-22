@@ -49,15 +49,15 @@ interface FormValues {
   is_active: boolean
 }
 
-// 预定义的权限模块和操作
+// 预定义的权限模块和操作（与前端dashboard保持一致）
 const PERMISSION_MODULES: Record<string, { name: string; actions: string[] }> = {
-  bazi: { name: '八字排盘', actions: ['view', 'generate'] },
+  astrology: { name: '八字排盘', actions: ['view', 'generate'] },
   personality: { name: '性格内观', actions: ['view', 'generate', 'chat'] },
-  career: { name: '事业财富', actions: ['view', 'generate', 'chat'] },
-  romance: { name: '婚恋感情', actions: ['view', 'generate', 'chat'] },
+  wealth: { name: '事业财富', actions: ['view', 'generate', 'chat'] },
+  marriage: { name: '婚恋感情', actions: ['view', 'generate', 'chat'] },
   health: { name: '身体健康', actions: ['view', 'generate', 'chat'] },
-  fortune: { name: '运势', actions: ['view', 'generate', 'chat'] },
-  // premium: { name: '高级功能', actions: ['access'] }
+  consultation: { name: '咨询问道', actions: ['view', 'chat'] },
+  admin: { name: '管理功能', actions: ['dashboard', 'users', 'roles', 'reports'] }
 }
 
 const ACTION_LABELS: Record<string, string> = {

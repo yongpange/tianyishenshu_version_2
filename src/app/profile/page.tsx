@@ -732,7 +732,7 @@ export default function ProfilePage() {
                 <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <p className="text-blue-800 font-medium text-sm">
                     多份报告正在生成，预计等候3-5分钟
-                  </p>
+                  </p>  
                 </div>
 
                 <Progress percent={progress} strokeColor="#1890ff" />

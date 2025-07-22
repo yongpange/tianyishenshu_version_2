@@ -106,29 +106,17 @@ export const useConversationHistory = ({ moduleId }: UseConversationHistoryProps
     return merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   }
 
-  // 创建新对话
+  // 重置聊天界面 - 不创建新对话，只刷新到初始状态
   const createNewConversation = useCallback(() => {
-    const newConversation: ConversationHistory = {
-      id: `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      title: `新对话 ${new Date().toLocaleString()}`,
-      messages: [],
-      createdAt: new Date(),
-      isPinned: false,
-      isManualTitle: false
-    }
-
-    console.log('🆕 创建新对话:', newConversation.id)
+    console.log('🔄 重置聊天界面到初始状态...')
     
-    setConversations(prev => [newConversation, ...prev])
-    setActiveConversationId(newConversation.id)
+    // 重置为初始状态：清除活跃对话ID，显示欢迎界面
+    setActiveConversationId(null)
     
-    // 保存到localStorage
-    const storageKey = getStorageKey()
-    const updatedConversations = [newConversation, ...conversations]
-    localStorage.setItem(storageKey, JSON.stringify(updatedConversations))
+    console.log('✅ 聊天界面已重置为初始状态')
     
-    return newConversation.id
-  }, [conversations, getStorageKey])
+    return null
+  }, [])
 
   // 更新对话
   const updateConversation = useCallback((conversationId: string, updates: Partial<ConversationHistory>) => {

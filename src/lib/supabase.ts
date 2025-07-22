@@ -5,10 +5,10 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 // 打印环境变量调试信息
-console.log('🔍 Supabase 配置调试信息:')
-console.log('NEXT_PUBLIC_SUPABASE_URL:', supabaseUrl)
-console.log('NEXT_PUBLIC_SUPABASE_ANON_KEY:', supabaseAnonKey ? `${supabaseAnonKey.substring(0, 10)}...` : 'undefined')
-console.log('SUPABASE_SERVICE_ROLE_KEY:', process.env.SUPABASE_SERVICE_ROLE_KEY ? `${process.env.SUPABASE_SERVICE_ROLE_KEY.substring(0, 10)}...` : 'undefined')
+// console.log('🔍 Supabase 配置调试信息:')
+// console.log('NEXT_PUBLIC_SUPABASE_URL:', supabaseUrl)
+// console.log('NEXT_PUBLIC_SUPABASE_ANON_KEY:', supabaseAnonKey ? `${supabaseAnonKey.substring(0, 10)}...` : 'undefined')
+// console.log('SUPABASE_SERVICE_ROLE_KEY:', process.env.SUPABASE_SERVICE_ROLE_KEY ? `${process.env.SUPABASE_SERVICE_ROLE_KEY.substring(0, 10)}...` : 'undefined')
 
 // 在开发环境或占位符环境中，提供警告而不是抛出错误
 if (!supabaseUrl || supabaseUrl.includes('placeholder')) {

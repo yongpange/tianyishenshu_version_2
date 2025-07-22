@@ -177,13 +177,56 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
     if (!reportGeneration.reportContent) return
 
     try {
-      await navigator.clipboard.writeText(reportGeneration.reportContent)
-      setCopied(true)
-      message.success('报告内容已复制到剪贴板')
-      setTimeout(() => setCopied(false), 2000)
+      // 优先尝试现代 clipboard API
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(reportGeneration.reportContent)
+        setCopied(true)
+        message.success('报告内容已复制到剪贴板')
+        setTimeout(() => setCopied(false), 2000)
+        return
+      }
+
+      // 备用方案：使用 textArea 元素
+      const textArea = document.createElement('textarea')
+      textArea.value = reportGeneration.reportContent
+      textArea.style.position = 'fixed'
+      textArea.style.left = '-999999px'
+      textArea.style.top = '-999999px'
+      document.body.appendChild(textArea)
+      textArea.focus()
+      textArea.select()
+      
+      const successful = document.execCommand('copy')
+      document.body.removeChild(textArea)
+      
+      if (successful) {
+        setCopied(true)
+        message.success('报告内容已复制到剪贴板')
+        setTimeout(() => setCopied(false), 2000)
+      } else {
+        throw new Error('execCommand copy failed')
+      }
     } catch (error) {
       console.error('❌ 复制失败:', error)
-      message.error('复制失败，请手动选择复制')
+      
+      // 最后的备用方案：显示选择提示
+      Modal.info({
+        title: '复制内容',
+        content: (
+          <div>
+            <p>自动复制失败，请手动复制以下内容：</p>
+            <TextArea
+              value={reportGeneration.reportContent}
+              readOnly
+              autoSize={{ minRows: 10, maxRows: 20 }}
+              style={{ marginTop: 8 }}
+              onFocus={(e) => e.target.select()}
+            />
+          </div>
+        ),
+        width: 600,
+        okText: '关闭'
+      })
     }
   }, [reportGeneration.reportContent])
 

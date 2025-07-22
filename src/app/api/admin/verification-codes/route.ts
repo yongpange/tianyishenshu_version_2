@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 // 获取所有验证码信息
 export async function GET() {
   try {
-    console.log('🔍 开始获取验证码信息...')
+    // console.log('🔍 开始获取验证码信息...')
 
     // 查询所有有验证码的用户
     const { data, error } = await supabaseAdmin
@@ -39,7 +39,7 @@ export async function GET() {
       }
     }) || []
 
-    console.log('✅ 成功获取验证码数据:', processedData?.length || 0, '条')
+    // console.log('✅ 成功获取验证码数据:', processedData?.length || 0, '条')
     
     return NextResponse.json({
       success: true,

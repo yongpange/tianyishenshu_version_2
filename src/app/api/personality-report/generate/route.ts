@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ChatStatus, RoleType } from '@coze/api'
 import { supabaseAdmin } from '@/lib/supabase'
 import { UserInfo } from '@/lib/coze-client'
-import { createCozeClient, validateBotId, checkAuthConfig } from '@/lib/coze-auth'
+import { createCozeClient, validateBotId, checkAuthConfig, callCozeAPIWithRetry } from '@/lib/coze-auth'
 import {
   validateUserInfo,
   calculateUserDataHash,
@@ -11,7 +11,8 @@ import {
 import { 
   createPersonalityReport, 
   savePersonalityReport,
-  getAstrologyContext
+  getAstrologyContext,
+  getUserProfileId
 } from '@/utils/personality-report'
 
 // 请求接口
@@ -119,44 +120,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
       }, { status: 500 })
     }
 
-    // 获取八字排盘上下文信息 - 数据库优先
+    // 获取八字排盘上下文信息
     console.log('🔮 获取八字排盘数据...')
-    // 确定用户ID for 八字获取
-    let baziUserId: string
-    let isBaziUserProfileId = false
-
-    if (isUserProfileId) {
-      // 使用user_profiles.id
-      baziUserId = userId
-      isBaziUserProfileId = true
-    } else {
-      // 通过手机号查找user_profiles.id
-      const { data: user, error: userError } = await supabaseAdmin
-        .from('users')
-        .select('id')
-        .eq('phone_number', userId)
-        .single()
-
-      if (userError || !user) {
-        throw new Error('找不到用户信息')
-      }
-
-      const { data: userProfile, error: profileError } = await supabaseAdmin
-        .from('user_profiles')
-        .select('id')
-        .eq('user_id', user.id)
-        .is('parent_id', null)
-        .single()
-
-      if (profileError || !userProfile) {
-        throw new Error('找不到用户资料')
-      }
-
-      baziUserId = userProfile.id
-      isBaziUserProfileId = true
-    }
-
-    const astrologyContext = await getAstrologyContext(userInfo, baziUserId)
+    
+    // 统一处理用户ID转换
+    const baziUserId = await getUserProfileId(userId, isUserProfileId)
+    
+    const astrologyContext = await getAstrologyContext(userInfo, baziUserId || undefined, true)
     console.log('✅ 八字排盘数据获取完成')
 
     // 生成性格报告prompt
@@ -165,22 +135,24 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
     try {
       console.log('📡 调用 Coze API...')
       
-      // 创建Coze客户端（支持JWT和PAT认证）
-      const { client: coze, authMethod } = await createCozeClient()
-      
-      // 设置更长的超时时间，并添加重试机制
+      // 使用带重试的Coze API调用，优先使用用户token
       const result = await Promise.race([
-        coze.chat.createAndPoll({
-          bot_id: botId,
-          user_id: `user_${userId}_${Date.now()}`,
-          additional_messages: [
-            {
-              role: RoleType.User,
-              content: prompt,
-              content_type: 'text',
-            },
-          ],
-        }),
+        callCozeAPIWithRetry(
+          async (coze: any) => {
+            return await coze.chat.createAndPoll({
+              bot_id: botId,
+              user_id: `user_${userId}_${Date.now()}`,
+              additional_messages: [
+                {
+                  role: RoleType.User,
+                  content: prompt,
+                  content_type: 'text',
+                },
+              ],
+            })
+          },
+          userInfo
+        ),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Coze API调用超时，请稍后重试')), 300000) // 5分钟超时
         )
@@ -189,8 +161,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
       console.log('📋 Coze API 响应:', {
         status: result.chat.status,
         conversation_id: result.chat.conversation_id,
-        messages_count: result.messages?.length || 0,
-        authMethod: authMethod
+        messages_count: result.messages?.length || 0
       })
 
       if (result.chat.status === ChatStatus.COMPLETED && result.messages) {
@@ -208,55 +179,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
           })
 
           try {
-            // 获取用户资料ID - 支持子账户
-            let userProfileId: string
-
-            if (isUserProfileId) {
-              // 直接使用提供的user_profiles.id
-              userProfileId = userId
-              console.log('📋 子账户模式：直接使用user_profiles.id:', userProfileId)
-              
-              // 验证user_profiles.id是否存在
-              const { data: profile, error: profileError } = await supabaseAdmin
-                .from('user_profiles')
-                .select('id')
-                .eq('id', userProfileId)
-                .single()
-
-              if (profileError || !profile) {
-                console.error('❌ 子账户用户资料不存在:', userProfileId)
-                throw new Error('子账户用户资料不存在')
-              }
-            } else {
-              // 原有逻辑：通过手机号查找主用户资料
-              console.log('📋 主账户模式：通过手机号查找用户资料')
-              
-              const { data: user, error: userError } = await supabaseAdmin
-                .from('users')
-                .select('id')
-                .eq('phone_number', userId)
-                .single()
-
-              if (userError || !user) {
-                console.error('❌ 主账户用户不存在:', userId)
-                throw new Error('主账户用户不存在')
-              }
-
-              const { data: userProfile, error: profileError } = await supabaseAdmin
-                .from('user_profiles')
-                .select('id')
-                .eq('user_id', user.id)
-                .is('parent_id', null) // 只查找主用户资料
-                .single()
-
-              if (profileError || !userProfile) {
-                console.error('❌ 主账户用户资料不存在:', user.id)
-                throw new Error('主账户用户资料不存在')
-              }
-
-              userProfileId = userProfile.id
+            // 获取用户资料ID
+            const userProfileId = await getUserProfileId(userId, isUserProfileId)
+            
+            if (!userProfileId) {
+              throw new Error('无法获取用户资料ID，保存失败')
             }
-
+            
             console.log('✅ 确定用户资料ID:', userProfileId)
 
             // 保存到Supabase（包含八字上下文）
@@ -267,7 +196,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
               userInfo,
               result.chat.conversation_id
             )
-            await savePersonalityReportWithAstrology(reportData, userProfileId, astrologyContext)
+            await savePersonalityReport(reportData, userProfileId)
 
             console.log('✅ 性格报告保存成功:', { 
               reportId: reportData.id, 
@@ -278,8 +207,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
             return NextResponse.json({
               success: true,
               reportId: reportData.id,
-              content: reportContent,
-              authMethod: authMethod
+              content: reportContent
             })
 
           } catch (saveError) {
@@ -289,8 +217,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
             return NextResponse.json({
               success: true,
               content: reportContent,
-              error: '报告生成成功，但保存失败',
-              authMethod: authMethod
+              error: '报告生成成功，但保存失败'
             })
           }
 

@@ -68,7 +68,7 @@ function getPrivateKey(privateKeyFile: string): string {
 }
 
 // JWT认证函数 - 符合Coze官方OAuth JWT规范
-async function createJWTToken(config: CozeAuthConfig): Promise<string> {
+export async function createJWTToken(config: CozeAuthConfig): Promise<string> {
   const { clientId, privateKeyFile, publicKeyId, apiBase } = config
   
   if (!clientId || !publicKeyId || !privateKeyFile) {
@@ -214,6 +214,226 @@ export async function createCozeClient(customConfig?: Partial<CozeAuthConfig>): 
   return { client, authMethod, token: authToken }
 }
 
+/**
+ * 获取用户的 Coze Access Token
+ * 优先使用数据库缓存的token，过期时自动刷新
+ */
+export async function getUserCozeToken(userInfo: any): Promise<{
+  token: string | null
+  authMethod: string
+  client: CozeAPI | null
+}> {
+  let accessToken: string | null = null
+  let authMethod = 'PAT Token' // 默认认证方式
+
+  if (userInfo) {
+    try {
+      const { supabaseAdmin } = await import('@/lib/supabase')
+      
+      // 从user_profiles获取用户资料和token信息
+      const { data: userProfile } = await supabaseAdmin
+        .from('user_profiles')
+        .select('id, coze_access_token, coze_token_expires_at, coze_token_created_at')
+        .eq('user_id', userInfo.user_id || userInfo.userId)
+        .single()
+
+      if (userProfile?.id) {
+        console.log('🔑 检查用户Access Token:', userProfile.id)
+        
+        // 检查是否有有效的token
+        const now = new Date()
+        const tokenExpiresAt = userProfile.coze_token_expires_at ? new Date(userProfile.coze_token_expires_at) : null
+        
+        if (userProfile.coze_access_token && tokenExpiresAt && tokenExpiresAt > now) {
+          // token仍然有效，直接使用
+          accessToken = userProfile.coze_access_token
+          authMethod = 'JWT OAuth (cached)'
+          console.log('✅ 使用缓存的Access Token，过期时间:', tokenExpiresAt.toISOString())
+        } else {
+          // token不存在或已过期，重新获取
+          console.log('🔄 Token不存在或已过期，重新获取...')
+          
+          try {
+            // 使用JWT OAuth获取新token
+            const newToken = await getOAuthAccessToken(DEFAULT_CONFIG)
+            
+            // 计算过期时间（24小时减1秒）
+            const expiresAt = new Date()
+            expiresAt.setSeconds(expiresAt.getSeconds() + 86399) // 24小时-1秒
+            
+            // 更新数据库中的token信息
+            const { error: updateError } = await supabaseAdmin
+              .from('user_profiles')
+              .update({
+                coze_access_token: newToken,
+                coze_token_expires_at: expiresAt.toISOString(),
+                coze_token_created_at: now.toISOString()
+              })
+              .eq('id', userProfile.id)
+            
+            if (updateError) {
+              console.error('❌ 更新用户token失败:', updateError)
+              throw updateError
+            }
+            
+            accessToken = newToken
+            authMethod = 'JWT OAuth (new)'
+            console.log('✅ 获取新Access Token并存储到数据库，过期时间:', expiresAt.toISOString())
+            
+          } catch (jwtError) {
+            console.error('❌ JWT认证失败:', jwtError)
+            console.log('🔄 将降级使用系统认证')
+          }
+        }
+      }
+    } catch (error) {
+      console.error('❌ 获取用户Access Token失败:', error)
+      console.log('🔄 将降级使用系统认证')
+    }
+  }
+
+  // 创建Coze客户端
+  let client: CozeAPI | null = null
+  if (accessToken) {
+    // 使用用户的Access Token
+    client = new CozeAPI({
+      token: accessToken,
+      baseURL: `https://${process.env.COZE_API_BASE || 'api.coze.cn'}/`
+    })
+    console.log('🔐 使用用户Access Token创建客户端')
+  } else {
+    // 降级使用系统级认证
+    try {
+      const systemAuth = await createCozeClient()
+      client = systemAuth.client
+      authMethod = systemAuth.authMethod
+      console.log('🔄 使用系统级认证:', authMethod)
+    } catch (error) {
+      console.error('❌ 系统级认证也失败:', error)
+      client = null
+    }
+  }
+
+  return { token: accessToken, authMethod, client }
+}
+
+/**
+ * 重新获取用户的 Coze Access Token（强制刷新）
+ */
+export async function refreshUserCozeToken(userInfo: any): Promise<{
+  token: string | null
+  client: CozeAPI | null
+}> {
+  let newToken: string | null = null
+  let client: CozeAPI | null = null
+
+  if (userInfo) {
+    try {
+      const { supabaseAdmin } = await import('@/lib/supabase')
+      
+      // 从user_profiles获取用户资料ID
+      const { data: userProfile } = await supabaseAdmin
+        .from('user_profiles')
+        .select('id')
+        .eq('user_id', userInfo.user_id || userInfo.userId)
+        .single()
+
+      if (userProfile?.id) {
+        console.log('🔄 强制刷新用户Token:', userProfile.id)
+        
+        try {
+          // 使用JWT OAuth获取新token
+          newToken = await getOAuthAccessToken(DEFAULT_CONFIG)
+          
+          // 计算过期时间（24小时减1秒）
+          const now = new Date()
+          const expiresAt = new Date()
+          expiresAt.setSeconds(expiresAt.getSeconds() + 86399) // 24小时-1秒
+          
+          // 更新数据库中的token信息
+          const { error: updateError } = await supabaseAdmin
+            .from('user_profiles')
+            .update({
+              coze_access_token: newToken,
+              coze_token_expires_at: expiresAt.toISOString(),
+              coze_token_created_at: now.toISOString()
+            })
+            .eq('id', userProfile.id)
+          
+          if (updateError) {
+            console.error('❌ 更新用户token失败:', updateError)
+            throw updateError
+          }
+          
+          console.log('✅ Token强制刷新成功并存储到数据库，过期时间:', expiresAt.toISOString())
+          
+          // 使用新token创建客户端
+          client = new CozeAPI({
+            token: newToken,
+            baseURL: `https://${process.env.COZE_API_BASE || 'api.coze.cn'}/`
+          })
+          
+        } catch (jwtError) {
+          console.error('❌ JWT认证失败:', jwtError)
+        }
+      }
+    } catch (refreshError) {
+      console.error('❌ Token刷新过程失败:', refreshError)
+    }
+  }
+
+  return { token: newToken, client }
+}
+
+/**
+ * 带自动重试的 Coze API 调用包装器
+ * 自动处理token过期和重试逻辑
+ */
+export async function callCozeWithRetry<T>(
+  apiCall: (client: CozeAPI) => Promise<T>,
+  userInfo: any,
+  maxRetries: number = 1
+): Promise<T> {
+  // 获取初始客户端
+  const { client: initialClient, authMethod } = await getUserCozeToken(userInfo)
+  
+  if (!initialClient) {
+    throw new Error('无法创建Coze客户端')
+  }
+
+  console.log(`📡 使用 ${authMethod} 调用Coze API`)
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await apiCall(initialClient)
+    } catch (error: any) {
+      // 检查是否是token过期错误
+      const isTokenExpired = error?.message?.includes('401') || 
+                            error?.message?.includes('Unauthorized') ||
+                            error?.status === 401
+
+      if (isTokenExpired && attempt < maxRetries && userInfo) {
+        console.log('🔄 Token可能过期，尝试刷新...')
+        
+        const { client: refreshedClient } = await refreshUserCozeToken(userInfo)
+        
+        if (refreshedClient) {
+          console.log('✅ Token刷新成功，重试API调用')
+          // 更新客户端并继续重试
+          Object.assign(initialClient, refreshedClient)
+          continue
+        } else {
+          console.error('❌ Token刷新失败')
+        }
+      }
+
+      throw error
+    }
+  }
+
+  throw new Error('API调用重试次数超限')
+}
+
 // 验证Bot ID配置
 export function validateBotId(botId?: string): string {
   const finalBotId = botId || DEFAULT_CONFIG.botId
@@ -234,6 +454,267 @@ export function checkAuthConfig(config?: Partial<CozeAuthConfig>): void {
   
   if (!hasJWTConfig && !hasPATConfig) {
     throw new Error('认证配置检查失败: 既没有JWT也没有PAT配置')
+  }
+}
+
+/**
+ * 通用获取用户Coze客户端函数
+ * 供各个API使用，统一token缓存逻辑
+ */
+export async function getUserCozeClient(userInfo: any): Promise<{
+  client: any
+  authMethod: string
+  accessToken: string | null
+}> {
+  let accessToken: string | null = null
+  let authMethod = 'PAT Token' // 默认认证方式
+
+  if (userInfo) {
+    try {
+      const { supabaseAdmin } = await import('@/lib/supabase')
+      
+      // 从user_profiles获取用户资料ID
+      const { data: userProfile } = await supabaseAdmin
+        .from('user_profiles')
+        .select('id')
+        .eq('user_id', userInfo.user_id || userInfo.userId)
+        .single()
+
+      if (userProfile?.id) {
+        console.log('🔑 获取用户Access Token:', userProfile.id)
+        
+        // 调用token管理API
+        const tokenResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/user-profiles/coze-token`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userProfileId: userProfile.id
+          })
+        })
+
+        const tokenResult = await tokenResponse.json()
+
+        if (tokenResult.success && tokenResult.token) {
+          accessToken = tokenResult.token
+          authMethod = tokenResult.cached ? 'JWT OAuth (cached)' : 'JWT OAuth (new)'
+          console.log('✅ 成功获取Access Token:', authMethod)
+        } else {
+          console.warn('⚠️ 获取Access Token失败，使用PAT Token:', tokenResult.message)
+        }
+      }
+    } catch (error) {
+      console.error('❌ 获取Access Token失败:', error)
+      console.log('🔄 降级使用PAT Token')
+    }
+  }
+
+  // 创建Coze客户端
+  let client: any
+  if (accessToken) {
+    // 使用用户的Access Token
+    const { CozeAPI } = await import('@coze/api')
+    client = new CozeAPI({
+      token: accessToken,
+      baseURL: `https://${process.env.COZE_API_BASE || 'api.coze.cn'}/`
+    })
+    console.log('🔐 使用用户Access Token创建客户端')
+  } else {
+    // 降级使用系统级认证
+    const { client: systemClient, authMethod: fallbackAuth } = await createCozeClient()
+    client = systemClient
+    authMethod = fallbackAuth
+    console.log('🔄 使用系统级认证:', authMethod)
+  }
+
+  return { client, authMethod, accessToken }
+}
+
+/**
+ * 带token刷新重试的API调用包装器
+ * 供各个API使用，自动处理token过期和重试逻辑
+ */
+export async function callCozeAPIWithRetry<T>(
+  apiCall: (client: any) => Promise<T>,
+  userInfo: any,
+  maxRetries: number = 1
+): Promise<T> {
+  // 获取初始客户端
+  const { client: initialClient, authMethod, accessToken } = await getUserCozeClient(userInfo)
+
+  console.log(`📡 使用 ${authMethod} 调用Coze API`)
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await apiCall(initialClient)
+    } catch (error: any) {
+      // 检查是否是token过期错误
+      const isTokenExpired = error?.message?.includes('401') || 
+                            error?.message?.includes('Unauthorized') ||
+                            error?.status === 401
+
+      if (isTokenExpired && attempt < maxRetries && accessToken && userInfo) {
+        console.log('🔄 Token可能过期，尝试刷新...')
+        
+        try {
+          const { client: refreshedClient } = await refreshUserCozeToken(userInfo)
+          
+          if (refreshedClient) {
+            console.log('✅ Token刷新成功，重试API调用')
+            // 更新客户端并继续重试
+            Object.assign(initialClient, refreshedClient)
+            continue
+          } else {
+            console.error('❌ Token刷新失败')
+          }
+        } catch (refreshError) {
+          console.error('❌ Token刷新过程失败:', refreshError)
+        }
+      }
+
+      throw error
+    }
+  }
+
+  throw new Error('API调用重试次数超限')
+}
+
+/**
+ * 确保用户有有效的 Coze Access Token
+ * 如果没有token或token已过期，则生成新的token并保存到数据库
+ */
+export async function ensureUserCozeToken(userProfileId: string): Promise<{
+  success: boolean
+  token?: string
+  message?: string
+}> {
+  try {
+    console.log('🔍 检查用户Coze Token:', userProfileId)
+    
+    const { supabaseAdmin } = await import('@/lib/supabase')
+    
+    // 1. 获取用户当前的token信息
+    const { data: userProfile, error: profileError } = await supabaseAdmin
+      .from('user_profiles')
+      .select('coze_access_token, coze_token_expires_at, coze_token_created_at')
+      .eq('id', userProfileId)
+      .single()
+
+    if (profileError) {
+      console.error('❌ 获取用户资料失败:', profileError)
+      return { success: false, message: '用户资料不存在' }
+    }
+
+    const now = new Date()
+    const tokenExpiresAt = userProfile.coze_token_expires_at ? new Date(userProfile.coze_token_expires_at) : null
+    const isTokenValid = tokenExpiresAt && tokenExpiresAt > now && userProfile.coze_access_token
+    
+    console.log('🔍 Token状态检查:', {
+      hasToken: !!userProfile.coze_access_token,
+      expiresAt: tokenExpiresAt?.toISOString(),
+      isValid: isTokenValid
+    })
+
+    // 2. 如果token有效，直接返回
+    if (isTokenValid) {
+      console.log('✅ 用户已有有效Token')
+      return { 
+        success: true, 
+        token: userProfile.coze_access_token,
+        message: '用户已有有效Token'
+      }
+    }
+
+    // 3. 需要生成新token
+    console.log('🔄 需要为用户生成新的Access Token')
+
+    try {
+      // 使用JWT认证获取新的Access Token
+      const config = {
+        clientId: process.env.COZE_CLIENT_ID!,
+        publicKeyId: process.env.COZE_PUBLIC_KEY_ID!,
+        privateKeyFile: process.env.COZE_PRIVATE_KEY_FILE!,
+        apiBase: process.env.COZE_API_BASE || 'api.coze.cn'
+      }
+
+      // 验证配置
+      if (!config.clientId || !config.publicKeyId || !config.privateKeyFile) {
+        throw new Error('Coze OAuth配置缺失')
+      }
+
+      // 创建JWT Token
+      const jwtToken = await createJWTToken(config)
+      console.log('✅ JWT Token创建成功')
+
+      // 请求Access Token
+      const tokenResponse = await fetch(`https://${config.apiBase}/api/permission/oauth2/token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${jwtToken}`,
+        },
+        body: JSON.stringify({
+          grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+          duration_seconds: 86400, // 24小时
+        }),
+      })
+
+      if (!tokenResponse.ok) {
+        const errorText = await tokenResponse.text()
+        throw new Error(`OAuth请求失败: ${tokenResponse.status} ${errorText}`)
+      }
+
+      const tokenData = await tokenResponse.json()
+
+      if (!tokenData.access_token) {
+        throw new Error('OAuth响应中缺少access_token')
+      }
+
+      console.log('✅ 新Access Token获取成功')
+
+      // 4. 保存新token到数据库
+      const newExpiresAt = new Date(now.getTime() + (tokenData.expires_in * 1000) - 60000) // 提前1分钟过期
+      
+      const { error: updateError } = await supabaseAdmin
+        .from('user_profiles')
+        .update({
+          coze_access_token: tokenData.access_token,
+          coze_token_expires_at: newExpiresAt.toISOString(),
+          coze_token_created_at: now.toISOString()
+        })
+        .eq('id', userProfileId)
+
+      if (updateError) {
+        console.error('❌ 保存Token失败:', updateError)
+        return { 
+          success: false, 
+          message: '保存Token失败，但token已生成',
+          token: tokenData.access_token
+        }
+      }
+
+      console.log('✅ Token已成功生成并保存到数据库')
+      return { 
+        success: true, 
+        token: tokenData.access_token,
+        message: 'Token已成功生成并保存'
+      }
+
+    } catch (tokenError) {
+      console.error('❌ 生成Token失败:', tokenError)
+      return { 
+        success: false, 
+        message: tokenError instanceof Error ? tokenError.message : '生成Access Token失败'
+      }
+    }
+
+  } catch (error) {
+    console.error('❌ ensureUserCozeToken失败:', error)
+    return { 
+      success: false, 
+      message: error instanceof Error ? error.message : '检查Token失败'
+    }
   }
 }
 

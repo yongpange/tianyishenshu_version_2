@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card, Avatar, Button, message, Divider, Spin, Collapse } from 'antd'
+import { Card, Avatar, Button, message, Divider, Spin, Collapse, Tag, Tooltip } from 'antd'
 import {
   UserOutlined,
   WechatOutlined,
@@ -11,9 +11,13 @@ import {
   MessageOutlined,
   PlusOutlined,
   DownOutlined,
-  RightOutlined
+  RightOutlined,
+  CrownOutlined,
+  SecurityScanOutlined,
+  LockOutlined
 } from '@ant-design/icons'
 import dynamic from 'next/dynamic'
+import { PermissionGuard, usePermissionCheck } from '@/components/PermissionGuard'
 
 // 动态导入页面组件
 const AstrologyPage = dynamic(() => import('@/app/astrology/page'), {
@@ -80,6 +84,19 @@ export default function DashboardPage() {
   const [currentView, setCurrentView] = useState<string>('dashboard') // 'dashboard', 'astrology', 'personality', etc.
   const [userListCollapsed, setUserListCollapsed] = useState<boolean>(true) // 用户列表折叠状态
   const router = useRouter()
+  
+  // 使用权限检查Hook
+  const {
+    userRole,
+    canView,
+    canGenerate,
+    canChat,
+    canAccessModule,
+    isAdmin,
+    isVip,
+    isAdminOrVip,
+    loading: permissionsLoading
+  } = usePermissionCheck()
 
   useEffect(() => {
     // 检查登录状态并获取用户信息
@@ -190,23 +207,21 @@ export default function DashboardPage() {
               const isValidChildUser = childProfiles.find((profile: any) => profile.id === parsedActiveUser.id)
               
               if (isMainUser || isValidChildUser) {
+                // 对于已保存的有效用户，直接设置，无需重新生成token
                 setActiveUser(parsedActiveUser)
               } else if (mainProfile) {
-                // 如果保存的用户不在列表中，使用主账户
-                setActiveUser(mainProfile)
-                localStorage.setItem('activeUser', JSON.stringify(mainProfile))
+                // 如果保存的用户不在列表中，使用主账户并生成token
+                await setActiveUserWithToken(mainProfile)
               }
             } catch (error) {
-              // 如果解析失败，使用主账户
+              // 如果解析失败，使用主账户并生成token
               if (mainProfile) {
-                setActiveUser(mainProfile)
-                localStorage.setItem('activeUser', JSON.stringify(mainProfile))
+                await setActiveUserWithToken(mainProfile)
               }
             }
           } else if (mainProfile) {
-            // 如果没有保存的用户，使用主账户
-            setActiveUser(mainProfile)
-            localStorage.setItem('activeUser', JSON.stringify(mainProfile))
+            // 如果没有保存的用户，使用主账户并生成token
+            await setActiveUserWithToken(mainProfile)
           }
         }
       }
@@ -215,11 +230,38 @@ export default function DashboardPage() {
     }
   }
 
-  // 处理用户切换
-  const handleUserSwitch = (user: any) => {
+  // 辅助函数：设置activeUser并确保生成OAuth token
+  const setActiveUserWithToken = async (user: any, showMessage: boolean = false) => {
     setActiveUser(user)
     localStorage.setItem('activeUser', JSON.stringify(user))
-    message.success(`已切换到：${user.name}`)
+    
+    if (showMessage) {
+      message.success(`已切换到：${user.name}`)
+    }
+    
+    // 为设置的用户确保生成OAuth token
+    try {
+      console.log('🔑 为用户检查并生成OAuth Token:', user.id)
+      
+      // 动态导入ensureUserCozeToken函数
+      const { ensureUserCozeToken } = await import('@/lib/coze-auth')
+      const tokenResult = await ensureUserCozeToken(user.id)
+      
+      if (tokenResult.success) {
+        console.log('✅ 用户OAuth Token准备完成:', tokenResult.message)
+      } else {
+        console.warn('⚠️ 用户OAuth Token生成失败:', tokenResult.message)
+        // 不阻止操作，只记录警告
+      }
+    } catch (tokenError) {
+      console.error('❌ 生成用户OAuth Token失败:', tokenError)
+      // 不阻止操作，只记录错误
+    }
+  }
+
+  // 处理用户切换
+  const handleUserSwitch = async (user: any) => {
+    await setActiveUserWithToken(user, true)
     
     // 触发自定义事件，通知其他页面用户已切换
     window.dispatchEvent(new Event('userSwitched'))
@@ -241,50 +283,64 @@ export default function DashboardPage() {
     return displayList
   }
 
+  // 显示所有报告模块，不进行权限过滤
   const reportModules = [
     {
       id: 'astrology',
       title: '八字排盘',
       icon: '☯️',
       subtitle: '解读您的生辰八字，揭示命运轨迹',
-      status: '推荐'
+      status: '推荐',
+      requiresPermission: 'astrology'
     },
     {
       id: 'personality',
       title: '性格内观',
       icon: '🧠',
       subtitle: '深入灵魂深处，发现真实的自己',
-      status: '已完成'
+      status: '已完成',
+      requiresPermission: 'personality'
     },
     {
       id: 'wealth',
       title: '事业财富',
       icon: '💰',
       subtitle: '洞察事业走向，把握财富机遇',
-      status: null
+      status: null,
+      requiresPermission: 'wealth',
+      isPremium: true,
     },
     {
       id: 'marriage',
       title: '婚恋感情',
       icon: '💕',
       subtitle: '探寻情感密码，指引爱情方向',
-      status: null
+      status: null,
+      requiresPermission: 'marriage',
+      isPremium: true,
     },
     {
       id: 'health',
       title: '身体健康',
       icon: '🏥',
       subtitle: '感知身心状态，守护健康之源',
-      status: '新功能'
+      status: null,
+      requiresPermission: 'health',
+      isPremium: true,
     },
     {
       id: 'fortune',
       title: '2025年运',
       icon: '🔮',
       subtitle: '预见蛇年运势，掌控人生航向',
-      status: null
+      status: null,
+      requiresPermission: 'consultation',
+      isPremium: true,
     }
   ]
+  
+  // 计算有权限的模块数量
+  const accessibleModulesCount = reportModules.filter(module => canAccessModule(module.requiresPermission)).length
 
   const handleReportClick = (reportId: string, reportTitle: string) => {
     // 根据不同的报告类型切换右侧内容
@@ -361,11 +417,9 @@ export default function DashboardPage() {
         }} />
       case 'add-user-profile':
         return <AddUserProfilePage 
-          onSuccess={(newUser) => {
-            // 保存成功后切换到新用户并返回dashboard
-            setActiveUser(newUser)
-            localStorage.setItem('activeUser', JSON.stringify(newUser))
-            message.success(`已切换到新用户：${newUser.name}`)
+          onSuccess={async (newUser) => {
+            // 保存成功后切换到新用户并返回dashboard，同时生成token
+            await setActiveUserWithToken(newUser, true)
             
             // 刷新用户列表
             loadUserHierarchy()
@@ -384,9 +438,9 @@ export default function DashboardPage() {
 
       case 'consultation':
         return (
-          <div className="max-w-4xl mx-auto px-4 py-8">
+          <div className="max-w-4xl mx-auto px-4 py-4">
             {/* 页面标题 */}
-            <div className="text-center mb-12">
+            <div className="text-center mb-8">
               <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center mx-auto mb-4">
                 <MessageOutlined className="text-white text-xl" />
               </div>
@@ -395,8 +449,8 @@ export default function DashboardPage() {
             </div>
 
             {/* 客服二维码区域 */}
-            <div className="bg-white rounded-2xl shadow-lg p-8 mb-12">
-              <h2 className="text-xl font-semibold text-gray-900 text-center mb-8">联系客服</h2>
+            <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
+                              <h2 className="text-xl font-semibold text-gray-900 text-center mb-6">联系客服</h2>
               <div className="flex justify-center items-center gap-12">
                 {/* 第一个客服二维码 */}
                 <div className="text-center">
@@ -444,7 +498,7 @@ export default function DashboardPage() {
             </div>
 
             {/* 公司介绍区域 */}
-            <div className="bg-white rounded-2xl shadow-lg p-8">
+            <div className="bg-white rounded-2xl shadow-lg p-6">
               <h2 className="text-xl font-semibold text-gray-900 mb-6 text-center">公司介绍</h2>
               <div className="prose prose-gray max-w-none">
                 <div className="space-y-6 text-gray-700 leading-relaxed">
@@ -466,52 +520,137 @@ export default function DashboardPage() {
         return (
           <div className="max-w-6xl mx-auto">
             {/* 欢迎区域 */}
-            <div className="mb-8">
-              <div className="text-center py-8 px-8">
+            <div className="mb-6">
+              <div className="text-center py-4 md:py-6 px-4 md:px-8">
                 <div className="max-w-4xl mx-auto">
-                  <h2 className="text-xl md:text-2xl font-medium text-gray-700 mb-8">
-                    欢迎回来，{activeUser?.name || '用户'}
-                  </h2>
+                  <div className="flex justify-center items-center space-x-3 mb-3">
+                    <h2 className="text-lg md:text-2xl font-medium text-gray-700">
+                      欢迎回来，{activeUser?.name || '用户'}
+                    </h2>
+                    {/* 角色标签 */}
+                    {userRole && (
+                      <Tag 
+                        icon={
+                          isAdmin ? <SecurityScanOutlined /> : 
+                          isVip ? <CrownOutlined /> : 
+                          <UserOutlined />
+                        }
+                        color={
+                          isAdmin ? 'red' : 
+                          isVip ? 'gold' : 
+                          'blue'
+                        }
+                      >
+                        {userRole.role_display_name}
+                      </Tag>
+                    )}
+                  </div>
+                  
+                  {/* 权限提示 */}
+                  {/* {!permissionsLoading && (
+                    <div className="text-sm text-gray-500 mb-8">
+                      {isAdmin && '您拥有系统管理员权限，可以访问所有功能'}
+                      {isVip && !isAdmin && '您拥有VIP权限，可以使用高级功能'}
+                      {!isAdmin && !isVip && `您当前有 ${accessibleModulesCount} 个可用功能，共 ${reportModules.length} 个功能`}
+                    </div>
+                  )} */}
 
                   {/* 哲学文案 */}
-                  <h1 className="text-3xl md:text-4xl font-semibold text-gray-900 leading-relaxed tracking-wider">
+                  <h1 className="text-2xl md:text-4xl font-semibold text-gray-900 leading-relaxed tracking-wider">
                     人立于命 命行运中 命由心敕 运掌中天 心御乾坤
                   </h1>
                 </div>
               </div>
             </div>
 
-            {/* 6个报告模块 - 3×2布局 */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 mb-12">
-              {reportModules.map((module) => (
-                <Card
-                  key={module.id}
-                  className="hover:shadow-lg hover:scale-[1.02] transition-all duration-300 cursor-pointer border-gray-200 hover:border-gray-300 bg-white relative"
-                  bodyStyle={{ padding: '32px 20px' }}
-                  onClick={() => handleReportClick(module.id, module.title)}
-                >
-                  {/* 状态标签 */}
-                  {module.status && (
-                    <div className={`absolute top-3 right-3 px-2 py-1 rounded-full text-xs font-medium ${
-                      module.status === '推荐' ? 'bg-blue-100 text-blue-600' :
-                      module.status === '已完成' ? 'bg-green-100 text-green-600' :
-                      module.status === '新功能' ? 'bg-orange-100 text-orange-600' : ''
-                    }`}>
-                      {module.status}
+            {/* 报告模块 - 3×2布局 */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-6 mb-6">
+              {reportModules.map((module) => {
+                const hasGeneratePermission = canGenerate(module.requiresPermission)
+                const hasViewPermission = canView(module.requiresPermission)
+                const hasChatPermission = canChat(module.requiresPermission)
+                const isPremiumModule = module.isPremium
+                const hasAccess = hasViewPermission || hasGeneratePermission || hasChatPermission
+                
+                return (
+                  <Card
+                    key={module.id}
+                    className={`transition-all duration-300 border-gray-200 bg-white relative ${
+                      hasAccess 
+                        ? 'hover:shadow-lg hover:scale-[1.02] cursor-pointer hover:border-gray-300'
+                        : 'opacity-70 cursor-pointer hover:shadow-md border-gray-100'
+                    }`}
+                    bodyStyle={{ padding: '24px 16px' }}
+                    onClick={() => {
+                      if (hasAccess) {
+                        handleReportClick(module.id, module.title)
+                      } else {
+                        // 为无权限用户提供更友好的提示
+                        if (isPremiumModule) {
+                          message.info(`${module.title}是VIP专享功能，升级VIP后即可使用`)
+                        } else {
+                          message.info(`您当前没有${module.title}功能的使用权限`)
+                        }
+                      }
+                    }}
+                  >
+                    {/* 状态标签 */}
+                    <div className="absolute top-3 right-3 flex flex-col gap-1">
+                      {module.status && (
+                        <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          module.status === '推荐' ? 'bg-blue-100 text-blue-600' :
+                          module.status === '已完成' ? 'bg-green-100 text-green-600' :
+                          module.status === '新功能' ? 'bg-orange-100 text-orange-600' : ''
+                        }`}>
+                          {module.status}
+                        </div>
+                      )}
+                      
+                      {/* 权限标签 */}
+                      {!hasAccess && (
+                        <Tooltip title={isPremiumModule ? "VIP专享功能" : "您没有权限访问此功能"}>
+                          <Tag color={isPremiumModule ? "gold" : "red"}>
+                            {isPremiumModule ? (
+                              <CrownOutlined style={{ fontSize: '10px' }} />
+                            ) : (
+                              <LockOutlined style={{ fontSize: '10px' }} />
+                            )}
+                          </Tag>
+                        </Tooltip>
+                      )}
+                      
+                      {isPremiumModule && hasAccess && (
+                        <Tooltip title="VIP功能">
+                          <Tag color="gold">
+                            <CrownOutlined style={{ fontSize: '10px' }} />
+                          </Tag>
+                        </Tooltip>
+                      )}
                     </div>
-                  )}
 
-                  <div className="text-center">
-                    <div className="flex items-center justify-center space-x-2 mb-3">
-                      <span className="text-xl">{module.icon}</span>
-                      <h3 className="font-medium text-gray-900 text-lg">{module.title}</h3>
+                    <div className="text-center">
+                      <div className="flex items-center justify-center space-x-2 mb-3">
+                        <span className={`text-xl ${hasAccess ? '' : 'grayscale'}`}>{module.icon}</span>
+                        <h3 className={`font-medium text-lg ${hasAccess ? 'text-gray-900' : 'text-gray-600'}`}>
+                          {module.title}
+                        </h3>
+                      </div>
+                      <p className={`text-sm leading-relaxed italic ${hasAccess ? 'text-gray-500' : 'text-gray-500'}`}>
+                        {module.subtitle}
+                      </p>
+                      
+                      {/* 权限说明 - 只在无权限时显示 */}
+                      {!hasAccess && (
+                        <div className="mt-3 flex justify-center">
+                          <Tag color={isPremiumModule ? "gold" : "default"}>
+                            {isPremiumModule ? "需要权限": "需要权限"}
+                          </Tag>
+                        </div>
+                      )}
                     </div>
-                    <p className="text-sm text-gray-500 leading-relaxed italic">
-                      {module.subtitle}
-                    </p>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                )
+              })}
             </div>
           </div>
         )
@@ -530,9 +669,9 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
+    <div className="h-screen bg-gray-100 flex flex-col overflow-hidden">
       {/* 移动端顶部导航栏 */}
-      <div className="md:hidden bg-white shadow-sm border-b border-gray-200 p-4">
+      <div className="md:hidden bg-white shadow-sm border-b border-gray-200 p-4 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center">
@@ -551,11 +690,11 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="flex flex-1">
+      <div className="flex flex-1 min-h-0">
         {/* 左侧导航栏 */}
-        <div className="w-48 bg-white shadow-sm border-r border-gray-200 flex flex-col hidden md:flex min-h-full">
+        <div className="w-48 bg-white shadow-sm border-r border-gray-200 flex flex-col hidden md:flex h-full overflow-hidden">
         {/* Logo区域 */}
-        <div className="p-6 border-b border-gray-100 text-center">
+        <div className="p-4 border-b border-gray-100 text-center flex-shrink-0">
           <div className="flex flex-col items-center space-y-3">
             <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center">
               <span className="text-white font-bold text-2xl">乙</span>
@@ -568,15 +707,36 @@ export default function DashboardPage() {
         </div>
 
         {/* 用户信息 */}
-        <div className="p-4 border-b border-gray-100">
+        <div className="p-3 border-b border-gray-100 flex-shrink-0 max-h-64 overflow-y-auto">
           {/* 当前激活用户 */}
           {activeUser && (
             <div className="flex items-center space-x-3 mb-3">
               <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
                 <span className="text-green-600 text-xs">{activeUser.name ? activeUser.name.charAt(0) : '用'}</span>
               </div>
-              <div>
-                <div className="text-sm font-medium text-gray-900">{activeUser.name}</div>
+              <div className="flex-1">
+                <div className="flex items-center space-x-2">
+                  <div className="text-sm font-medium text-gray-900">{activeUser.name}</div>
+                  {/* 角色标签 */}
+                  {/* {userRole && (
+                    <Tooltip title={userRole.role_display_name}>
+                      <Tag 
+                        icon={
+                          isAdmin ? <SecurityScanOutlined /> : 
+                          isVip ? <CrownOutlined /> : 
+                          <UserOutlined />
+                        }
+                        color={
+                          isAdmin ? 'red' : 
+                          isVip ? 'gold' : 
+                          'blue'
+                        }
+                      >
+                        {userRole.role_display_name}
+                      </Tag>
+                    </Tooltip>
+                  )} */}
+                </div>
                 <div className="text-xs text-gray-500">当前用户</div>
               </div>
             </div>
@@ -604,7 +764,7 @@ export default function DashboardPage() {
                 
                 {/* 折叠面板内容 */}
                 {!userListCollapsed && (
-                  <div className="space-y-1 mt-2 ml-2">
+                  <div className="space-y-1 mt-2 ml-2 max-h-40 overflow-y-auto">
                     {getUserDisplayList().map((user: any, index: number) => {
                       const isMainUser = user.parent_id === null
                       const isActive = activeUser?.id === user.id
@@ -636,25 +796,44 @@ export default function DashboardPage() {
             </>
           )}
           
-          {/* 新增用户按钮 */}
-          <div
-            className="flex items-center text-xs p-2 rounded-lg cursor-pointer transition-colors text-blue-600 hover:text-blue-700 hover:bg-blue-50 border border-dashed border-blue-300 hover:border-blue-400"
-            onClick={() => setCurrentView('add-user')}
+          {/* 新增用户按钮 - 需要管理员权限或VIP权限 */}
+          <PermissionGuard
+            module="admin"
+            action="users"
+            fallback={
+              <Tooltip title="VIP权限可添加新用户">
+                <div className="flex items-center text-xs p-2 rounded-lg opacity-50 cursor-not-allowed text-gray-400 border border-dashed border-gray-200">
+                  <div className="flex items-center space-x-2 flex-1 min-w-0">
+                    <span className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 bg-gray-100 text-gray-400">
+                      <LockOutlined />
+                    </span>
+                    <span className="truncate">
+                      新增用户（VIP权限）
+                    </span>
+                  </div>
+                </div>
+              </Tooltip>
+            }
           >
-            <div className="flex items-center space-x-2 flex-1 min-w-0">
-              <span className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 bg-blue-100 text-blue-600">
-                <PlusOutlined />
-              </span>
-              <span className="truncate">
-                新增用户
-              </span>
+            <div
+              className="flex items-center text-xs p-2 rounded-lg cursor-pointer transition-colors text-blue-600 hover:text-blue-700 hover:bg-blue-50 border border-dashed border-blue-300 hover:border-blue-400"
+              onClick={() => setCurrentView('add-user')}
+            >
+              <div className="flex items-center space-x-2 flex-1 min-w-0">
+                <span className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 bg-blue-100 text-blue-600">
+                  <PlusOutlined />
+                </span>
+                <span className="truncate">
+                  新增用户
+                </span>
+              </div>
             </div>
-          </div>
+          </PermissionGuard>
         </div>
 
         {/* 导航菜单 */}
-        <div className="flex-1 p-4 overflow-y-auto">
-          <div className="space-y-6">
+        <div className="flex-1 p-3 overflow-y-auto min-h-0">
+          <div className="space-y-3">
             <div
               className={`px-4 py-4 rounded-lg text-center shadow-sm cursor-pointer transition-all duration-300 ${
                 currentView === 'dashboard'
@@ -665,29 +844,74 @@ export default function DashboardPage() {
             >
               <span className="text-lg font-medium tracking-wide">命书</span>
             </div>
-            <div
-              className="px-4 py-4 rounded-lg cursor-pointer transition-all duration-300 text-center text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm"
-              onClick={() => message.info('功能开发中，敬请期待...')}
+            
+            {/* VIP功能：召灵 */}
+            <PermissionGuard
+              requireVip
+              fallback={
+                <Tooltip title="VIP功能，敬请期待">
+                  <div className="px-4 py-4 rounded-lg text-center opacity-50 cursor-not-allowed">
+                    <span className="text-lg font-medium tracking-wide text-gray-400">召灵</span>
+                    <div className="text-xs text-gray-400 mt-1">VIP功能</div>
+                  </div>
+                </Tooltip>
+              }
             >
-              <span className="text-lg font-medium tracking-wide">召灵</span>
-            </div>
-            <div
-              className="px-4 py-4 rounded-lg cursor-pointer transition-all duration-300 text-center text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm"
-              onClick={() => message.info('功能开发中，敬请期待...')}
+              <div
+                className="px-4 py-4 rounded-lg cursor-pointer transition-all duration-300 text-center text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm"
+                onClick={() => message.info('功能开发中，敬请期待...')}
+              >
+                <span className="text-lg font-medium tracking-wide">召灵</span>
+                {/* <CrownOutlined className="ml-2 text-yellow-500" /> */}
+              </div>
+            </PermissionGuard>
+            
+            {/* VIP功能：疗愈 */}
+            <PermissionGuard
+              requireVip
+              fallback={
+                <Tooltip title="VIP功能，敬请期待">
+                  <div className="px-4 py-4 rounded-lg text-center opacity-50 cursor-not-allowed">
+                    <span className="text-lg font-medium tracking-wide text-gray-400">疗愈</span>
+                    <div className="text-xs text-gray-400 mt-1">VIP功能</div>
+                  </div>
+                </Tooltip>
+              }
             >
-              <span className="text-lg font-medium tracking-wide">疗愈</span>
-            </div>
-            <div
-              className="px-4 py-4 rounded-lg cursor-pointer transition-all duration-300 text-center text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm"
-              onClick={() => message.info('功能开发中，敬请期待...')}
+              <div
+                className="px-4 py-4 rounded-lg cursor-pointer transition-all duration-300 text-center text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm"
+                onClick={() => message.info('功能开发中，敬请期待...')}
+              >
+                <span className="text-lg font-medium tracking-wide">疗愈</span>
+                {/* <CrownOutlined className="ml-2 text-yellow-500" /> */}
+              </div>
+            </PermissionGuard>
+            
+            {/* VIP功能：宝阁 */}
+            <PermissionGuard
+              requireVip
+              fallback={
+                <Tooltip title="VIP功能，敬请期待">
+                  <div className="px-4 py-4 rounded-lg text-center opacity-50 cursor-not-allowed">
+                    <span className="text-lg font-medium tracking-wide text-gray-400">宝阁</span>
+                    <div className="text-xs text-gray-400 mt-1">VIP功能</div>
+                  </div>
+                </Tooltip>
+              }
             >
-              <span className="text-lg font-medium tracking-wide">宝阁</span>
-            </div>
+              <div
+                className="px-4 py-4 rounded-lg cursor-pointer transition-all duration-300 text-center text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm"
+                onClick={() => message.info('功能开发中，敬请期待...')}
+              >
+                <span className="text-lg font-medium tracking-wide">宝阁</span>
+                {/* <CrownOutlined className="ml-2 text-yellow-500" /> */}
+              </div>
+            </PermissionGuard>
           </div>
         </div>
 
         {/* 底部问道1v1按钮 */}
-        <div className="p-4 border-t border-gray-100">
+        <div className="p-3 border-t border-gray-100 flex-shrink-0">
           <Button
             type="primary"
             block
@@ -705,9 +929,9 @@ export default function DashboardPage() {
       </div>
 
       {/* 主内容区域 */}
-      <div className="flex-1 p-4 md:p-8 pb-20 md:pb-8 min-h-full overflow-y-auto">
+      <div className="flex-1 p-3 md:p-6 overflow-y-auto h-full min-h-0">
         <Suspense fallback={
-          <div className="flex items-center justify-center h-96">
+          <div className="flex items-center justify-center h-64">
             <Spin size="large" />
           </div>
         }>
@@ -716,7 +940,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 移动端底部问道1v1按钮 */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 flex-shrink-0">
         <Button
           type="primary"
           block

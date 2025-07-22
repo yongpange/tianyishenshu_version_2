@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('📱 获取用户资料列表:', { phoneNumber })
+    // console.log('📱 获取用户资料列表:', { phoneNumber })
 
     // 1. 根据手机号找到用户ID
     const { data: user, error: userError } = await supabaseAdmin
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('✅ 找到用户资料:', profiles?.length || 0, '个')
+    // console.log('✅ 找到用户资料:', profiles?.length || 0, '个')
 
     return NextResponse.json({
       success: true,

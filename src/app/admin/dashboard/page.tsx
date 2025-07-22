@@ -7,11 +7,17 @@ import {
   Layout, 
   Card, 
   Button, 
-  message
+  message,
+  Modal,
+  Input,
+  Space,
+  Tag,
+  Table
 } from 'antd'
 import { 
   LogoutOutlined,
-  EyeOutlined 
+  EyeOutlined,
+  CopyOutlined
 } from '@ant-design/icons'
 
 const { Header, Content } = Layout
@@ -245,12 +251,53 @@ export default function AdminDashboard() {
     message.success('删除成功')
   }
 
-  const handleCopyCode = (code: string) => {
-    navigator.clipboard.writeText(code).then(() => {
-      message.success('兑换码已复制到剪贴板')
-    }).catch(() => {
-      message.error('复制失败')
-    })
+  const handleCopyCode = async (code: string) => {
+    try {
+      // 优先尝试现代 clipboard API
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(code)
+        message.success('兑换码已复制到剪贴板')
+        return
+      }
+
+      // 备用方案：使用 textArea 元素
+      const textArea = document.createElement('textarea')
+      textArea.value = code
+      textArea.style.position = 'fixed'
+      textArea.style.left = '-999999px'
+      textArea.style.top = '-999999px'
+      document.body.appendChild(textArea)
+      textArea.focus()
+      textArea.select()
+      
+      const successful = document.execCommand('copy')
+      document.body.removeChild(textArea)
+      
+      if (successful) {
+        message.success('兑换码已复制到剪贴板')
+      } else {
+        throw new Error('execCommand copy failed')
+      }
+    } catch (error) {
+      console.error('❌ 复制失败:', error)
+      
+      // 最后的备用方案：显示复制内容
+      Modal.info({
+        title: '复制兑换码',
+        content: (
+          <div>
+            <p>自动复制失败，请手动复制以下兑换码：</p>
+            <Input
+              value={code}
+              readOnly
+              style={{ marginTop: 8, fontFamily: 'monospace' }}
+              onFocus={(e) => e.target.select()}
+            />
+          </div>
+        ),
+        okText: '关闭'
+      })
+    }
   }
 
   const columns = [
