@@ -107,6 +107,89 @@ export default function DashboardPage() {
       return
     }
 
+    // 检查是否有待生成的报告
+    const pendingReportsData = sessionStorage.getItem('pending_reports_data')
+    if (pendingReportsData) {
+      try {
+        const { userInfo, userId, isUserProfileId } = JSON.parse(pendingReportsData)
+        console.log('🚀 检测到待生成报告，启动异步生成...', { userId, isUserProfileId })
+        
+        // 启动其他报告的异步生成
+        const reportPromises = [
+          // 身体健康报告
+          fetch('/api/health-report/generate-async', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userInfo, userId, isUserProfileId })
+          }).then(response => response.json()).then(result => {
+            if (result.success) {
+              console.log('✅ 身体健康报告异步生成已启动:', result.taskId)
+            } else {
+              console.error('❌ 身体健康报告异步生成启动失败:', result.error)
+            }
+            return { type: 'health', success: result.success }
+          }).catch(error => {
+            console.error('❌ 身体健康报告异步生成失败:', error)
+            return { type: 'health', success: false }
+          }),
+
+          // 事业财富报告
+          fetch('/api/wealth-report/generate-async', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userInfo, userId, isUserProfileId })
+          }).then(response => response.json()).then(result => {
+            if (result.success) {
+              console.log('✅ 事业财富报告异步生成已启动:', result.taskId)
+            } else {
+              console.error('❌ 事业财富报告异步生成启动失败:', result.error)
+            }
+            return { type: 'wealth', success: result.success }
+          }).catch(error => {
+            console.error('❌ 事业财富报告异步生成失败:', error)
+            return { type: 'wealth', success: false }
+          }),
+
+          // 婚恋感情报告
+          fetch('/api/marriage-report/generate-async', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userInfo, userId, isUserProfileId })
+          }).then(response => response.json()).then(result => {
+            if (result.success) {
+              console.log('✅ 婚恋感情报告异步生成已启动:', result.taskId)
+            } else {
+              console.error('❌ 婚恋感情报告异步生成启动失败:', result.error)
+            }
+            return { type: 'marriage', success: result.success }
+          }).catch(error => {
+            console.error('❌ 婚恋感情报告异步生成失败:', error)
+            return { type: 'marriage', success: false }
+          })
+        ]
+
+        // 等待所有异步生成任务启动
+        Promise.allSettled(reportPromises).then(results => {
+          const successful = results.filter(result => 
+            result.status === 'fulfilled' && result.value.success
+          ).length
+          
+          console.log(`✅ 成功启动了 ${successful}/${results.length} 个后台报告生成任务`)
+          
+          if (successful > 0) {
+            message.success(`已启动 ${successful} 个报告的后台生成，请稍后查看`)
+          }
+        })
+
+        // 清理sessionStorage中的数据
+        sessionStorage.removeItem('pending_reports_data')
+        
+      } catch (error) {
+        console.error('❌ 启动后台报告生成失败:', error)
+        sessionStorage.removeItem('pending_reports_data')
+      }
+    }
+
     try {
       const parsed = JSON.parse(loginData)
       console.log('🔍 Dashboard检查登录数据:', parsed)
@@ -291,7 +374,8 @@ export default function DashboardPage() {
       icon: '☯️',
       subtitle: '解读您的生辰八字，揭示命运轨迹',
       status: '推荐',
-      requiresPermission: 'astrology'
+      requiresPermission: null, // 基础功能，无需权限
+      isBasic: true // 标记为基础功能
     },
     {
       id: 'personality',
@@ -299,7 +383,8 @@ export default function DashboardPage() {
       icon: '🧠',
       subtitle: '深入灵魂深处，发现真实的自己',
       status: '已完成',
-      requiresPermission: 'personality'
+      requiresPermission: null, // 基础功能，无需权限
+      isBasic: true // 标记为基础功能
     },
     {
       id: 'wealth',
@@ -570,7 +655,9 @@ export default function DashboardPage() {
                 const hasViewPermission = canView(module.requiresPermission)
                 const hasChatPermission = canChat(module.requiresPermission)
                 const isPremiumModule = module.isPremium
-                const hasAccess = hasViewPermission || hasGeneratePermission || hasChatPermission
+                const isBasicModule = module.isBasic
+                // 基础功能始终有权限，其他功能需要权限检查
+                const hasAccess = isBasicModule || hasViewPermission || hasGeneratePermission || hasChatPermission
                 
                 return (
                   <Card

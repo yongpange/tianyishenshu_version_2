@@ -1,18 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ChatStatus, RoleType } from '@coze/api'
-import { supabaseAdmin } from '@/lib/supabase'
 import { UserInfo } from '@/lib/coze-client'
-import { callCozeAPIWithRetry, validateBotId, checkAuthConfig } from '@/lib/coze-auth'
-import {
-  validateUserInfo,
-  calculateUserDataHash,
-  formatUserInfoDisplay
-} from '@/utils/client-utils'
+import { formatUserInfoDisplay } from '@/utils/client-utils'
 import { 
   createHealthReport, 
-  saveHealthReport,
-  getAstrologyContext
+  saveHealthReport
 } from '@/utils/health-report'
+import { 
+  generateReport,
+  UniversalReportRequest,
+  UniversalReportResponse,
+  ReportConfig
+} from '@/lib/report-generator'
 
 // 请求接口
 interface HealthReportRequest {
@@ -27,9 +25,10 @@ interface HealthReportResponse {
   reportId?: string
   content?: string
   error?: string
+  authMethod?: string
 }
 
-// 环境变量配置（使用身体健康专用的Bot ID）
+// 环境变量配置
 const HEALTH_BOT_ID = process.env.HEALTH_BOT_ID || process.env.BOT_ID || ''
 
 // 格式化用户信息为身体健康报告prompt
@@ -48,213 +47,75 @@ function formatHealthPrompt(userInfo: UserInfo, astrologyContext?: string): stri
 
 ${astrologyContext}
 
-请基于以上八字排盘信息，深入分析用户的体质特点、健康倾向、养生建议等方面，生成专业的身体健康报告。`
-  } else {
-    prompt += `请基于用户的出生时间和地点信息，分析其体质特点、健康倾向、养生建议等方面，生成专业的身体健康报告。`
+**请基于以上八字排盘信息，结合传统命理学知识，生成深度的身体健康分析报告。**
+
+`
   }
 
+  prompt += `请自由发挥，生成丰富全面的身体健康分析内容，可以包含但不限于：体质特点、健康趋势、易患疾病、养生建议、运动指导、饮食调理、生活习惯、预防保健、调理方法等方面。
+
+请使用markdown格式，合理组织内容结构，让报告既专业又实用。`
+
   return prompt
+}
+
+// 生成fallback内容
+function generateFallbackContent(userInfo: UserInfo): string {
+  return `# 身体健康分析报告
+
+基于您的出生信息：${formatUserInfoDisplay(userInfo)}
+
+## 基础分析
+
+由于AI服务暂时不可用，这里提供基础的身体健康分析框架。您可以稍后重新生成完整的报告。
+
+## 出生信息
+- 出生年份：${userInfo.year}年
+- 出生月日：${userInfo.month}月${userInfo.day}日  
+- 出生时辰：${userInfo.hour}时${userInfo.minute}分
+- 出生地区：${userInfo.area.province} ${userInfo.area.city} ${userInfo.area.district}
+- 性别：${userInfo.gender === 'male' || userInfo.gender === '男' ? '男' : '女'}
+
+## 基础建议
+- 保持规律的作息时间
+- 均衡饮食，适量运动
+- 定期体检，关注身体变化
+- 保持良好的心理状态
+
+请稍后重试以获取完整的AI分析报告。`
+}
+
+// 身体健康报告配置
+const healthReportConfig: ReportConfig = {
+  reportType: 'health',
+  reportName: '身体健康报告',
+  botId: HEALTH_BOT_ID,
+  tableName: 'health_reports',
+  formatPrompt: formatHealthPrompt,
+  createReport: createHealthReport,
+  saveReport: saveHealthReport,
+  includeAstrology: true,
+  fallbackContent: generateFallbackContent
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse<HealthReportResponse>> {
   try {
     const body: HealthReportRequest = await request.json()
-    const { userInfo, userId, isUserProfileId } = body
-
-    console.log('🚀 开始生成身体健康报告:', { userId, userInfo, isUserProfileId })
-
-    // 验证必要参数
-    if (!userInfo || !userId) {
-      return NextResponse.json({
-        success: false,
-        error: '缺少必要参数'
-      }, { status: 400 })
+    const universalRequest: UniversalReportRequest = {
+      userInfo: body.userInfo,
+      userId: body.userId,
+      isUserProfileId: body.isUserProfileId
     }
 
-    // 验证用户信息格式
-    try {
-      validateUserInfo(userInfo)
-    } catch (error) {
-      return NextResponse.json({
-        success: false,
-        error: error instanceof Error ? error.message : '用户信息格式无效'
-      }, { status: 400 })
-    }
-
-    // 验证认证配置
-    try {
-      checkAuthConfig()
-    } catch (error) {
-      console.error('❌ 认证配置检查失败:', error)
-      return NextResponse.json({
-        success: false,
-        error: 'API认证配置错误'
-      }, { status: 500 })
-    }
-
-    // 验证Bot ID
-    const botId = validateBotId(HEALTH_BOT_ID)
-    if (!botId) {
-      return NextResponse.json({
-        success: false,
-        error: '身体健康BOT_ID未配置'
-      }, { status: 500 })
-    }
-
-    console.log('✅ 配置验证通过, 使用Bot ID:', botId)
-
-    // 获取八字排盘上下文
-    let baziUserId: string | undefined
-    let isUserProfileId_final = isUserProfileId
-
-    if (isUserProfileId === true) {
-      baziUserId = userId
-      console.log('✅ 使用传入的user_profiles.id:', baziUserId)
-    } else {
-      console.log('🔍 根据手机号查找user_profiles.id:', userId)
-      
-      const { data: user, error: userError } = await supabaseAdmin
-        .from('users')
-        .select('id')
-        .eq('phone_number', userId)
-        .single()
-
-      if (userError || !user) {
-        console.warn('⚠️ 根据手机号未找到用户，将跳过八字排盘')
-      } else {
-        const { data: userProfile, error: profileError } = await supabaseAdmin
-          .from('user_profiles')
-          .select('id')
-          .eq('user_id', user.id)
-          .single()
-
-        if (profileError || !userProfile) {
-          console.warn('⚠️ 未找到用户资料，将跳过八字排盘')
-        } else {
-          baziUserId = userProfile.id
-          isUserProfileId_final = true
-          console.log('✅ 找到用户资料ID:', baziUserId)
-        }
-      }
-    }
-
-    const astrologyContext = await getAstrologyContext(userInfo, baziUserId)
-    console.log('✅ 八字排盘数据获取完成')
-
-    // 生成身体健康报告prompt
-    const prompt = formatHealthPrompt(userInfo, astrologyContext)
-    console.log('📝 发送给Coze的prompt:', prompt.substring(0, 200) + '...')
-
-    // 使用带重试的Coze API调用，优先使用用户token
-    const result = await Promise.race([
-      callCozeAPIWithRetry(
-        async (coze: any) => {
-          return await coze.chat.createAndPoll({
-            bot_id: botId,
-            user_id: userId || `user_${Date.now()}`,
-            additional_messages: [
-              {
-                role: RoleType.User,
-                content: prompt,
-                content_type: 'text',
-              },
-            ],
-          })
-        },
-        userInfo
-      ),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Coze API调用超时，请稍后重试')), 300000)
-      )
-    ]) as any
-
-    console.log('📡 Chat完成:', {
-      status: result.chat.status,
-      conversation_id: result.chat.conversation_id
-    })
-
-    if (result.chat.status === ChatStatus.COMPLETED && result.messages) {
-      console.log('📋 消息数量:', result.messages.length)
-
-      // 找到AI的回复
-      const aiMessage = result.messages.find(
-        (msg: any) => msg.role === RoleType.Assistant && msg.type === 'answer'
-      )
-
-      if (aiMessage && aiMessage.content) {
-        console.log('🎉 成功获取AI生成的身体健康报告!')
-        console.log('📄 报告长度:', aiMessage.content.length)
-
-        const reportContent = aiMessage.content
-
-        // 确定用户资料ID用于保存
-        let userProfileId: string
-
-        if (isUserProfileId_final === true) {
-          userProfileId = baziUserId || userId
-          console.log('✅ 使用user_profiles.id保存:', userProfileId)
-        } else {
-          console.log('🔍 根据手机号查找user_profiles.id用于保存:', userId)
-          
-          const { data: user, error: userError } = await supabaseAdmin
-            .from('users')
-            .select('id')
-            .eq('phone_number', userId)
-            .single()
-
-          if (userError || !user) {
-            throw new Error('找不到用户记录，无法保存报告')
-          }
-
-          const { data: userProfile, error: profileError } = await supabaseAdmin
-            .from('user_profiles')
-            .select('id')
-            .eq('user_id', user.id)
-            .single()
-
-          if (profileError || !userProfile) {
-            throw new Error('找不到用户资料，无法保存报告')
-          }
-
-          userProfileId = userProfile.id
-          console.log('✅ 确定用户资料ID:', userProfileId)
-        }
-
-        // 保存到Supabase
-        console.log('💾 保存身体健康报告到数据库...')
-        const reportData = createHealthReport(
-          userProfileId,
-          reportContent,
-          userInfo,
-          result.chat.conversation_id
-        )
-        await saveHealthReport(reportData, userProfileId)
-
-        console.log('✅ 身体健康报告保存成功:', { 
-          reportId: reportData.id, 
-          userProfileId: userProfileId 
-        })
-
-        return NextResponse.json({
-          success: true,
-          reportId: reportData.id,
-          content: reportContent
-        })
-
-      } else {
-        console.error('❌ AI响应中没有找到有效内容')
-        throw new Error('AI生成的报告内容为空')
-      }
-    } else {
-      console.error('❌ Chat状态异常:', result.chat.status)
-      throw new Error(`Coze对话状态异常: ${result.chat.status}`)
-    }
+    // 使用通用报告生成引擎
+    return await generateReport(universalRequest, healthReportConfig)
 
   } catch (error) {
-    console.error('❌ 生成身体健康报告失败:', error)
+    console.error('❌ 身体健康报告生成失败:', error)
     return NextResponse.json({
       success: false,
-      error: error instanceof Error ? error.message : '生成报告失败，请稍后重试'
+      error: '报告生成失败，请稍后重试',
+      details: error instanceof Error ? error.message : String(error)
     }, { status: 500 })
   }
 }

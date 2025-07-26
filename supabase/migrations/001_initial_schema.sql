@@ -105,6 +105,64 @@ CREATE TABLE personality_reports (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(user_id)
 );
+-- 创建财富报告表
+create table public.wealth_reports (
+  id text not null,
+  -- user_id 为user_profiles表的id
+  user_id uuid null,
+  content text null,
+  generated_at timestamp with time zone null,
+  user_data_hash text null,
+  coze_conversation_id text null,
+  task_id text null,
+  status text null default 'completed'::text,
+  progress integer null default 100,
+  error_message text null,
+  created_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null default now(),
+  constraint wealth_reports_pkey primary key (id),
+  constraint wealth_reports_user_id_fkey foreign KEY (user_id) references user_profiles (id) on delete CASCADE
+) TABLESPACE pg_default;
+create index IF not exists idx_wealth_reports_user_id on public.wealth_reports using btree (user_id) TABLESPACE pg_default;
+create index IF not exists idx_wealth_reports_task_id on public.wealth_reports using btree (task_id) TABLESPACE pg_default;
+-- 创建健康报告表
+create table public.health_reports (
+  id text not null,
+  user_id uuid null,
+  content text null,
+  generated_at timestamp with time zone null,
+  user_data_hash text null,
+  coze_conversation_id text null,
+  task_id text null,
+  status text null default 'completed'::text,
+  progress integer null default 100,
+  error_message text null,
+  created_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null default now(),
+  constraint health_reports_pkey primary key (id),
+  constraint health_reports_user_id_fkey foreign KEY (user_id) references user_profiles (id) on delete CASCADE
+) TABLESPACE pg_default;
+create index IF not exists idx_health_reports_user_id on public.health_reports using btree (user_id) TABLESPACE pg_default;
+create index IF not exists idx_health_reports_task_id on public.health_reports using btree (task_id) TABLESPACE pg_default;
+-- 创建婚姻报告表
+create table public.marriage_reports (
+  id text not null,
+  user_id uuid null,
+  content text null,
+  generated_at timestamp with time zone null,
+  user_data_hash text null,
+  coze_conversation_id text null,
+  task_id text null,
+  status text null default 'completed'::text,
+  progress integer null default 100,
+  error_message text null,
+  created_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null default now(),
+  constraint marriage_reports_pkey primary key (id),
+  constraint marriage_reports_user_id_fkey foreign KEY (user_id) references user_profiles (id) on delete CASCADE
+) TABLESPACE pg_default;
+create index IF not exists idx_marriage_reports_user_id on public.marriage_reports using btree (user_id) TABLESPACE pg_default;
+create index IF not exists idx_marriage_reports_task_id on public.marriage_reports using btree (task_id) TABLESPACE pg_default;
 -- 创建八字报告表
 create table public.bazi_reports (
   id uuid not null default gen_random_uuid (),

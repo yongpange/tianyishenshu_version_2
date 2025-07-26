@@ -148,21 +148,25 @@ a {
   }
 }
 
-/* 滚动条美化 */
-.prose::-webkit-scrollbar {
-  width: 6px;
+/* 滚动条美化 - 与其他滚动条保持一致 */
+.prose::-webkit-scrollbar,
+.markdown-content::-webkit-scrollbar {
+  width: 8px;
 }
 
-.prose::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 3px;
+.prose::-webkit-scrollbar-track,
+.markdown-content::-webkit-scrollbar-track {
+  background: #f3f4f6;
 }
 
-.prose::-webkit-scrollbar-thumb {
-  background: #666666;
-  border-radius: 3px;
+.prose::-webkit-scrollbar-thumb,
+.markdown-content::-webkit-scrollbar-thumb {
+  background: #ffffff;
+  border-radius: 4px;
+  border: 1px solid #e5e7eb;
 }
 
-.prose::-webkit-scrollbar-thumb:hover {
-  background: #333333;
+.prose::-webkit-scrollbar-thumb:hover,
+.markdown-content::-webkit-scrollbar-thumb:hover {
+  background: #f9fafb;
 }

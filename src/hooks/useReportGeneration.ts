@@ -16,6 +16,7 @@ interface ReportGenerationState {
   generationProgress: number
   generationStatus: string
   taskId: string | null
+  nextCheckTime: Date | null
 }
 
 export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerationProps) => {
@@ -26,13 +27,19 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
     isGenerating: false,
     generationProgress: 0,
     generationStatus: '',
-    taskId: null
+    taskId: null,
+    nextCheckTime: null
   })
 
   // 加载报告
-  const loadReport = useCallback(async () => {
+  const loadReport = useCallback(async (fromPolling = false) => {
     try {
-      setState(prev => ({ ...prev, reportLoading: true, reportError: null }))
+      console.log(`🔄 loadReport调用 - fromPolling: ${fromPolling}`)
+      
+      // 如果是轮询调用，不重置loading状态（避免闪烁）
+      if (!fromPolling) {
+        setState(prev => ({ ...prev, reportLoading: true, reportError: null }))
+      }
 
       // 优先从当前激活用户获取信息
       const activeUser = getActiveUser()
@@ -87,44 +94,117 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
       })
 
       const result = await response.json()
-      console.log('📋 API响应结果:', { 
+      console.log('📋 API响应结果 (详细):', { 
         success: result.success, 
         error: result.error, 
+        status: result.status,
+        taskId: result.taskId,
         hasReport: !!result.report,
-        reportContentLength: result.report?.content?.length || 0
+        reportContentLength: result.report?.content?.length || 0,
+        reportUserId: reportUserId,
+        isUserProfileId: isUserProfileId,
+        apiEndpoint: moduleConfig.apiEndpoint,
+        fullResult: result
       })
 
-      if (result.success && result.report) {
+      // 优先检查status状态，而不是先检查content
+      if (result.status === 'completed' && result.success && result.report && result.report.content) {
         console.log('✅ 成功获取报告:', {
           contentLength: result.report.content?.length || 0,
           generatedAt: result.report.generatedAt,
           reportUserId: reportUserId,
-          isUserProfileId: isUserProfileId
+          isUserProfileId: isUserProfileId,
+          fromPolling: fromPolling
         })
         setState(prev => ({ 
           ...prev, 
           reportContent: result.report.content,
           reportLoading: false,
-          reportError: null
+          reportError: null,
+          isGenerating: false,
+          // 如果是轮询调用，重置轮询相关状态
+          ...(fromPolling && {
+            generationProgress: 0,
+            generationStatus: '',
+            taskId: null,
+            nextCheckTime: null
+          })
+        }))
+      } else if (result.status === 'generating') {
+        // 如果是轮询调用且状态还是generating，说明有问题
+        if (fromPolling) {
+          console.error('❌ 轮询调用loadReport时状态仍为generating，这不应该发生')
+          setState(prev => ({ 
+            ...prev, 
+            reportError: '报告状态异常，请联系管理员重新生成~',
+            reportLoading: false,
+            isGenerating: false
+          }))
+        } else {
+          // 正常情况：首次加载检测到generating状态，启动轮询
+          console.log('🔄 检测到generating状态，启动轮询机制:', { reportUserId, isUserProfileId })
+          setState(prev => ({ 
+            ...prev, 
+            reportError: `您的${moduleConfig.title}报告正在生成中，预计等待三分钟。`,
+            reportLoading: true,
+            isGenerating: true,
+            generationStatus: `正在生成${moduleConfig.title}报告...`,
+            taskId: result.taskId || 'auto-generated'
+          }))
+          // 启动轮询
+          pollGenerationStatus(result.taskId || 'auto-generated', reportUserId, isUserProfileId)
+        }
+      } else if (result.status === 'failed') {
+        console.log('❌ 报告生成失败:', { reportUserId, isUserProfileId, fromPolling })
+        setState(prev => ({ 
+          ...prev, 
+          reportError: '报告生成失败，请联系管理员重新生成~',
+          reportLoading: false,
+          isGenerating: false,
+          // 如果是轮询调用，重置轮询相关状态
+          ...(fromPolling && {
+            generationProgress: 0,
+            generationStatus: '',
+            taskId: null,
+            nextCheckTime: null
+          })
         }))
       } else {
         console.log('❌ 获取报告失败:', { 
           error: result.error, 
+          status: result.status,
           reportUserId: reportUserId,
-          isUserProfileId: isUserProfileId 
+          isUserProfileId: isUserProfileId,
+          fromPolling: fromPolling
         })
         setState(prev => ({ 
           ...prev, 
-          reportError: result.error || `${moduleConfig.title}报告未生成，请返回信息填写页重新生成`,
-          reportLoading: false
+          reportError: result.error || '报告生成失败，请联系管理员重新生成~',
+          reportLoading: false,
+          isGenerating: false,
+          // 如果是轮询调用，重置轮询相关状态
+          ...(fromPolling && {
+            generationProgress: 0,
+            generationStatus: '',
+            taskId: null,
+            nextCheckTime: null
+          })
         }))
       }
     } catch (error) {
-      console.error('❌ 加载报告失败:', error)
+      console.error('❌ 加载报告失败:', error, { fromPolling })
       setState(prev => ({ 
         ...prev, 
         reportError: '加载报告失败，请稍后重试',
-        reportLoading: false
+        reportLoading: false,
+        isGenerating: false,
+        // 如果是轮询调用，重置轮询相关状态
+        ...(fromPolling && {
+          generationProgress: 0,
+          generationStatus: '',
+          taskId: null,
+          nextCheckTime: null
+        })
       }))
     }
   }, [moduleConfig, userInfo])
@@ -257,7 +337,7 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
 
   // 轮询生成状态
   const pollGenerationStatus = useCallback(async (taskId: string, userId: string, isUserProfileId: boolean = false) => {
-    const maxAttempts = 60 // 最多轮询60次（5分钟）
+    const maxAttempts = 10 // 最多轮询10次（10分钟）
     let attempts = 0
 
     const poll = async () => {
@@ -286,35 +366,77 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
 
           if (result.status === 'completed') {
             console.log('✅ 报告生成完成')
-            setState(prev => ({ 
-              ...prev, 
-              isGenerating: false,
-              generationProgress: 100,
-              generationStatus: '生成完成'
-            }))
             
-            // 重新加载报告
-            setTimeout(() => {
-              loadReport()
-            }, 1000)
-            
-            message.success(`${moduleConfig.title}报告生成完成！`)
-            return
+            // 如果轮询返回了报告内容，直接使用
+            if (result.content && result.content.trim() !== '') {
+              console.log('🎯 轮询中直接获取报告内容，跳过额外API调用')
+              setState(prev => ({ 
+                ...prev, 
+                reportContent: result.content,
+                reportLoading: false,
+                reportError: null,
+                isGenerating: false,
+                generationProgress: 100,
+                generationStatus: '生成完成',
+                taskId: null,
+                nextCheckTime: null
+              }))
+              message.success(`${moduleConfig.title}报告生成完成！`)
+              return
+            } else {
+              // 如果轮询没有返回内容，才重新加载报告
+              console.log('🔄 轮询未返回内容，重新加载报告')
+              setState(prev => ({ 
+                ...prev, 
+                isGenerating: false,
+                generationProgress: 100,
+                generationStatus: '正在加载报告内容...'
+              }))
+              
+              // 重新加载报告
+              setTimeout(async () => {
+                await loadReport(true) // 标识为轮询调用
+                // 确保加载完成后重置所有生成相关状态
+                setState(prev => ({ 
+                  ...prev, 
+                  isGenerating: false,
+                  generationProgress: 0,
+                  generationStatus: '',
+                  taskId: null,
+                  nextCheckTime: null
+                }))
+              }, 1000)
+              
+              message.success(`${moduleConfig.title}报告生成完成！`)
+              return
+            }
           } else if (result.status === 'failed') {
             console.error('❌ 报告生成失败:', result.error)
             setState(prev => ({ 
               ...prev, 
               isGenerating: false,
-              reportError: result.error || '生成失败'
+              reportError: '报告生成失败，请联系管理员重新生成~',
+              reportLoading: false,
+              generationProgress: 0,
+              generationStatus: '',
+              taskId: null,
+              nextCheckTime: null
             }))
-            message.error(result.error || '生成失败，请稍后重试')
+            message.error('报告生成失败，请联系管理员重新生成')
             return
           }
         }
 
         // 继续轮询
         if (attempts < maxAttempts) {
-          setTimeout(poll, 5000) // 5秒后再次轮询
+          const nextCheck = new Date(Date.now() + 60000)
+          console.log(`⏰ 下次查询将在1分钟后进行 (${attempts + 1}/${maxAttempts}) - ${nextCheck.toLocaleTimeString()}`)
+          setState(prev => ({ 
+            ...prev, 
+            nextCheckTime: nextCheck,
+            generationStatus: `正在生成中... (${attempts}/${maxAttempts}次查询，下次: ${nextCheck.toLocaleTimeString()})`
+          }))
+          setTimeout(poll, 60000) // 改为每分钟轮询一次
         } else {
           console.warn('⚠️ 轮询超时')
           setState(prev => ({ 
@@ -328,7 +450,13 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
       } catch (error) {
         console.error('❌ 状态轮询失败:', error)
         if (attempts < maxAttempts) {
-          setTimeout(poll, 5000) // 出错后也继续轮询
+          const nextCheck = new Date(Date.now() + 60000)
+          setState(prev => ({ 
+            ...prev, 
+            nextCheckTime: nextCheck,
+            generationStatus: `查询失败，将重试... (${attempts}/${maxAttempts}次，下次: ${nextCheck.toLocaleTimeString()})`
+          }))
+          setTimeout(poll, 60000) // 出错后也改为每分钟重试
         } else {
           setState(prev => ({ 
             ...prev, 
@@ -341,7 +469,7 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
     }
 
     // 开始轮询
-    setTimeout(poll, 2000) // 2秒后开始第一次轮询
+    setTimeout(poll, 5000) // 5秒后开始第一次轮询
   }, [moduleConfig, loadReport])
 
   return {

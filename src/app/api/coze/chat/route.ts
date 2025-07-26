@@ -116,199 +116,57 @@ export async function POST(request: NextRequest) {
       console.log('📱 手机号用户，跳过聊天次数检查')
     }
 
-    // 获取八字排盘上下文 - 数据库优先
-    let astrologyContext = ''
-    if (userInfo) {
-      try {
-        // 尝试从用户ID获取八字上下文
-        let baziUserId: string | undefined
-        let isUserProfileId = false
-        
-        if (consistentUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(consistentUserId)) {
-          // 如果是UUID格式，假设是user_profiles.id
-          baziUserId = consistentUserId
-          isUserProfileId = true
-          console.log('🆔 使用UUID格式的用户ID:', baziUserId)
-        } else {
-          // 尝试获取user_profiles.id
-          const { supabaseAdmin } = await import('@/lib/supabase')
-          try {
-            let userId = userInfo.user_id || userInfo.userId || consistentUserId
-            
-            if (userId) {
-              console.log('🔍 尝试转换用户ID到user_profiles.id:', userId)
-              
-              // 先尝试作为users.id查询
-              let userRecord = null
-              if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
-                const { data } = await supabaseAdmin
-                  .from('users')
-                  .select('id')
-                  .eq('id', userId)
-                  .single()
-                userRecord = data
-              }
-              
-              // 如果不是users.id，尝试作为手机号查询
-              if (!userRecord) {
-                // 从consistentUserId中提取手机号（去掉user_前缀）
-                const phoneNumber = userId.replace(/^user_/, '')
-                const { data } = await supabaseAdmin
-                  .from('users')
-                  .select('id')
-                  .eq('phone_number', phoneNumber)
-                  .single()
-                userRecord = data
-              }
-              
-              if (userRecord) {
-                const { data: userProfile } = await supabaseAdmin
-                  .from('user_profiles')
-                  .select('id')
-                  .eq('user_id', userRecord.id)
-                  .single()
-                
-                if (userProfile?.id) {
-                  baziUserId = userProfile.id
-                  isUserProfileId = true
-                  console.log('✅ 成功获取user_profiles.id:', baziUserId)
-                } else {
-                  console.warn('⚠️ 未找到用户资料:', userRecord.id)
-                }
-              } else {
-                console.warn('⚠️ 未找到用户记录:', userId)
-              }
-            }
-          } catch (error) {
-            console.warn('⚠️ 无法获取user_profiles.id，将跳过八字排盘:', error)
-          }
-        }
-        
-        astrologyContext = await getAstrologyContext(userInfo, baziUserId)
-        console.log('✅ 成功获取八字排盘上下文')
-      } catch (error) {
-        console.warn('⚠️ 获取八字排盘上下文失败，将使用基础用户信息:', error)
-        astrologyContext = ''
-      }
-    }
-
-    // 构建用户上下文信息 - 修复字段映射问题
+    // 快速准备基础上下文消息（不等待八字排盘，提高响应速度）
     const contextMessage = userInfo ? `
-${astrologyContext ? astrologyContext : `用户信息：
+用户信息：
 - 昵称：${userInfo.name || userInfo.nickname || '用户'}
 - 性别：${userInfo.gender === 'male' ? '男' : userInfo.gender === 'female' ? '女' : userInfo.gender}
 - 出生日期：${userInfo.year}年${userInfo.month}月${userInfo.day}日
 - 出生时间：${userInfo.hour}时${userInfo.minute}分
-- 出生地区：${formatAreaDisplay(userInfo.area)}`}
+- 出生地区：${formatAreaDisplay(userInfo.area)}
 
 用户问题：${message}
 ` : message
 
+    // 移除重复的contextMessage声明，使用上面的快速版本
+
     console.log('📝 发送给Coze的上下文消息:', contextMessage.substring(0, 200) + '...')
 
-    // 获取用户的Access Token（优先使用缓存）
+    // 快速获取用户token（简化流程以提高响应速度）
     let accessToken: string | null = null
     let authMethod = 'PAT Token' // 默认认证方式
     let userProfileId: string | null = null
 
-    // 尝试多种方式获取用户的user_profile.id
-    try {
-      console.log('🔍 开始获取用户Profile ID...')
-      console.log('  consistentUserId:', consistentUserId)
-      console.log('  userInfo存在:', !!userInfo)
+    // 🚀 快速模式：只尝试最直接的方式，如果失败则使用系统token
+    console.log('🚀 快速获取token模式启动')
+    
+    if (consistentUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(consistentUserId)) {
+      userProfileId = consistentUserId
+      console.log('⚡ 使用UUID格式的用户ID:', userProfileId)
       
-      // 方式1: 如果consistentUserId是UUID格式，直接作为user_profile.id使用
-      if (consistentUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(consistentUserId)) {
-        console.log('🆔 consistentUserId是UUID格式，尝试作为user_profile.id使用')
-        const { data: checkProfile } = await supabase
-          .from('user_profiles')
-          .select('id')
-          .eq('id', consistentUserId)
-          .single()
-        
-        if (checkProfile) {
-          userProfileId = consistentUserId
-          console.log('✅ 直接使用UUID作为user_profile.id:', userProfileId)
-        }
-      }
-
-      // 方式2: 通过userInfo中的用户ID查询
-      if (!userProfileId && userInfo && (userInfo.user_id || userInfo.userId)) {
-        console.log('🔍 通过userInfo.user_id查询user_profile.id')
-        const userId = userInfo.user_id || userInfo.userId
-        
-        const { data: userProfile } = await supabase
-          .from('user_profiles')
-          .select('id')
-          .eq('user_id', userId)
-          .single()
-
-        if (userProfile?.id) {
-          userProfileId = userProfile.id
-          console.log('✅ 通过userInfo.user_id找到user_profile.id:', userProfileId)
-        }
-      }
-
-      // 方式3: 通过手机号查询
-      if (!userProfileId && consistentUserId) {
-        console.log('🔍 通过手机号查询user_profile.id')
-        // 从consistentUserId中提取手机号（去掉user_前缀）
-        const phoneNumber = consistentUserId.replace(/^user_/, '')
-        
-        if (/^1[3-9]\d{9}$/.test(phoneNumber)) {
-          console.log('📱 提取到手机号:', phoneNumber)
-          
-          const { data: user } = await supabase
-            .from('users')
-            .select('id')
-            .eq('phone_number', phoneNumber)
-            .single()
-
-          if (user) {
-            const { data: userProfile } = await supabase
-              .from('user_profiles')
-              .select('id')
-              .eq('user_id', user.id)
-              .single()
-
-            if (userProfile?.id) {
-              userProfileId = userProfile.id
-              console.log('✅ 通过手机号找到user_profile.id:', userProfileId)
-            }
-          }
-        }
-      }
-
-      // 如果找到了userProfileId，获取该用户的token
-      if (userProfileId) {
-        console.log('🔑 为用户获取Access Token:', userProfileId)
-        
-        // 调用token管理API
-        const tokenResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/user-profiles/coze-token`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            userProfileId: userProfileId
-          })
-        })
+      try {
+        // 快速获取token，设置较短的超时时间
+        const tokenResponse = await Promise.race([
+          fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/user-profiles/coze-token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userProfileId })
+          }),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Token获取超时')), 2000)
+          )
+        ]) as Response
 
         const tokenResult = await tokenResponse.json()
 
         if (tokenResult.success && tokenResult.token) {
           accessToken = tokenResult.token
           authMethod = tokenResult.cached ? 'JWT OAuth (cached)' : 'JWT OAuth (new)'
-          console.log('✅ 成功获取用户Access Token:', authMethod)
-        } else {
-          console.warn('⚠️ 获取用户Access Token失败:', tokenResult.message)
+          console.log('⚡ 快速获取Access Token成功:', authMethod)
         }
-      } else {
-        console.log('❌ 未能找到用户Profile ID')
+      } catch (error) {
+        console.warn('⚠️ 快速token获取失败，将使用系统token:', error)
       }
-
-    } catch (error) {
-      console.error('❌ 获取用户Access Token失败:', error)
     }
 
     // 创建Coze客户端
@@ -404,102 +262,61 @@ ${astrologyContext ? astrologyContext : `用户信息：
           conversation_id: conversationId, // 如果有对话ID则传入，用于保持对话连续性
         })
       } catch (error: any) {
-        // 检查是否是token过期错误
-        const isTokenExpired = error?.message?.includes('401') || 
-                              error?.message?.includes('Unauthorized') ||
-                              error?.status === 401
+        console.error('❌ Coze API调用失败:', {
+          error: error.message,
+          status: error.status,
+          retryCount,
+          hasAccessToken: !!accessToken,
+          hasUserProfileId: !!userProfileId
+        })
 
-        if (isTokenExpired && retryCount === 0 && (accessToken || userProfileId)) {
-          console.log('🔄 Token可能过期，尝试刷新...')
+        // 检查是否是token相关错误
+        const isTokenError = error?.message?.includes('401') || 
+                            error?.message?.includes('Unauthorized') ||
+                            error?.message?.includes('4101') ||
+                            error?.message?.includes('incorrect') ||
+                            error?.status === 401
+
+        if (isTokenError && retryCount === 0 && userProfileId) {
+          console.log('🔄 检测到token错误，尝试强制刷新token...')
           
           try {
-            // 使用之前获取到的userProfileId或重新获取
-            let refreshUserProfileId = userProfileId
-            
-            if (!refreshUserProfileId) {
-              console.log('🔍 重新获取用户Profile ID用于token刷新')
-              
-              // 重新使用多种方式获取用户ID
-              if (consistentUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(consistentUserId)) {
-                const { data: checkProfile } = await supabase
-                  .from('user_profiles')
-                  .select('id')
-                  .eq('id', consistentUserId)
-                  .single()
-                
-                if (checkProfile) {
-                  refreshUserProfileId = consistentUserId
-                }
-              }
-              
-              if (!refreshUserProfileId && userInfo && (userInfo.user_id || userInfo.userId)) {
-                const { data: userProfile } = await supabase
-                  .from('user_profiles')
-                  .select('id')
-                  .eq('user_id', userInfo.user_id || userInfo.userId)
-                  .single()
-                
-                if (userProfile?.id) {
-                  refreshUserProfileId = userProfile.id
-                }
-              }
-              
-              if (!refreshUserProfileId && consistentUserId) {
-                const phoneNumber = consistentUserId.replace(/^user_/, '')
-                if (/^1[3-9]\d{9}$/.test(phoneNumber)) {
-                  const { data: user } = await supabase
-                    .from('users')
-                    .select('id')
-                    .eq('phone_number', phoneNumber)
-                    .single()
-                  
-                  if (user) {
-                    const { data: userProfile } = await supabase
-                      .from('user_profiles')
-                      .select('id')
-                      .eq('user_id', user.id)
-                      .single()
-                    
-                    if (userProfile?.id) {
-                      refreshUserProfileId = userProfile.id
-                    }
-                  }
-                }
-              }
-            }
+            // 强制刷新token
+            const tokenResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/user-profiles/coze-token`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                userProfileId: userProfileId,
+                forceRefresh: true
+              })
+            })
 
-            if (refreshUserProfileId) {
-              const tokenResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/user-profiles/coze-token`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  userProfileId: refreshUserProfileId,
-                  forceRefresh: true
-                })
+            const tokenResult = await tokenResponse.json()
+
+            if (tokenResult.success && tokenResult.token) {
+              console.log('✅ Token强制刷新成功，重试API调用')
+              
+              // 使用新token重新创建客户端
+              coze = new CozeAPI({
+                token: tokenResult.token,
+                baseURL: `https://${process.env.COZE_API_BASE || 'api.coze.cn'}`
               })
 
-              const tokenResult = await tokenResponse.json()
-
-              if (tokenResult.success && tokenResult.token) {
-                console.log('✅ Token刷新成功，重试API调用')
-                
-                // 使用新token重新创建客户端
-                coze = new CozeAPI({
-                  token: tokenResult.token,
-                  baseURL: `https://${process.env.COZE_API_BASE || 'api.coze.cn'}`
-                })
-
-                // 递归重试（只重试一次）
-                return await callCozeAPI(1)
-              }
+              // 递归重试（只重试一次）
+              return await callCozeAPI(1)
+            } else {
+              console.error('❌ Token刷新失败:', tokenResult.message)
+              throw new Error(`Token刷新失败: ${tokenResult.message}`)
             }
           } catch (refreshError) {
-            console.error('❌ Token刷新失败:', refreshError)
+            console.error('❌ Token刷新过程失败:', refreshError)
+            throw new Error(`Token刷新失败: ${refreshError instanceof Error ? refreshError.message : String(refreshError)}`)
           }
         }
 
+        // 如果不是token错误，或者重试次数已达上限，或者没有userProfileId，直接抛出错误
         throw error
       }
     }
@@ -512,12 +329,42 @@ ${astrologyContext ? astrologyContext : `用户信息：
     let finalConversationId = ''
     let finalChatId = ''
     let fullResponse = ''
+    let hasReceivedData = false
+    let streamTimeout: NodeJS.Timeout
 
     const readableStream = new ReadableStream({
       async start(controller) {
+        // 🚀 立即发送开始信号，让前端马上显示"正在思考"状态
+        const startData = JSON.stringify({
+          type: 'start',
+          message: 'AI正在思考中...',
+          timestamp: new Date().toISOString()
+        })
+        controller.enqueue(encoder.encode(`data: ${startData}\n\n`))
+        console.log('🚀 已发送开始信号给前端')
+
+        // 添加超时机制，如果30秒内没有收到任何数据，则超时
+        streamTimeout = setTimeout(() => {
+          if (!hasReceivedData) {
+            console.error('❌ 流式处理超时：30秒内没有收到任何数据')
+            const errorData = JSON.stringify({
+              type: 'error',
+              error: '流式处理超时，请检查网络连接或稍后重试'
+            })
+            controller.enqueue(encoder.encode(`data: ${errorData}\n\n`))
+            controller.close()
+          }
+        }, 30000)
+
         try {
           for await (const chunk of stream) {
-            // console.log('📦 收到流式数据块:', chunk.event)
+            hasReceivedData = true
+            console.log('📦 收到流式数据块:', {
+              event: chunk.event,
+              hasData: !!chunk.data,
+              dataKeys: chunk.data ? Object.keys(chunk.data) : [],
+              rawChunk: JSON.stringify(chunk, null, 2).substring(0, 500)
+            })
 
             // 保存对话信息
             if (chunk.event === 'conversation.chat.created') {
@@ -526,9 +373,20 @@ ${astrologyContext ? astrologyContext : `用户信息：
               console.log('💬 对话创建:', { finalConversationId, finalChatId })
             }
 
-            // 处理消息内容
-            if (chunk.event === 'conversation.message.delta') {
-              const content = chunk.data?.content || ''
+            // 处理消息内容 - 增加更多的事件类型检测
+            if (chunk.event === 'conversation.message.delta' || 
+                chunk.event === 'message.delta' ||
+                chunk.event === 'conversation.message.completed' ||
+                chunk.event === 'message.completed') {
+              
+              const content = chunk.data?.content || chunk.data?.text || chunk.data?.message || ''
+              console.log('📝 收到消息内容:', {
+                event: chunk.event,
+                content: content.substring(0, 100),
+                contentLength: content.length,
+                dataStructure: chunk.data ? Object.keys(chunk.data) : []
+              })
+              
               if (content) {
                 fullResponse += content
                 // 发送流式数据到前端
@@ -542,9 +400,17 @@ ${astrologyContext ? astrologyContext : `用户信息：
               }
             }
 
-            // 处理完成事件
-            if (chunk.event === 'conversation.chat.completed') {
-              console.log('✅ 对话完成')
+            // 处理完成事件 - 增加更多的完成事件类型
+            if (chunk.event === 'conversation.chat.completed' ||
+                chunk.event === 'chat.completed' ||
+                chunk.event === 'conversation.completed' ||
+                chunk.event === 'done') {
+              console.log('✅ 对话完成，事件类型:', chunk.event)
+
+              // 清除超时
+              if (streamTimeout) {
+                clearTimeout(streamTimeout)
+              }
 
               // 获取更新后的聊天次数信息
               let remainingCount: number | undefined
@@ -562,32 +428,101 @@ ${astrologyContext ? astrologyContext : `用户信息：
                 }
               }
 
+              // 打印认证信息到服务器控制台
+              console.log('🔐 聊天完成 - 认证信息汇总:')
+              console.log('   认证方式:', authMethod)
+              console.log('   Token类型:', accessToken ? '用户Token' : '系统Token')
+              console.log('   Token前缀:', accessToken ? 
+                `${accessToken.substring(0, 12)}...` : '系统级Token')
+              console.log('   用户ID:', consistentUserId)
+              console.log('   消息长度:', fullResponse.length)
+
               const finalData = JSON.stringify({
                 type: 'done',
                 fullResponse: fullResponse,
                 conversationId: finalConversationId,
                 chatId: finalChatId,
                 authMethod: authMethod,
-                remainingCount: remainingCount
+                remainingCount: remainingCount,
+                authInfo: {
+                  method: authMethod,
+                  tokenType: accessToken ? '用户Token' : '系统Token',
+                  tokenPrefix: accessToken ? `${accessToken.substring(0, 12)}...` : '系统级Token',
+                  userId: consistentUserId
+                }
               })
               controller.enqueue(encoder.encode(`data: ${finalData}\n\n`))
               controller.close()
               return
             }
 
-            // 处理错误事件
-            if (chunk.event === 'conversation.chat.failed') {
-              console.error('❌ 对话失败:', chunk.data)
+            // 处理错误事件 - 增加更多的错误事件类型
+            if (chunk.event === 'conversation.chat.failed' ||
+                chunk.event === 'chat.failed' ||
+                chunk.event === 'error') {
+              console.error('❌ 对话失败:', {
+                event: chunk.event,
+                data: chunk.data,
+                error: chunk.error
+              })
               const errorData = JSON.stringify({
                 type: 'error',
-                error: '对话生成失败，请重试'
+                error: chunk.data?.error || chunk.error || '对话生成失败，请重试'
               })
               controller.enqueue(encoder.encode(`data: ${errorData}\n\n`))
               controller.close()
               return
             }
           }
+
+          // 清除超时
+          if (streamTimeout) {
+            clearTimeout(streamTimeout)
+          }
+
+          // 如果循环结束但没有收到完成事件，发送完成信号
+          if (fullResponse) {
+            console.log('🔚 流式处理结束，发送最终响应:', fullResponse.length, '字符')
+            
+            // 打印认证信息到服务器控制台
+            console.log('🔐 聊天完成 - 认证信息汇总:')
+            console.log('   认证方式:', authMethod)
+            console.log('   Token类型:', accessToken ? '用户Token' : '系统Token')
+            console.log('   Token前缀:', accessToken ? 
+              `${accessToken.substring(0, 12)}...` : '系统级Token')
+            console.log('   用户ID:', consistentUserId)
+            console.log('   消息长度:', fullResponse.length)
+            
+            const finalData = JSON.stringify({
+              type: 'done',
+              fullResponse: fullResponse,
+              conversationId: finalConversationId,
+              chatId: finalChatId,
+              authMethod: authMethod,
+              authInfo: {
+                method: authMethod,
+                tokenType: accessToken ? '用户Token' : '系统Token',
+                tokenPrefix: accessToken ? `${accessToken.substring(0, 12)}...` : '系统级Token',
+                userId: consistentUserId
+              }
+            })
+            controller.enqueue(encoder.encode(`data: ${finalData}\n\n`))
+          } else {
+            console.warn('⚠️ 流式处理结束但没有收到任何内容')
+            const errorData = JSON.stringify({
+              type: 'error',
+              error: '未收到AI回复，请重试'
+            })
+            controller.enqueue(encoder.encode(`data: ${errorData}\n\n`))
+          }
+          
+          controller.close()
         } catch (error) {
+          // 清除超时
+          if (streamTimeout) {
+            clearTimeout(streamTimeout)
+          }
+          
           console.error('❌ 流式处理错误:', error)
           const errorData = JSON.stringify({
             type: 'error',

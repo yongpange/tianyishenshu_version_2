@@ -61,6 +61,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
   const [currentContent, setCurrentContent] = useState<ContentType>('chat') // 默认显示聊天界面
   const [currentMessage, setCurrentMessage] = useState('')
   const [loading, setLoading] = useState(false)
+  const [isTyping, setIsTyping] = useState(false)
   const [drawerVisible, setDrawerVisible] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -176,59 +177,14 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
   const copyReport = useCallback(async () => {
     if (!reportGeneration.reportContent) return
 
-    try {
-      // 优先尝试现代 clipboard API
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(reportGeneration.reportContent)
-        setCopied(true)
-        message.success('报告内容已复制到剪贴板')
-        setTimeout(() => setCopied(false), 2000)
-        return
-      }
-
-      // 备用方案：使用 textArea 元素
-      const textArea = document.createElement('textarea')
-      textArea.value = reportGeneration.reportContent
-      textArea.style.position = 'fixed'
-      textArea.style.left = '-999999px'
-      textArea.style.top = '-999999px'
-      document.body.appendChild(textArea)
-      textArea.focus()
-      textArea.select()
-      
-      const successful = document.execCommand('copy')
-      document.body.removeChild(textArea)
-      
-      if (successful) {
-        setCopied(true)
-        message.success('报告内容已复制到剪贴板')
-        setTimeout(() => setCopied(false), 2000)
-      } else {
-        throw new Error('execCommand copy failed')
-      }
-    } catch (error) {
-      console.error('❌ 复制失败:', error)
-      
-      // 最后的备用方案：显示选择提示
-      Modal.info({
-        title: '复制内容',
-        content: (
-          <div>
-            <p>自动复制失败，请手动复制以下内容：</p>
-            <TextArea
-              value={reportGeneration.reportContent}
-              readOnly
-              autoSize={{ minRows: 10, maxRows: 20 }}
-              style={{ marginTop: 8 }}
-              onFocus={(e) => e.target.select()}
-            />
-          </div>
-        ),
-        width: 600,
-        okText: '关闭'
-      })
+    const { copyReport: copyReportHelper } = await import('@/utils/copy-helper')
+    const success = await copyReportHelper(reportGeneration.reportContent, moduleConfig.title)
+    
+    if (success) {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
     }
-  }, [reportGeneration.reportContent])
+  }, [reportGeneration.reportContent, moduleConfig.title])
 
   // 智能滚动到底部
   const scrollToBottom = useCallback((force = false) => {
@@ -299,6 +255,18 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
       setTimeout(() => scrollToBottom(), 100)
     }
   }, [conversationHistory.getCurrentConversation()?.messages, scrollToBottom])
+
+  // Typing动画组件
+  const TypingIndicator = () => (
+    <div className="flex items-center space-x-1 text-gray-500">
+      <span className="text-sm ml-2">AI深度分析中，预计2分钟，道友稍后...</span>
+      <div className="flex space-x-1">
+        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+      </div>
+    </div>
+  )
 
   // 发送消息
   const sendMessage = async () => {
@@ -393,6 +361,9 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
 
       // 添加空的机器人消息到对话
       conversationHistory.addMessageToConversation(conversationHistory.activeConversationId, botMessage)
+      
+      // 设置AI分析状态
+      setIsTyping(true)
 
       try {
         while (true) {
@@ -408,6 +379,11 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
                 const data = JSON.parse(line.slice(6))
 
                 if (data.type === 'content') {
+                  // 第一次收到内容时清除AI分析状态
+                  if (botMessageContent === '') {
+                    setIsTyping(false)
+                  }
+                  
                   botMessageContent += data.content
                   finalConversationId = data.conversationId || finalConversationId
                   finalChatId = data.chatId || finalChatId
@@ -424,6 +400,19 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
                   console.log('✅ 流式响应完成')
                   finalConversationId = data.conversationId || finalConversationId
                   finalChatId = data.chatId || finalChatId
+
+                  // 打印认证信息到前端控制台
+                  if (data.authInfo) {
+                    console.group('🔐 报告聊天完成 - 认证信息')
+                    console.log('认证方式:', data.authInfo.method)
+                    console.log('Token类型:', data.authInfo.tokenType)
+                    console.log('Token前缀:', data.authInfo.tokenPrefix)
+                    console.log('用户ID:', data.authInfo.userId)
+                    console.log('响应长度:', botMessageContent?.length || 0, '字符')
+                    console.groupEnd()
+                  } else {
+                    console.log('🔐 报告聊天完成 - 认证方式:', data.authMethod || '未知')
+                  }
 
                   // 最终更新
                   const finalConversations = conversationHistory.conversations.map(conv => {
@@ -490,6 +479,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
 
     } finally {
       setLoading(false)
+      setIsTyping(false)
     }
   }
 
@@ -506,6 +496,24 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
 
   return (
     <div className="bg-white flex overflow-hidden h-screen">
+      {/* 自定义滚动条样式 */}
+      <style jsx>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #f3f4f6;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #ffffff;
+          border-radius: 4px;
+          border: 1px solid #e5e7eb;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #f9fafb;
+        }
+      `}</style>
+      
       {/* 移动端顶部导航 */}
       <div className="md:hidden fixed top-0 left-0 right-0 bg-white shadow-lg border-b border-gray-200 p-4 z-20">
         <div className="flex items-center justify-between">
@@ -593,7 +601,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 space-y-2" style={{ overscrollBehavior: 'contain' }}>
+                <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar" style={{ overscrollBehavior: 'contain' }}>
                   {conversationHistory.conversations
                     .sort((a, b) => {
                       // 置顶的对话排在前面
@@ -739,7 +747,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
             </div>
 
             {/* 报告内容区域 - 独立滚动 */}
-            <div className="flex-1 overflow-y-auto p-6" style={{ overscrollBehavior: 'contain' }}>
+            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar" style={{ overscrollBehavior: 'contain' }}>
               {reportGeneration.reportLoading ? (
                 <div className="flex flex-col items-center justify-center py-20">
                   {reportGeneration.isGenerating ? (
@@ -753,7 +761,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
                         </div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-2">正在生成{moduleConfig.title}报告</h3>
                         <p className="text-gray-600">{reportGeneration.generationStatus}</p>
-                        <p className="text-sm text-gray-500 mt-2">{moduleConfig.title}报告正在生成，预计等候3分钟</p>
+                        <p className="text-sm text-gray-500 mt-2">系统每分钟检查一次生成状态，请耐心等待</p>
                       </div>
                     </div>
                   ) : (
@@ -765,17 +773,37 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
                   )}
                 </div>
               ) : reportGeneration.reportError ? (
-                <div className="text-center py-20">
-                  <Alert
-                    message={reportGeneration.reportError}
-                    type="warning"
-                    showIcon
-                    className="mb-4"
-                  />
-                  <Button type="primary" onClick={reportGeneration.regenerateReport}>
-                    重新生成报告
-                  </Button>
-                </div>
+                // 区分是生成中状态还是失败状态
+                reportGeneration.isGenerating ? (
+                  // 生成中状态：显示loading界面
+                  <div className="flex flex-col items-center justify-center py-20">
+                    <div className="w-full max-w-md">
+                      <div className="text-center mb-6">
+                        <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <Spin
+                            indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
+                          />
+                        </div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">您的{moduleConfig.title}报告正在生成中，预计等候三分钟。</h3>
+                        <p className="text-gray-600">{reportGeneration.generationStatus}</p>
+                        <p className="text-sm text-gray-500 mt-2">系统每分钟检查一次生成状态，请耐心等待</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  // 失败状态：显示错误信息
+                  <div className="text-center py-20">
+                    <Alert
+                      message={reportGeneration.reportError}
+                      type="error"
+                      showIcon
+                      className="mb-4"
+                    />
+                    {/* <Button type="primary" onClick={reportGeneration.regenerateReport}>
+                      重新生成报告
+                    </Button> */}
+                  </div>
+                )
               ) : reportGeneration.reportContent ? (
                 <div className="prose prose-gray max-w-none markdown-content">
                   <ReactMarkdown
@@ -816,7 +844,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
             {/* 聊天消息区域 */}
             <div
               ref={chatContainerRef}
-              className="flex-1 overflow-y-auto p-4 space-y-4"
+              className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar"
               style={{ overscrollBehavior: 'contain' }}
             >
               {conversationHistory.getCurrentConversation()?.messages.map((message) => (
@@ -859,6 +887,20 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
                 </div>
               ))}
 
+              {/* AI分析中提示 */}
+              {isTyping && (
+                <div className="flex justify-start">
+                  <div className="flex items-start space-x-3 max-w-[80%]">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-gray-600">
+                      <RobotOutlined className="text-white text-sm" />
+                    </div>
+                    <div className="rounded-lg p-3 bg-gray-100 text-gray-900">
+                      <TypingIndicator />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* 滚动锚点 */}
               <div ref={messagesEndRef} />
             </div>
@@ -885,11 +927,13 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
                   placeholder={`请输入您想咨询的${moduleConfig.title}问题...`}
                   autoSize={{ minRows: 1, maxRows: 4 }}
                   className="flex-1"
-                  disabled={loading}
+                  disabled={loading || isTyping}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
-                      sendMessage()
+                      if (!loading && !isTyping) {
+                        sendMessage()
+                      }
                     }
                   }}
                 />
@@ -898,7 +942,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
                   icon={<SendOutlined />}
                   onClick={sendMessage}
                   loading={loading}
-                  disabled={!currentMessage.trim()}
+                  disabled={!currentMessage.trim() || isTyping}
                   className="self-end"
                 >
                   发送

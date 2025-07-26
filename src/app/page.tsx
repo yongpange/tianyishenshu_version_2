@@ -49,7 +49,7 @@ export default function HomePage() {
             召唤AI老法师 开启实时对话
           </p>
           <div className="flex justify-center">
-            <Link href="/register">
+            <Link href="/login">
               <button className="btn-primary text-lg px-8 py-4 hover:transform hover:scale-105 transition-all duration-300">
                 马上体验
               </button>

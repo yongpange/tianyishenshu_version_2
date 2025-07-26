@@ -71,50 +71,109 @@ function getPrivateKey(privateKeyFile: string): string {
 export async function createJWTToken(config: CozeAuthConfig): Promise<string> {
   const { clientId, privateKeyFile, publicKeyId, apiBase } = config
   
+  console.log('🔍 === JWT Token 创建详细调试 ===')
+  console.log('📋 输入参数:')
+  console.log('   clientId:', clientId ? `${clientId.substring(0, 8)}...` : '空值')
+  console.log('   publicKeyId:', publicKeyId ? `${publicKeyId.substring(0, 10)}...` : '空值')
+  console.log('   privateKeyFile:', privateKeyFile || '空值')
+  console.log('   apiBase:', apiBase || '空值')
+  
   if (!clientId || !publicKeyId || !privateKeyFile) {
+    console.error('❌ JWT 认证配置缺失')
     throw new Error('JWT 认证配置缺失：需要 clientId, publicKeyId, privateKeyFile')
   }
   
   try {
+    console.log('📂 开始读取私钥文件...')
+    
     // 获取私钥内容
     const privateKey = getPrivateKey(privateKeyFile)
+    console.log('✅ 私钥读取成功，长度:', privateKey.length)
+    console.log('🔑 私钥格式检查:')
+    console.log('   包含BEGIN:', privateKey.includes('BEGIN'))
+    console.log('   包含END:', privateKey.includes('END'))
+    console.log('   包含PRIVATE KEY:', privateKey.includes('PRIVATE KEY'))
+    console.log('   私钥前50字符:', privateKey.substring(0, 50))
     
     // 使用jsonwebtoken库生成JWT
     const jwt = require('jsonwebtoken')
     const now = Math.floor(Date.now() / 1000)
     
+    console.log('⏰ 时间信息:')
+    console.log('   当前时间戳:', now)
+    console.log('   当前时间:', new Date(now * 1000).toISOString())
+    console.log('   过期时间戳:', now + 3600)
+    console.log('   过期时间:', new Date((now + 3600) * 1000).toISOString())
+    
     // 符合Coze OAuth JWT规范的payload
     const payload = {
       iss: clientId,                     // 应用ID (issuer)
-      aud: apiBase,                      // 受众 - Coze API域名 (不含https://)
+      aud: 'api.coze.cn',               // 受众 - 固定为 api.coze.cn（重要：不使用变量）
       iat: now,                          // 签发时间 (issued at)
       exp: now + 3600,                   // 过期时间 (expiry) - 1小时后
       jti: `${clientId}_${now}_${Math.random().toString(36).substring(2, 11)}` // JWT ID - 唯一标识
     }
     
+    console.log('📦 JWT Payload:')
+    console.log('   iss (issuer):', payload.iss)
+    console.log('   aud (audience):', payload.aud)
+    console.log('   iat (issued at):', payload.iat, '(' + new Date(payload.iat * 1000).toISOString() + ')')
+    console.log('   exp (expires):', payload.exp, '(' + new Date(payload.exp * 1000).toISOString() + ')')
+    console.log('   jti (JWT ID):', payload.jti)
+    
+    const header = {
+      typ: 'JWT',
+      alg: 'RS256',
+      kid: publicKeyId  // 公钥ID
+    }
+    
+    console.log('📋 JWT Header:')
+    console.log('   typ:', header.typ)
+    console.log('   alg:', header.alg)
+    console.log('   kid:', header.kid)
+    
+    console.log('🔐 开始生成JWT Token...')
+    
     // 生成JWT Token，包含kid（key ID）
     const token = jwt.sign(payload, privateKey, { 
       algorithm: 'RS256',
-      header: {
-        typ: 'JWT',
-        alg: 'RS256',
-        kid: publicKeyId  // 公钥ID
-      }
+      header: header
     })
     
-    console.log('✅ JWT Token生成成功')
+    console.log('✅ JWT Token 生成成功!')
+    console.log('🔑 Token 长度:', token.length)
+    console.log('🔑 Token 前100字符:', token.substring(0, 100) + '...')
+    console.log('🔑 Token 结构检查:')
+    const tokenParts = token.split('.')
+    console.log('   Token 部分数量:', tokenParts.length, '(应该是3)')
+    console.log('   Header 部分长度:', tokenParts[0]?.length || 0)
+    console.log('   Payload 部分长度:', tokenParts[1]?.length || 0)
+    console.log('   Signature 部分长度:', tokenParts[2]?.length || 0)
+    
+    console.log('=================================')
+    
     return token
     
   } catch (error) {
-    console.error('❌ JWT生成失败:', error)
+    console.error('❌ JWT生成失败详细信息:')
+    console.error('   错误类型:', error?.constructor?.name)
+    console.error('   错误消息:', error instanceof Error ? error.message : String(error))
+    console.error('   错误堆栈:', error instanceof Error ? error.stack : '无堆栈信息')
     
     // 提供更详细的错误信息
     if (error instanceof Error) {
       if (error.message.includes('key')) {
+        console.error('🔑 私钥相关错误，请检查:')
+        console.error('   1. 私钥文件路径是否正确')
+        console.error('   2. 私钥文件是否存在')
+        console.error('   3. 私钥格式是否为PEM格式')
+        console.error('   4. 私钥是否为RSA格式')
         throw new Error('私钥格式错误或无效')
       } else if (error.message.includes('algorithm')) {
+        console.error('🔧 算法相关错误')
         throw new Error('JWT算法配置错误')
       } else {
+        console.error('📋 完整错误信息:', error)
         throw new Error(`JWT认证失败: ${error.message}`)
       }
     }
@@ -126,46 +185,99 @@ export async function createJWTToken(config: CozeAuthConfig): Promise<string> {
 // 获取OAuth Access Token - 符合Coze官方规范
 async function getOAuthAccessToken(config: CozeAuthConfig): Promise<string> {
   try {
-    console.log('🔄 通过JWT获取OAuth Access Token...')
+    console.log('🔍 === OAuth Access Token 获取详细调试 ===')
+    console.log('🔄 开始通过JWT获取OAuth Access Token...')
     
     // 生成JWT token
+    console.log('🎯 步骤1: 生成JWT Token')
     const jwtToken = await createJWTToken(config)
+    console.log('✅ JWT Token 生成完成，长度:', jwtToken.length)
     
     // 使用官方API端点
     const tokenEndpoint = `https://${config.apiBase}/api/permission/oauth2/token`
+    console.log('🎯 步骤2: 准备OAuth请求')
+    console.log('   请求地址:', tokenEndpoint)
+    
+    const requestBody = {
+      duration_seconds: 86399, // 24小时 - 1秒 (最大值)
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer'
+    }
+    
+    console.log('📦 请求体:', JSON.stringify(requestBody, null, 2))
+    console.log('🔑 Authorization Header:', `Bearer ${jwtToken.substring(0, 50)}...`)
+    
+    const requestHeaders = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${jwtToken}`
+    }
+    
+    console.log('📋 请求头:', Object.keys(requestHeaders))
+    
+    console.log('🎯 步骤3: 发送OAuth请求')
+    console.log('⏰ 请求开始时间:', new Date().toISOString())
     
     // 请求access token - 使用官方文档规范
     const response = await fetch(tokenEndpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${jwtToken}`
-      },
-      body: JSON.stringify({
-        duration_seconds: 86399, // 24小时 - 1秒 (最大值)
-        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer'
-      })
+      headers: requestHeaders,
+      body: JSON.stringify(requestBody)
     })
     
+    console.log('📨 OAuth响应信息:')
+    console.log('   状态码:', response.status)
+    console.log('   状态文本:', response.statusText)
+    console.log('   响应头:', Object.fromEntries(response.headers.entries()))
+    
+    const responseText = await response.text()
+    console.log('📄 原始响应内容:', responseText)
+    
     if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`OAuth token请求失败: ${response.status} ${errorText}`)
+      console.error('❌ OAuth请求失败详细信息:')
+      console.error('   HTTP状态:', response.status, response.statusText)
+      console.error('   响应内容:', responseText)
+      throw new Error(`OAuth token请求失败: ${response.status} ${responseText}`)
     }
     
-    const tokenData = await response.json()
+    console.log('🎯 步骤4: 解析响应数据')
+    let tokenData: any
+    try {
+      tokenData = JSON.parse(responseText)
+      console.log('📦 解析后的响应数据:', JSON.stringify(tokenData, null, 2))
+    } catch (parseError) {
+      console.error('❌ JSON解析失败:', parseError)
+      console.error('   原始响应:', responseText)
+      throw new Error('OAuth响应格式无效')
+    }
     
     if (!tokenData.access_token) {
+      console.error('❌ 响应中缺少access_token')
+      console.error('   响应字段:', Object.keys(tokenData))
       throw new Error('OAuth响应中缺少access_token')
     }
     
-    console.log('✅ OAuth Access Token获取成功')
-    console.log(`   Access Token: ${tokenData.access_token.substring(0, 20)}...`)
-    console.log(`   过期时间戳: ${tokenData.expires_in}`)
+    console.log('✅ OAuth Access Token获取成功!')
+    console.log('🔑 Access Token 信息:')
+    console.log('   Token 长度:', tokenData.access_token.length)
+    console.log('   Token 前30字符:', tokenData.access_token.substring(0, 30) + '...')
+    console.log('   expires_in:', tokenData.expires_in)
+    console.log('   token_type:', tokenData.token_type)
+    
+    if (tokenData.expires_in) {
+      const expiresAt = new Date(tokenData.expires_in * 1000)
+      console.log('   过期时间:', expiresAt.toISOString())
+      console.log('   距离过期:', Math.floor((tokenData.expires_in * 1000 - Date.now()) / 1000 / 3600), '小时')
+    }
+    
+    console.log('=================================')
     
     return tokenData.access_token
     
   } catch (error) {
-    console.error('❌ OAuth Access Token获取失败:', error)
+    console.error('❌ OAuth Access Token获取失败详细信息:')
+    console.error('   错误类型:', error?.constructor?.name)
+    console.error('   错误消息:', error instanceof Error ? error.message : String(error))
+    console.error('   错误堆栈:', error instanceof Error ? error.stack?.substring(0, 500) : '无堆栈信息')
+    console.error('=================================')
     throw error
   }
 }
@@ -234,7 +346,7 @@ export async function getUserCozeToken(userInfo: any): Promise<{
       const { data: userProfile } = await supabaseAdmin
         .from('user_profiles')
         .select('id, coze_access_token, coze_token_expires_at, coze_token_created_at')
-        .eq('user_id', userInfo.user_id || userInfo.userId)
+        .eq(userInfo.userProfileId ? 'id' : 'user_id', userInfo.userProfileId || userInfo.user_id || userInfo.userId)
         .single()
 
       if (userProfile?.id) {
@@ -257,9 +369,9 @@ export async function getUserCozeToken(userInfo: any): Promise<{
             // 使用JWT OAuth获取新token
             const newToken = await getOAuthAccessToken(DEFAULT_CONFIG)
             
-            // 计算过期时间（24小时减1秒）
+            // 由于getOAuthAccessToken只返回access_token字符串，我们使用默认过期时间（24小时）
             const expiresAt = new Date()
-            expiresAt.setSeconds(expiresAt.getSeconds() + 86399) // 24小时-1秒
+            expiresAt.setHours(expiresAt.getHours() + 23, 59, 0, 0) // 23小时59分钟后过期（提前1分钟）
             
             // 更新数据库中的token信息
             const { error: updateError } = await supabaseAdmin
@@ -335,7 +447,7 @@ export async function refreshUserCozeToken(userInfo: any): Promise<{
       const { data: userProfile } = await supabaseAdmin
         .from('user_profiles')
         .select('id')
-        .eq('user_id', userInfo.user_id || userInfo.userId)
+        .eq(userInfo.userProfileId ? 'id' : 'user_id', userInfo.userProfileId || userInfo.user_id || userInfo.userId)
         .single()
 
       if (userProfile?.id) {
@@ -348,7 +460,7 @@ export async function refreshUserCozeToken(userInfo: any): Promise<{
           // 计算过期时间（24小时减1秒）
           const now = new Date()
           const expiresAt = new Date()
-          expiresAt.setSeconds(expiresAt.getSeconds() + 86399) // 24小时-1秒
+          expiresAt.setHours(expiresAt.getHours() + 23, 59, 0, 0) // 23小时59分钟后过期（提前1分钟）
           
           // 更新数据库中的token信息
           const { error: updateError } = await supabaseAdmin
@@ -410,7 +522,10 @@ export async function callCozeWithRetry<T>(
       // 检查是否是token过期错误
       const isTokenExpired = error?.message?.includes('401') || 
                             error?.message?.includes('Unauthorized') ||
-                            error?.status === 401
+                            error?.status === 401 ||
+                            error?.code === 4100 ||
+                            error?.message?.includes('authentication is invalid') ||
+                            error?.message?.includes('4100')
 
       if (isTokenExpired && attempt < maxRetries && userInfo) {
         console.log('🔄 Token可能过期，尝试刷新...')
@@ -552,7 +667,10 @@ export async function callCozeAPIWithRetry<T>(
       // 检查是否是token过期错误
       const isTokenExpired = error?.message?.includes('401') || 
                             error?.message?.includes('Unauthorized') ||
-                            error?.status === 401
+                            error?.status === 401 ||
+                            error?.code === 4100 ||
+                            error?.message?.includes('authentication is invalid') ||
+                            error?.message?.includes('4100')
 
       if (isTokenExpired && attempt < maxRetries && accessToken && userInfo) {
         console.log('🔄 Token可能过期，尝试刷新...')
@@ -673,8 +791,16 @@ export async function ensureUserCozeToken(userProfileId: string): Promise<{
 
       console.log('✅ 新Access Token获取成功')
 
-      // 4. 保存新token到数据库
-      const newExpiresAt = new Date(now.getTime() + (tokenData.expires_in * 1000) - 60000) // 提前1分钟过期
+      // 4. 保存新token到数据库  
+      // 这里直接从API响应获取正确的expires_in时间戳
+      const newExpiresAt = new Date(tokenData.expires_in * 1000 - 60000) // 提前1分钟过期
+      
+      console.log('📅 Token过期时间计算（ensureUserCozeToken）:', {
+        expires_in_timestamp: tokenData.expires_in,
+        expires_in_date: new Date(tokenData.expires_in * 1000).toISOString(),
+        final_expires_at: newExpiresAt.toISOString(),
+        current_time: now.toISOString()
+      })
       
       const { error: updateError } = await supabaseAdmin
         .from('user_profiles')
@@ -715,6 +841,102 @@ export async function ensureUserCozeToken(userProfileId: string): Promise<{
       success: false, 
       message: error instanceof Error ? error.message : '检查Token失败'
     }
+  }
+}
+
+/**
+ * 简化的JWT认证函数，专门用于报告生成
+ * 临时优先使用PAT Token绕过OAuth 4100错误
+ */
+export async function createReportCozeClient(): Promise<{
+  client: CozeAPI
+  authMethod: string
+}> {
+  try {
+    console.log('🔄 报告生成专用认证（临时优先PAT Token）')
+    
+    // 临时优先使用PAT Token绕过OAuth 4100错误
+    const patToken = process.env.COZE_API_TOKEN
+    if (patToken) {
+      console.log('🔑 优先使用PAT Token认证（绕过OAuth 4100问题）')
+      const client = new CozeAPI({
+        token: patToken,
+        baseURL: `https://${process.env.COZE_API_BASE || 'api.coze.cn'}/`
+      })
+      
+      return {
+        client,
+        authMethod: 'PAT Token (4100 workaround)'
+      }
+    }
+    
+    // 如果没有PAT Token，尝试JWT OAuth认证
+    const config = {
+      clientId: process.env.COZE_CLIENT_ID!,
+      publicKeyId: process.env.COZE_PUBLIC_KEY_ID!,
+      privateKeyFile: process.env.COZE_PRIVATE_KEY_FILE!,
+      apiBase: process.env.COZE_API_BASE || 'api.coze.cn'
+    }
+
+    // 检查JWT配置完整性
+    const hasJWTConfig = config.clientId && config.publicKeyId && config.privateKeyFile
+    
+    if (hasJWTConfig) {
+      console.log('🔐 尝试JWT OAuth认证（报告生成）')
+      
+      try {
+        // 创建JWT Token
+        const jwtToken = await createJWTToken(config)
+        console.log('✅ JWT Token创建成功')
+
+        // 请求Access Token
+        const tokenResponse = await fetch(`https://${config.apiBase}/api/permission/oauth2/token`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${jwtToken}`,
+          },
+          body: JSON.stringify({
+            grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+            duration_seconds: 86400, // 24小时
+          }),
+        })
+
+        if (!tokenResponse.ok) {
+          const errorText = await tokenResponse.text()
+          throw new Error(`OAuth请求失败: ${tokenResponse.status} ${errorText}`)
+        }
+
+        const tokenData = await tokenResponse.json()
+
+        if (!tokenData.access_token) {
+          throw new Error('OAuth响应中缺少access_token')
+        }
+
+        console.log('✅ JWT OAuth认证成功')
+
+        // 创建客户端
+        const client = new CozeAPI({
+          token: tokenData.access_token,
+          baseURL: `https://${config.apiBase}/`
+        })
+
+        return {
+          client,
+          authMethod: 'JWT OAuth (reports)'
+        }
+      } catch (jwtError) {
+        console.warn('⚠️ JWT OAuth认证失败（可能是4100错误）:', jwtError instanceof Error ? jwtError.message : String(jwtError))
+        // 如果JWT失败且没有PAT Token，抛出错误
+        throw new Error('JWT OAuth认证失败且PAT Token未配置，请检查Bot权限或配置PAT Token')
+      }
+    } else {
+      throw new Error('认证配置缺失：请配置JWT OAuth或PAT Token')
+    }
+    
+  } catch (error) {
+    console.error('❌ 报告生成认证失败:', error)
+    throw error
   }
 }
 

@@ -139,6 +139,107 @@ export async function POST(request: NextRequest) {
       
       if (baziResult.success) {
         console.log('✅ 八字报告生成成功')
+        
+        // 启动其他报告的异步生成
+        console.log('🚀 开始启动其他报告的异步生成...')
+        
+        const reportGenerationPromises = [
+          // 性格报告异步生成
+          fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/personality-report/generate-async`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userInfo,
+              userId: profile.id,
+              isUserProfileId: true
+            })
+          }).then(response => response.json()).then(result => {
+            if (result.success) {
+              console.log('✅ 性格报告异步生成已启动:', result.taskId)
+            } else {
+              console.error('❌ 性格报告异步生成启动失败:', result.error)
+            }
+            return { type: 'personality', success: result.success }
+          }).catch(error => {
+            console.error('❌ 性格报告异步生成失败:', error)
+            return { type: 'personality', success: false }
+          }),
+
+          // 健康报告异步生成
+          fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/health-report/generate-async`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userInfo,
+              userId: profile.id,
+              isUserProfileId: true
+            })
+          }).then(response => response.json()).then(result => {
+            if (result.success) {
+              console.log('✅ 健康报告异步生成已启动:', result.taskId)
+            } else {
+              console.error('❌ 健康报告异步生成启动失败:', result.error)
+            }
+            return { type: 'health', success: result.success }
+          }).catch(error => {
+            console.error('❌ 健康报告异步生成失败:', error)
+            return { type: 'health', success: false }
+          }),
+
+          // 婚恋感情报告异步生成
+          fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/marriage-report/generate-async`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userInfo,
+              userId: profile.id,
+              isUserProfileId: true
+            })
+          }).then(response => response.json()).then(result => {
+            if (result.success) {
+              console.log('✅ 婚恋感情报告异步生成已启动:', result.taskId)
+            } else {
+              console.error('❌ 婚恋感情报告异步生成启动失败:', result.error)
+            }
+            return { type: 'marriage', success: result.success }
+          }).catch(error => {
+            console.error('❌ 婚恋感情报告异步生成失败:', error)
+            return { type: 'marriage', success: false }
+          }),
+
+          // 事业财富报告异步生成
+          fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/wealth-report/generate-async`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userInfo,
+              userId: profile.id,
+              isUserProfileId: true
+            })
+          }).then(response => response.json()).then(result => {
+            if (result.success) {
+              console.log('✅ 事业财富报告异步生成已启动:', result.taskId)
+            } else {
+              console.error('❌ 事业财富报告异步生成启动失败:', result.error)
+            }
+            return { type: 'wealth', success: result.success }
+          }).catch(error => {
+            console.error('❌ 事业财富报告异步生成失败:', error)
+            return { type: 'wealth', success: false }
+          })
+        ]
+
+        // 启动所有异步生成任务（不等待完成）
+        Promise.allSettled(reportGenerationPromises).then(results => {
+          const successful = results.filter(result => 
+            result.status === 'fulfilled' && result.value.success
+          ).length
+          
+          console.log(`✅ 成功启动了 ${successful}/${results.length} 个后台报告生成任务`)
+        }).catch(error => {
+          console.error('❌ 启动后台报告生成任务失败:', error)
+        })
+        
       } else {
         console.warn('⚠️ 八字报告生成失败，但不影响用户创建:', baziResult.message)
       }

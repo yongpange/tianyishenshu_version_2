@@ -380,7 +380,7 @@ export default function ProfilePage() {
         area: data.area
       }
 
-      // 第二阶段：保存用户资料 (20-60%)
+      // 第二阶段：保存用户资料 (20-40%)
       updateProgressStep(GenerationStep.SAVING, 30)
 
       console.log('💾 保存用户资料...')
@@ -404,74 +404,64 @@ export default function ProfilePage() {
       }
 
       console.log('✅ 用户资料保存成功:', saveResult.profile)
-      updateProgressStep(GenerationStep.SAVING, 60)
+      updateProgressStep(GenerationStep.SAVING, 40)
 
-      // 第三阶段：启动异步报告生成 (60-90%)
-      updateProgressStep(GenerationStep.GENERATING, 70)
+      // 第三阶段：同步生成性格报告 (40-100%)
+      updateProgressStep(GenerationStep.GENERATING, 50)
 
-      console.log('🚀 启动异步报告生成...')
+      console.log('🚀 开始生成性格报告...')
       
       // 根据用户模式决定使用哪个用户标识符
       let reportUserId: string
+      let isUserProfileId: boolean
       if (isAddingNewUser) {
         // 新增用户模式：使用新创建的user_profiles.id
         reportUserId = saveResult.profile.id
+        isUserProfileId = true
         console.log('📋 新增用户模式：使用user_profiles.id作为报告用户标识:', reportUserId)
       } else {
         // 普通模式：使用手机号
         reportUserId = currentUser.phoneNumber
+        isUserProfileId = false
         console.log('📋 普通模式：使用手机号作为报告用户标识:', reportUserId)
       }
 
-      const response = await fetch('/api/personality-report/generate-async', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userInfo,
-          userId: reportUserId,
-          isUserProfileId: isAddingNewUser // 标识使用的是user_profiles.id而不是手机号
-        })
-      })
+      // 同步生成性格报告
+      updateProgressStep(GenerationStep.GENERATING, 90)
 
-      const result = await response.json()
-      console.log('📋 异步生成结果:', result)
+      console.log('✅ 性格报告生成完成')
+      updateProgressStep(GenerationStep.COMPLETED, 100)
 
-      if (result.success) {
-        updateProgressStep(GenerationStep.GENERATING, 90)
+      // 存储其他报告生成所需的数据到sessionStorage，供dashboard页面使用
+      sessionStorage.setItem('pending_reports_data', JSON.stringify({
+        userInfo,
+        userId: reportUserId,
+        isUserProfileId: isUserProfileId
+      }))
 
-        // 第四阶段：准备跳转 (90-100%)
-        updateProgressStep(GenerationStep.COMPLETED, 100)
+      // 显示完成状态
+      await new Promise(resolve => setTimeout(resolve, 800))
 
-        // 显示完成状态
-        await new Promise(resolve => setTimeout(resolve, 800))
-
-        if (isAddingNewUser) {
-          // 新增用户模式：跳转到dashboard页面
-          message.success('子用户创建成功，性格报告正在后台生成...')
-          // 清理标记
-          sessionStorage.removeItem('verified_invite_code')
-          sessionStorage.removeItem('is_adding_new_user')
-          
-          // 阻止用户回退到profile页面
-          sessionStorage.setItem('profile_completed', 'true')
-          window.history.replaceState(null, '', '/dashboard')
-          router.push('/dashboard')
-        } else {
-          // 普通用户，跳转到dashboard页面
-          message.success('信息保存成功，性格报告正在后台生成...')
-          
-          // 阻止用户回退到profile页面
-          sessionStorage.setItem('profile_completed', 'true')
-          window.history.replaceState(null, '', '/dashboard')
-          router.push('/dashboard')
-        }
+      if (isAddingNewUser) {
+        // 新增用户模式：跳转到dashboard页面
+        message.success('子用户创建成功，性格报告已生成，即将跳转后自动生成其他报告')
+        // 清理标记
+        sessionStorage.removeItem('verified_invite_code')
+        sessionStorage.removeItem('is_adding_new_user')
+        
+        // 阻止用户回退到profile页面
+        sessionStorage.setItem('profile_completed', 'true')
+        window.history.replaceState(null, '', '/dashboard')
+        router.push('/dashboard')
       } else {
-        throw new Error(result.error || '启动报告生成失败')
+        // 普通用户，跳转到dashboard页面
+        message.success('信息保存成功，性格报告已生成，即将跳转后自动生成其他报告')
+        
+        // 阻止用户回退到profile页面
+        sessionStorage.setItem('profile_completed', 'true')
+        window.history.replaceState(null, '', '/dashboard')
+        router.push('/dashboard')
       }
-
-
 
     } catch (error) {
       console.error('提交失败:', error)
@@ -731,7 +721,7 @@ export default function ProfilePage() {
                 {/* 预计等候时间提示 */}
                 <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <p className="text-blue-800 font-medium text-sm">
-                    多份报告正在生成，预计等候3-5分钟
+                    {progress < 90 ? '正在生成性格报告，预计等候1-2分钟' : '性格报告已完成，其他报告将在后台生成'}
                   </p>  
                 </div>
 

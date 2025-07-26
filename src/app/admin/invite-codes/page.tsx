@@ -25,7 +25,8 @@ import {
   DeleteOutlined,
   EditOutlined,
   HomeOutlined,
-  SettingOutlined 
+  SettingOutlined,
+  SearchOutlined 
 } from '@ant-design/icons'
 
 const { Header, Content } = Layout
@@ -66,7 +67,20 @@ export default function InviteCodesManagement() {
   const [editRemainingTokens, setEditRemainingTokens] = useState<number>(0)
   const [editUserRole, setEditUserRole] = useState<string>('')
   const [roleOptions, setRoleOptions] = useState<RoleOption[]>([])
+  const [regenerateLoading, setRegenerateLoading] = useState<string>('')
+  const [searchText, setSearchText] = useState<string>('')
   const router = useRouter()
+
+  // 根据搜索文本过滤兑换码
+  const filteredCodes = codes.filter(code => {
+    if (!searchText.trim()) return true
+    
+    const search = searchText.toLowerCase().trim()
+    const phone = (code.user_phone || '').toLowerCase()
+    const name = (code.user_name || '').toLowerCase()
+    
+    return phone.includes(search) || name.includes(search)
+  })
 
   useEffect(() => {
     // 检查管理员登录状态
@@ -255,52 +269,8 @@ export default function InviteCodesManagement() {
   }
 
   const handleCopyCode = async (code: string) => {
-    try {
-      // 优先尝试现代 clipboard API
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(code)
-        message.success('兑换码已复制到剪贴板')
-        return
-      }
-
-      // 备用方案：使用 textArea 元素
-      const textArea = document.createElement('textarea')
-      textArea.value = code
-      textArea.style.position = 'fixed'
-      textArea.style.left = '-999999px'
-      textArea.style.top = '-999999px'
-      document.body.appendChild(textArea)
-      textArea.focus()
-      textArea.select()
-      
-      const successful = document.execCommand('copy')
-      document.body.removeChild(textArea)
-      
-      if (successful) {
-        message.success('兑换码已复制到剪贴板')
-      } else {
-        throw new Error('execCommand copy failed')
-      }
-    } catch (error) {
-      console.error('❌ 复制失败:', error)
-      
-      // 最后的备用方案：显示复制内容
-      Modal.info({
-        title: '复制兑换码',
-        content: (
-          <div>
-            <p>自动复制失败，请手动复制以下兑换码：</p>
-            <Input
-              value={code}
-              readOnly
-              style={{ marginTop: 8, fontFamily: 'monospace' }}
-              onFocus={(e) => e.target.select()}
-            />
-          </div>
-        ),
-        okText: '关闭'
-      })
-    }
+    const { copyCode } = await import('@/utils/copy-helper')
+    await copyCode(code, '兑换码')
   }
 
   const handleEditCode = (record: InviteCode) => {
@@ -373,6 +343,97 @@ export default function InviteCodesManagement() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleRegenerateReport = async (reportType: string) => {
+    Modal.confirm({
+      title: '确认重新生成报告',
+      content: `确定要重新生成所有用户的${getReportDisplayName(reportType)}报告吗？此操作将删除现有报告并生成新的报告，不可撤销。`,
+      okText: '确定重新生成',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        setRegenerateLoading(reportType)
+        try {
+          const response = await fetch(`/api/admin/regenerate-reports`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              reportType,
+              adminToken: localStorage.getItem('admin_token')
+            })
+          })
+
+          const result = await response.json()
+          
+          if (result.success) {
+            message.success(`${getReportDisplayName(reportType)}报告重新生成已启动，共${result.count || 0}个用户`)
+          } else {
+            message.error(result.error || '重新生成失败')
+          }
+        } catch (error) {
+          console.error('重新生成报告失败:', error)
+          message.error('重新生成失败，请重试')
+        } finally {
+          setRegenerateLoading('')
+        }
+      }
+    })
+  }
+
+  const handleRegenerateReportForUser = async (record: InviteCode, reportType: string) => {
+    if (!record.user_phone || !record.user_name) {
+      message.error('该兑换码没有绑定用户信息')
+      return
+    }
+
+    Modal.confirm({
+      title: '确认重新生成报告',
+      content: `确定要为用户 ${record.user_name} (${record.user_phone}) 重新生成${getReportDisplayName(reportType)}报告吗？此操作将删除现有报告并生成新的报告，不可撤销。`,
+      okText: '确定重新生成',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        const loadingKey = `${reportType}_${record.id}`
+        setRegenerateLoading(loadingKey)
+        try {
+          const response = await fetch(`/api/admin/regenerate-reports`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              reportType,
+              userPhone: record.user_phone,
+              singleUser: true,
+              adminToken: localStorage.getItem('admin_token')
+            })
+          })
+
+          const result = await response.json()
+          
+          if (result.success) {
+            message.success(`为用户 ${record.user_name} 重新生成${getReportDisplayName(reportType)}报告已启动`)
+          } else {
+            message.error(result.error || '重新生成失败')
+          }
+        } catch (error) {
+          console.error('重新生成报告失败:', error)
+          message.error('重新生成失败，请重试')
+        } finally {
+          setRegenerateLoading('')
+        }
+      }
+    })
+  }
+
+  const getReportDisplayName = (reportType: string) => {
+    const names: Record<string, string> = {
+      astrology: '八字排盘',
+      personality: '性格内观',
+      wealth: '事业财富',
+      marriage: '婚恋感情',
+      health: '身体健康'
+    }
+    return names[reportType] || reportType
   }
 
   const columns = [
@@ -519,8 +580,9 @@ export default function InviteCodesManagement() {
     {
       title: '操作',
       key: 'action',
+      width: 400,
       render: (_: any, record: InviteCode) => (
-        <Space>
+        <Space wrap>
           <Button 
             size="small" 
             icon={<EditOutlined />}
@@ -542,6 +604,66 @@ export default function InviteCodesManagement() {
               删除
             </Button>
           </Popconfirm>
+          
+          {/* 报告重新生成按钮 - 只有已使用的兑换码才显示 */}
+          {record.status === 'used' && record.user_phone && (
+            <>
+              <Button
+                size="small"
+                type="primary"
+                loading={regenerateLoading === `astrology_${record.id}`}
+                disabled={regenerateLoading !== ''}
+                onClick={() => handleRegenerateReportForUser(record, 'astrology')}
+                title="重新生成八字排盘"
+              >
+                ☯️
+              </Button>
+              
+              <Button
+                size="small"
+                type="primary"
+                loading={regenerateLoading === `personality_${record.id}`}
+                disabled={regenerateLoading !== ''}
+                onClick={() => handleRegenerateReportForUser(record, 'personality')}
+                title="重新生成性格内观"
+              >
+                🧠
+              </Button>
+              
+              <Button
+                size="small"
+                type="primary"
+                loading={regenerateLoading === `wealth_${record.id}`}
+                disabled={regenerateLoading !== ''}
+                onClick={() => handleRegenerateReportForUser(record, 'wealth')}
+                title="重新生成事业财富"
+              >
+                💰
+              </Button>
+              
+              <Button
+                size="small"
+                type="primary"
+                loading={regenerateLoading === `marriage_${record.id}`}
+                disabled={regenerateLoading !== ''}
+                onClick={() => handleRegenerateReportForUser(record, 'marriage')}
+                title="重新生成婚恋感情"
+              >
+                💕
+              </Button>
+              
+              <Button
+                size="small"
+                type="primary"
+                loading={regenerateLoading === `health_${record.id}`}
+                disabled={regenerateLoading !== ''}
+                onClick={() => handleRegenerateReportForUser(record, 'health')}
+                title="重新生成身体健康"
+              >
+                🏥
+              </Button>
+            </>
+          )}
         </Space>
       )
     }
@@ -582,24 +704,27 @@ export default function InviteCodesManagement() {
         <Card className="mb-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <div className="text-center p-4 bg-blue-50 rounded-lg">
-              <div className="text-2xl font-bold text-blue-600">{codes.length}</div>
-              <div className="text-sm text-gray-600">总兑换码</div>
+              <div className="text-2xl font-bold text-blue-600">
+                {filteredCodes.length}
+                {searchText && <span className="text-sm text-gray-500"> / {codes.length}</span>}
+              </div>
+              <div className="text-sm text-gray-600">{searchText ? '搜索结果' : '总兑换码'}</div>
             </div>
             <div className="text-center p-4 bg-green-50 rounded-lg">
               <div className="text-2xl font-bold text-green-600">
-                {codes.filter(c => c.status === 'active').length}
+                {filteredCodes.filter(c => c.status === 'active').length}
               </div>
               <div className="text-sm text-gray-600">未使用</div>
             </div>
             <div className="text-center p-4 bg-blue-50 rounded-lg">
               <div className="text-2xl font-bold text-blue-500">
-                {codes.filter(c => c.status === 'used').length}
+                {filteredCodes.filter(c => c.status === 'used').length}
               </div>
               <div className="text-sm text-gray-600">已使用</div>
             </div>
             <div className="text-center p-4 bg-red-50 rounded-lg">
               <div className="text-2xl font-bold text-red-500">
-                {codes.filter(c => c.status === 'expired').length}
+                {filteredCodes.filter(c => c.status === 'expired').length}
               </div>
               <div className="text-sm text-gray-600">已过期</div>
             </div>
@@ -609,19 +734,19 @@ export default function InviteCodesManagement() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-gray-200">
             <div className="text-center p-3 bg-purple-50 rounded-lg">
               <div className="text-lg font-semibold text-purple-600">
-                {codes.filter(c => c.user_phone).length}
+                {filteredCodes.filter(c => c.user_phone).length}
               </div>
               <div className="text-sm text-gray-600">已绑定用户</div>
             </div>
             <div className="text-center p-3 bg-orange-50 rounded-lg">
               <div className="text-lg font-semibold text-orange-600">
-                {codes.filter(c => c.user_role === 'vip_user').length}
+                {filteredCodes.filter(c => c.user_role === 'vip_user').length}
               </div>
               <div className="text-sm text-gray-600">VIP用户</div>
             </div>
             <div className="text-center p-3 bg-cyan-50 rounded-lg">
               <div className="text-lg font-semibold text-cyan-600">
-                {codes.reduce((sum, c) => sum + (c.remaining_tokens || 0), 0)}
+                {filteredCodes.reduce((sum, c) => sum + (c.remaining_tokens || 0), 0)}
               </div>
               <div className="text-sm text-gray-600">总剩余对话次数</div>
             </div>
@@ -631,13 +756,13 @@ export default function InviteCodesManagement() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-200">
             <div className="text-center p-3 bg-yellow-50 rounded-lg">
               <div className="text-lg font-semibold text-yellow-600">
-                {codes.filter(c => c.latest_verification_code).length}
+                {filteredCodes.filter(c => c.latest_verification_code).length}
               </div>
               <div className="text-sm text-gray-600">有验证码的用户</div>
             </div>
             <div className="text-center p-3 bg-red-50 rounded-lg">
               <div className="text-lg font-semibold text-red-600">
-                {codes.filter(c => {
+                {filteredCodes.filter(c => {
                   if (!c.verification_code_expires_at) return false
                   return new Date() > new Date(c.verification_code_expires_at)
                 }).length}
@@ -651,30 +776,40 @@ export default function InviteCodesManagement() {
         <Card 
           title="兑换码列表" 
           extra={
-            <Button 
-              type="primary" 
-              icon={<PlusOutlined />}
-              onClick={() => setModalVisible(true)}
-            >
-              生成兑换码
-            </Button>
+            <Space>
+              <Input
+                placeholder="搜索手机号或用户名称"
+                prefix={<SearchOutlined />}
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                style={{ width: 250 }}
+                allowClear
+              />
+              <Button 
+                type="primary" 
+                icon={<PlusOutlined />}
+                onClick={() => setModalVisible(true)}
+              >
+                生成兑换码
+              </Button>
+            </Space>
           }
         >
           <Table
             columns={columns}
-            dataSource={codes}
+            dataSource={filteredCodes}
             rowKey="id"
             pagination={{
               pageSize: 10,
-              total: codes.length,
+              total: filteredCodes.length,
               showSizeChanger: true,
               showQuickJumper: true,
               showTotal: (total, range) => 
-                `第 ${range[0]}-${range[1]} 条 / 共 ${total} 条`,
+                `第 ${range[0]}-${range[1]} 条 / 共 ${total} 条${searchText ? ` (搜索结果，总数据 ${codes.length} 条)` : ''}`,
               pageSizeOptions: ['10', '20', '50', '100'],
               size: 'default'
             }}
-            scroll={{ x: 1700 }}
+            scroll={{ x: 2200 }}
           />
         </Card>
 

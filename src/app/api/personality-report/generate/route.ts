@@ -1,25 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ChatStatus, RoleType } from '@coze/api'
-import { supabaseAdmin } from '@/lib/supabase'
 import { UserInfo } from '@/lib/coze-client'
-import { createCozeClient, validateBotId, checkAuthConfig, callCozeAPIWithRetry } from '@/lib/coze-auth'
-import {
-  validateUserInfo,
-  calculateUserDataHash,
-  formatUserInfoDisplay
-} from '@/utils/client-utils'
+import { formatUserInfoDisplay } from '@/utils/client-utils'
 import { 
   createPersonalityReport, 
-  savePersonalityReport,
-  getAstrologyContext,
-  getUserProfileId
+  savePersonalityReport
 } from '@/utils/personality-report'
+import { 
+  generateReport,
+  UniversalReportRequest,
+  UniversalReportResponse,
+  ReportConfig
+} from '@/lib/report-generator'
 
 // 请求接口
 interface PersonalityReportRequest {
   userInfo: UserInfo
   userId: string
-  isUserProfileId?: boolean // 新增：标识userId是否为user_profiles.id
+  isUserProfileId?: boolean
 }
 
 // 响应接口
@@ -62,183 +59,9 @@ ${astrologyContext}
   return prompt
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse<PersonalityReportResponse>> {
-  try {
-    const body: PersonalityReportRequest = await request.json()
-    const { userInfo, userId, isUserProfileId } = body
-
-    console.log('🚀 开始生成性格报告:', { userId, userInfo, isUserProfileId })
-    console.log('🔍 详细参数检查:', {
-      userId: userId,
-      userIdType: typeof userId,
-      userIdLength: userId ? userId.length : 0,
-      isUserProfileId: isUserProfileId,
-      isUserProfileIdType: typeof isUserProfileId,
-      isUserProfileIdDefined: isUserProfileId !== undefined,
-      isUserProfileIdBooleanTrue: isUserProfileId === true,
-      requestBodyKeys: Object.keys(body),
-      requestBodyString: JSON.stringify(body).substring(0, 200) + '...'
-    })
-
-    // 验证请求参数
-    if (!userId || !userInfo) {
-      return NextResponse.json({
-        success: false,
-        error: '缺少必要参数'
-      }, { status: 400 })
-    }
-
-    // 验证用户信息完整性
-    if (!validateUserInfo(userInfo)) {
-      console.error('❌ 用户信息验证失败:', userInfo)
-      return NextResponse.json({
-        success: false,
-        error: '用户信息不完整，请检查所有必填字段'
-      }, { status: 400 })
-    }
-
-    // 检查认证配置
-    try {
-      checkAuthConfig()
-    } catch (configError) {
-      console.error('❌ 认证配置检查失败:', configError)
-      return NextResponse.json({
-        success: false,
-        error: configError instanceof Error ? configError.message : '认证配置缺失'
-      }, { status: 500 })
-    }
-
-    // 验证Bot ID
-    let botId: string
-    try {
-      botId = validateBotId(PERSONALITY_BOT_ID)
-    } catch (botError) {
-      console.error('❌ Bot ID验证失败:', botError)
-      return NextResponse.json({
-        success: false,
-        error: botError instanceof Error ? botError.message : 'Bot ID配置缺失'
-      }, { status: 500 })
-    }
-
-    // 获取八字排盘上下文信息
-    console.log('🔮 获取八字排盘数据...')
-    
-    // 统一处理用户ID转换
-    const baziUserId = await getUserProfileId(userId, isUserProfileId)
-    
-    const astrologyContext = await getAstrologyContext(userInfo, baziUserId || undefined, true)
-    console.log('✅ 八字排盘数据获取完成')
-
-    // 生成性格报告prompt
-    const prompt = formatPersonalityPrompt(userInfo, astrologyContext)
-
-    try {
-      console.log('📡 调用 Coze API...')
-      
-      // 使用带重试的Coze API调用，优先使用用户token
-      const result = await Promise.race([
-        callCozeAPIWithRetry(
-          async (coze: any) => {
-            return await coze.chat.createAndPoll({
-              bot_id: botId,
-              user_id: `user_${userId}_${Date.now()}`,
-              additional_messages: [
-                {
-                  role: RoleType.User,
-                  content: prompt,
-                  content_type: 'text',
-                },
-              ],
-            })
-          },
-          userInfo
-        ),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Coze API调用超时，请稍后重试')), 300000) // 5分钟超时
-        )
-      ]) as any
-
-      console.log('📋 Coze API 响应:', {
-        status: result.chat.status,
-        conversation_id: result.chat.conversation_id,
-        messages_count: result.messages?.length || 0
-      })
-
-      if (result.chat.status === ChatStatus.COMPLETED && result.messages) {
-        // 找到AI的回复
-        const aiMessage = result.messages.find(
-          (msg: any) => msg.role === RoleType.Assistant && msg.type === 'answer'
-        )
-
-        if (aiMessage && aiMessage.content) {
-          const reportContent = aiMessage.content
-
-          console.log('✅ 获取到AI生成的性格报告:', {
-            length: reportContent.length,
-            preview: reportContent.substring(0, 100) + '...'
-          })
-
-          try {
-            // 获取用户资料ID
-            const userProfileId = await getUserProfileId(userId, isUserProfileId)
-            
-            if (!userProfileId) {
-              throw new Error('无法获取用户资料ID，保存失败')
-            }
-            
-            console.log('✅ 确定用户资料ID:', userProfileId)
-
-            // 保存到Supabase（包含八字上下文）
-            console.log('💾 保存性格报告到数据库...')
-            const reportData = createPersonalityReport(
-              userId,
-              reportContent,
-              userInfo,
-              result.chat.conversation_id
-            )
-            await savePersonalityReport(reportData, userProfileId)
-
-            console.log('✅ 性格报告保存成功:', { 
-              reportId: reportData.id, 
-              userProfileId: userProfileId,
-              isUserProfileId: isUserProfileId 
-            })
-
-            return NextResponse.json({
-              success: true,
-              reportId: reportData.id,
-              content: reportContent
-            })
-
-          } catch (saveError) {
-            console.error('❌ 保存性格报告失败:', saveError)
-            
-            // 即使保存失败，也返回生成的内容
-            return NextResponse.json({
-              success: true,
-              content: reportContent,
-              error: '报告生成成功，但保存失败'
-            })
-          }
-
-        } else {
-          console.error('❌ AI响应中没有找到有效内容')
-          throw new Error('AI生成的报告内容为空')
-        }
-
-      } else {
-        console.error('❌ Coze API调用失败:', {
-          status: result.chat.status,
-          result: result
-        })
-        throw new Error(`智能体响应失败: ${result.chat.status}`)
-      }
-
-    } catch (cozeError) {
-      console.error('❌ Coze API调用异常:', cozeError)
-      
-      // 生成fallback内容
-      const fallbackContent = `# 性格分析报告
+// 生成fallback内容
+function generateFallbackContent(userInfo: UserInfo): string {
+  return `# 性格分析报告
 
 基于您的出生信息：${formatUserInfoDisplay(userInfo)}
 
@@ -254,91 +77,32 @@ export async function POST(request: NextRequest): Promise<NextResponse<Personali
 - 性别：${userInfo.gender === 'male' || userInfo.gender === '男' ? '男' : '女'}
 
 请稍后重试以获取完整的AI分析报告。`
+}
 
-      try {
-        // 获取用户资料ID（用于fallback保存）- 支持子账户
-        let userProfileId: string
+// 性格报告配置
+const personalityReportConfig: ReportConfig = {
+  reportType: 'personality',
+  reportName: '性格报告',
+  botId: PERSONALITY_BOT_ID,
+  tableName: 'personality_reports',
+  formatPrompt: formatPersonalityPrompt,
+  createReport: createPersonalityReport,
+  saveReport: savePersonalityReport,
+  includeAstrology: true,
+  fallbackContent: generateFallbackContent
+}
 
-        if (isUserProfileId) {
-          // 直接使用提供的user_profiles.id
-          userProfileId = userId
-          console.log('📋 Fallback子账户模式：直接使用user_profiles.id:', userProfileId)
-          
-          // 验证user_profiles.id是否存在
-          const { data: profile, error: profileError } = await supabaseAdmin
-            .from('user_profiles')
-            .select('id')
-            .eq('id', userProfileId)
-            .single()
-
-          if (profileError || !profile) {
-            console.error('❌ Fallback子账户用户资料不存在:', userProfileId)
-            throw new Error('Fallback子账户用户资料不存在')
-          }
-        } else {
-          // 原有逻辑：通过手机号查找主用户资料
-          console.log('📋 Fallback主账户模式：通过手机号查找用户资料')
-          
-          const { data: user, error: userError } = await supabaseAdmin
-            .from('users')
-            .select('id')
-            .eq('phone_number', userId)
-            .single()
-
-          if (userError || !user) {
-            console.error('❌ Fallback主账户用户不存在:', userId)
-            throw new Error('Fallback主账户用户不存在')
-          }
-
-          const { data: userProfile, error: profileError } = await supabaseAdmin
-            .from('user_profiles')
-            .select('id')
-            .eq('user_id', user.id)
-            .is('parent_id', null) // 只查找主用户资料
-            .single()
-
-          if (profileError || !userProfile) {
-            console.error('❌ Fallback主账户用户资料不存在:', user.id)
-            throw new Error('Fallback主账户用户资料不存在')
-          }
-
-          userProfileId = userProfile.id
-        }
-
-        console.log('✅ Fallback确定用户资料ID:', userProfileId)
-
-        // 尝试保存fallback内容
-        const reportData = createPersonalityReport(
-          userId,
-          fallbackContent,
-          userInfo
-        )
-        await savePersonalityReport(reportData, userProfileId)
-
-        console.log('✅ Fallback报告保存成功:', { 
-          reportId: reportData.id, 
-          userProfileId: userProfileId,
-          isUserProfileId: isUserProfileId 
-        })
-
-        return NextResponse.json({
-          success: true,
-          reportId: reportData.id,
-          content: fallbackContent,
-          error: 'AI服务暂时不可用，使用了备用分析',
-          authMethod: 'fallback'
-        })
-
-      } catch (fallbackError) {
-        console.error('❌ Fallback保存也失败:', fallbackError)
-        
-        return NextResponse.json({
-          success: false,
-          error: 'AI服务暂时不可用，请稍后重试',
-          details: cozeError instanceof Error ? cozeError.message : String(cozeError)
-        }, { status: 500 })
-      }
+export async function POST(request: NextRequest): Promise<NextResponse<PersonalityReportResponse>> {
+  try {
+    const body: PersonalityReportRequest = await request.json()
+    const universalRequest: UniversalReportRequest = {
+      userInfo: body.userInfo,
+      userId: body.userId,
+      isUserProfileId: body.isUserProfileId
     }
+
+    // 使用通用报告生成引擎
+    return await generateReport(universalRequest, personalityReportConfig)
 
   } catch (error) {
     console.error('❌ 性格报告生成失败:', error)
