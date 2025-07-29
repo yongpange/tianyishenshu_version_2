@@ -61,10 +61,23 @@ export async function POST(request: NextRequest) {
       console.log('✅ 转换用户ID成功:', finalUserId)
     }
 
-    // 从数据库获取八字报告
+    // 从数据库获取八字报告和用户原始信息
     const { data: baziReport, error } = await supabase
       .from('bazi_reports')
-      .select('*')
+      .select(`
+        *,
+        user_profiles!inner(
+          name,
+          year,
+          month,
+          day,
+          hour,
+          minute,
+          area_province,
+          area_city,
+          area_district
+        )
+      `)
       .eq('user_id', finalUserId)
       .single()
 
@@ -93,13 +106,30 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ 成功获取八字报告:', baziReport.id)
 
+    // 提取用户原始信息
+    const userProfile = baziReport.user_profiles
+    const originalUserInfo = userProfile ? {
+      name: userProfile.name,
+      year: userProfile.year,
+      month: userProfile.month,
+      day: userProfile.day,
+      hour: userProfile.hour,
+      minute: userProfile.minute,
+      area: {
+        province: userProfile.area_province,
+        city: userProfile.area_city,
+        district: userProfile.area_district
+      }
+    } : null
+
     return NextResponse.json({
       success: true,
       message: '成功获取八字报告',
       report: baziReport.raw_payload,
       astrologyContext: baziReport.astrology_context,
       generatedAt: baziReport.generated_at,
-      userDataHash: baziReport.user_data_hash
+      userDataHash: baziReport.user_data_hash,
+      originalUserInfo: originalUserInfo  // 添加用户原始信息
     })
 
   } catch (error) {

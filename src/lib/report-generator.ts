@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { ChatStatus, RoleType } from '@coze/api'
 import { supabaseAdmin } from '@/lib/supabase'
 import { UserInfo } from '@/lib/coze-client'
-import { createCozeClient } from '@/lib/coze-auth'
+import { createReportCozeClient } from '@/lib/coze-auth'
 import { validateUserInfo } from '@/utils/client-utils'
 import { getAstrologyContext } from '@/utils/personality-report'
 
@@ -34,7 +34,7 @@ export interface ReportConfig {
 }
 
 /**
- * 统一的报告生成引擎 - 使用PAT Token认证
+ * 统一的报告生成引擎 - 优先JWT OAuth认证，PAT Token作为降级方案
  */
 export async function generateReport(
   request: UniversalReportRequest,
@@ -124,8 +124,8 @@ export async function generateReport(
     const prompt = config.formatPrompt(request.userInfo, astrologyContext)
     console.log('📝 发送给Coze的prompt:', prompt.substring(0, 200) + '...')
 
-    // 创建Coze客户端
-    const { client: coze, authMethod } = await createCozeClient()
+    // 创建Coze客户端 - 使用专门的报告认证函数（优先JWT，降级PAT）
+    const { client: coze, authMethod } = await createReportCozeClient()
     console.log('🔐 使用认证方式:', authMethod)
 
     // 尝试调用 Coze 智能体（带重试机制）

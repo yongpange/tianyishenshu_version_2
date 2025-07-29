@@ -63,7 +63,35 @@ export default function AstrologyPage() {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<AstrologyData | null>(null)
   const [userInfo, setUserInfo] = useState<any>(null)
+  const [originalUserInfo, setOriginalUserInfo] = useState<any>(null) // 用户原始信息
   const router = useRouter()
+
+  // 格式化用户原始数据为阳历生辰显示
+  const formatOriginalSolarDate = (userInfo: any) => {
+    if (!userInfo) return ''
+    
+    const year = userInfo.year
+    const month = String(userInfo.month).padStart(2, '0')
+    const day = String(userInfo.day).padStart(2, '0')
+    const hour = String(userInfo.hour).padStart(2, '0')
+    const minute = String(userInfo.minute).padStart(2, '0')
+    
+    // 时辰映射
+    const hourToShichen = (hour: number): string => {
+      const shichenMap = {
+        23: '子时', 0: '子时', 1: '丑时', 2: '丑时',
+        3: '寅时', 4: '寅时', 5: '卯时', 6: '卯时',
+        7: '辰时', 8: '辰时', 9: '巳时', 10: '巳时',
+        11: '午时', 12: '午时', 13: '未时', 14: '未时',
+        15: '申时', 16: '申时', 17: '酉时', 18: '酉时',
+        19: '戌时', 20: '戌时', 21: '亥时', 22: '亥时'
+      }
+      return shichenMap[hour as keyof typeof shichenMap] || '午时'
+    }
+    
+    const shichen = hourToShichen(userInfo.hour)
+    return `${year}年${month}月${day}日 ${hour}:${minute} ${shichen}`
+  }
 
   // 天干颜色映射
   const HEAVENLY_STEM_COLORS: { [key: string]: string } = {
@@ -310,6 +338,31 @@ export default function AstrologyPage() {
       if (result.success) {
         devLog.log('✅ 成功获取八字报告')
         setData(result.report)
+        
+        // 使用API返回的用户原始信息
+        if (result.originalUserInfo) {
+          setOriginalUserInfo(result.originalUserInfo)
+          devLog.log('📝 从API获取用户原始信息:', result.originalUserInfo)
+        } else {
+          // 备用方案：从activeUser获取
+          const activeUser = getActiveUser()
+          if (activeUser) {
+            setOriginalUserInfo({
+              name: activeUser.name,
+              year: activeUser.year,
+              month: activeUser.month,
+              day: activeUser.day,
+              hour: activeUser.hour,
+              minute: activeUser.minute,
+              area: {
+                province: activeUser.area_province,
+                city: activeUser.area_city,
+                district: activeUser.area_district
+              }
+            })
+            devLog.log('📝 从activeUser获取用户原始信息:', activeUser)
+          }
+        }
       } else {
         devLog.warn('⚠️ 未找到八字报告，需要生成新报告')
         
@@ -349,6 +402,10 @@ export default function AstrologyPage() {
           if (generateResult.success) {
             devLog.log('✅ 八字报告生成成功')
             setData(generateResult.report.raw_payload)
+            
+            // 保存用户原始信息
+            setOriginalUserInfo(userInfo)
+            devLog.log('📝 保存用户原始信息:', userInfo)
           } else {
             throw new Error(generateResult.message || '生成八字报告失败')
           }
@@ -437,7 +494,9 @@ export default function AstrologyPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="flex justify-between">
                     <span className="text-gray-600">阳历生辰：</span>
-                    <span className="font-medium">{data.solarDate}</span>
+                    <span className="font-medium">
+                      {originalUserInfo ? formatOriginalSolarDate(originalUserInfo) : data.solarDate}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">农历生辰：</span>

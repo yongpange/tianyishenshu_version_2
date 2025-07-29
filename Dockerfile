@@ -68,9 +68,14 @@ RUN adduser --system --uid 1001 nextjs
 # 复制构建产物
 COPY --from=builder /app/public ./public
 
+# 复制必要的依赖文件
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=builder /app/package*.json ./
+
 # 设置正确的权限
 RUN mkdir .next
 RUN chown nextjs:nodejs .next
+RUN chown nextjs:nodejs node_modules
 
 # 复制构建后的应用文件
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./

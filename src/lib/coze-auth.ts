@@ -78,46 +78,35 @@ function getPrivateKey(privateKeyFile: string): string {
   }
 }
 
-// JWT认证函数 - 符合Coze官方OAuth JWT规范 (仅服务端)
-export async function createJWTToken(config: CozeAuthConfig): Promise<string> {
-  // 检查是否在服务端环境
+/**
+ * 创建JWT Token用于Coze OAuth认证
+ */
+async function createJWTToken(): Promise<string> {
   if (typeof window !== 'undefined') {
     throw new Error('createJWTToken 只能在服务端环境调用')
   }
 
-  const { clientId, privateKeyFile, publicKeyId, apiBase } = config
-  
-  console.log('🔍 === JWT Token 创建详细调试 ===')
-  console.log('📋 输入参数:')
-  console.log('   clientId:', clientId ? `${clientId.substring(0, 8)}...` : '空值')
-  console.log('   publicKeyId:', publicKeyId ? `${publicKeyId.substring(0, 10)}...` : '空值')
-  console.log('   privateKeyFile:', privateKeyFile || '空值')
-  console.log('   apiBase:', apiBase || '空值')
-  
-  if (!clientId || !publicKeyId || !privateKeyFile) {
-    console.error('❌ JWT 认证配置缺失')
-    throw new Error('JWT 认证配置缺失：需要 clientId, publicKeyId, privateKeyFile')
-  }
-  
   try {
-    console.log('📂 开始读取私钥文件...')
-    
-    // 获取私钥内容
-    const privateKey = getPrivateKey(privateKeyFile)
-    console.log('✅ 私钥读取成功，长度:', privateKey.length)
-    console.log('🔑 私钥格式检查:')
-    console.log('   包含BEGIN:', privateKey.includes('BEGIN'))
-    console.log('   包含END:', privateKey.includes('END'))
-    console.log('   包含PRIVATE KEY:', privateKey.includes('PRIVATE KEY'))
-    console.log('   私钥前50字符:', privateKey.substring(0, 50))
-    
-    // 检查是否在服务端环境
-    if (typeof window !== 'undefined') {
-      throw new Error('createJWTToken 只能在服务端环境调用')
+    // 尝试加载 jsonwebtoken 模块
+    let jwt: any
+    try {
+      // 优先使用标准导入方式
+      jwt = require('jsonwebtoken')
+      console.log('✅ 使用标准方式成功加载 jsonwebtoken')
+    } catch (requireError) {
+      console.warn('⚠️ 标准导入失败，尝试动态导入:', requireError.message)
+      try {
+        jwt = eval('require')('jsonwebtoken')
+        console.log('✅ 使用动态方式成功加载 jsonwebtoken')
+      } catch (evalError) {
+        console.error('❌ 无法加载 jsonwebtoken 模块:')
+        console.error('   标准导入错误:', requireError.message)
+        console.error('   动态导入错误:', evalError.message)
+        console.error('   请确保在Docker构建时正确安装了依赖')
+        throw new Error(`Cannot find module 'jsonwebtoken'. 请检查依赖安装和Docker配置。`)
+      }
     }
 
-    // 动态导入 jsonwebtoken 库，避免客户端打包错误
-    const jwt = eval('require')('jsonwebtoken')
     const now = Math.floor(Date.now() / 1000)
     
     console.log('⏰ 时间信息:')
@@ -128,11 +117,11 @@ export async function createJWTToken(config: CozeAuthConfig): Promise<string> {
     
     // 符合Coze OAuth JWT规范的payload
     const payload = {
-      iss: clientId,                     // 应用ID (issuer)
+      iss: process.env.COZE_CLIENT_ID,                     // 应用ID (issuer)
       aud: 'api.coze.cn',               // 受众 - 固定为 api.coze.cn（重要：不使用变量）
       iat: now,                          // 签发时间 (issued at)
       exp: now + 3600,                   // 过期时间 (expiry) - 1小时后
-      jti: `${clientId}_${now}_${Math.random().toString(36).substring(2, 11)}` // JWT ID - 唯一标识
+      jti: `${process.env.COZE_CLIENT_ID}_${now}_${Math.random().toString(36).substring(2, 11)}` // JWT ID - 唯一标识
     }
     
     console.log('📦 JWT Payload:')
@@ -145,7 +134,7 @@ export async function createJWTToken(config: CozeAuthConfig): Promise<string> {
     const header = {
       typ: 'JWT',
       alg: 'RS256',
-      kid: publicKeyId  // 公钥ID
+      kid: process.env.COZE_PUBLIC_KEY_ID  // 公钥ID
     }
     
     console.log('📋 JWT Header:')
@@ -156,7 +145,7 @@ export async function createJWTToken(config: CozeAuthConfig): Promise<string> {
     console.log('🔐 开始生成JWT Token...')
     
     // 生成JWT Token，包含kid（key ID）
-    const token = jwt.sign(payload, privateKey, { 
+    const token = jwt.sign(payload, getPrivateKey(process.env.COZE_PRIVATE_KEY_FILE!), { 
       algorithm: 'RS256',
       header: header
     })
@@ -216,7 +205,7 @@ async function getOAuthAccessToken(config: CozeAuthConfig): Promise<string> {
     
     // 生成JWT token
     console.log('🎯 步骤1: 生成JWT Token')
-    const jwtToken = await createJWTToken(config)
+    const jwtToken = await createJWTToken()
     console.log('✅ JWT Token 生成完成，长度:', jwtToken.length)
     
     // 使用官方API端点
@@ -831,7 +820,7 @@ export async function ensureUserCozeToken(userProfileId: string): Promise<{
       }
 
       // 创建JWT Token
-      const jwtToken = await createJWTToken(config)
+      const jwtToken = await createJWTToken()
       console.log('✅ JWT Token创建成功')
 
       // 请求Access Token
@@ -945,7 +934,7 @@ export async function createReportCozeClient(): Promise<{
       
       try {
         // 创建JWT Token
-        const jwtToken = await createJWTToken(config)
+        const jwtToken = await createJWTToken()
         console.log('✅ JWT Token创建成功')
 
         // 请求Access Token

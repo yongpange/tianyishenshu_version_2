@@ -593,7 +593,7 @@ function ProfilePageContent() {
                     showSearch
                     status={errors.year ? 'error' : ''}
                   >
-                    {Array.from({ length: 125 }, (_, i) => 2024 - i).map(year => (
+                    {Array.from({ length: 125 }, (_, i) => 2025 - i).map(year => (
                       <Option key={year} value={year}>{year}年</Option>
                     ))}
                   </Select>

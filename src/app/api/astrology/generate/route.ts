@@ -71,19 +71,22 @@ export async function POST(request: Request) {
     const cityNameWithSpaces = convertAreaCodeToName(userData)
     const cityName = cityNameWithSpaces.replace(/\s+/g, '') // 去掉所有空格
     
-    // 手动构建查询字符串，避免URL编码name和city参数
+    // 手动构建查询字符串，对中文参数进行URL编码
     const queryString = [
-      `name=${name}`, // 不对name进行编码，保持汉字形式
+      `name=${encodeURIComponent(name)}`, // 对name进行URL编码
       `sex=${sex}`,
       `year=${year}`,
       `month=${month}`,
       `day=${day}`,
       `hour=${hour}`,
       `minute=${minute}`,
-      `city=${cityName}`, // 不对city进行编码
+      `city=${encodeURIComponent(cityName)}`, // 对city进行URL编码
       `islunar=0`,
-      `istaiyang=1`
+      `istaiyang=1`  // 修复：使用真太阳时
     ].join('&')
+    
+    console.log('🔗 编码前参数:', { name, cityName })
+    console.log('🔗 编码后查询字符串:', queryString)
     
     console.log('使用的城市名称:', cityName)
     console.log('查询参数:', queryString)
@@ -96,6 +99,15 @@ export async function POST(request: Request) {
     
     console.log('apiUrl是：',apiUrl)
     // 调用阿里云API
+    console.log('🚀 开始调用阿里云API:', {
+      method: 'GET',
+      url: apiUrl,
+      headers: {
+        'Authorization': `APPCODE ${appCode.substring(0, 8)}...`,
+        'Content-Type': 'application/json; charset=UTF-8'
+      }
+    })
+    
     const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
@@ -104,15 +116,50 @@ export async function POST(request: Request) {
       }
     })
     
+    console.log('📡 阿里云API响应状态:', {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok,
+      headers: Object.fromEntries(response.headers.entries())
+    })
+    
     if (!response.ok) {
-      console.error('API调用失败，状态码:', response.status)
-      console.error('错误信息:', await response.text())
+      const errorText = await response.text()
+      console.error('❌ 阿里云API调用失败:', {
+        status: response.status,
+        statusText: response.statusText, 
+        errorMessage: errorText,
+        requestUrl: apiUrl
+      })
+      console.warn('⚠️ 因为API调用失败，将使用模拟数据，这会导致所有用户显示相同的农历、古历、真太阳时')
       // 如果API调用失败，返回模拟数据
       return NextResponse.json(getMockData(userData))
     }
     
     const apiResult = await response.json()
-    console.log('API返回结果:', apiResult)
+    console.log('🔍 阿里云API完整返回结果:', JSON.stringify(apiResult, null, 2))
+    
+    // 详细检查API返回的关键字段
+    console.log('📊 API关键字段检查:', {
+      status: apiResult?.status,
+      hasResult: !!apiResult?.result,
+      result: apiResult?.result ? {
+        // 农历相关字段
+        lunaryear: apiResult.result.lunaryear,
+        lunarmonth: apiResult.result.lunarmonth, 
+        lunarday: apiResult.result.lunarday,
+        // 真太阳时相关字段
+        year: apiResult.result.year,
+        month: apiResult.result.month,
+        day: apiResult.result.day,
+        hour: apiResult.result.hour,
+        minute: apiResult.result.minute,
+        // 八字相关字段
+        bazi: apiResult.result.bazi,
+        // 其他字段
+        city: apiResult.result.city
+      } : null
+    })
     
     // 转换API返回的数据格式为前端需要的格式
     const transformedData = transformApiData(apiResult, userData)
@@ -215,13 +262,18 @@ function parseGanZhi(ganZhi: string) {
 function transformApiData(apiData: any, userData: any) {
   // 检查API是否成功返回数据
   if (!apiData || apiData.status !== 0 || !apiData.result) {
-    console.log('API数据无效，使用模拟数据')
-    console.log('apiData状态:', apiData?.status)
-    console.log('apiData结构:', apiData)
+    console.error('❌ API数据验证失败，将使用模拟数据:', {
+      hasApiData: !!apiData,
+      status: apiData?.status,
+      hasResult: !!apiData?.result,
+      apiDataStructure: apiData
+    })
+    console.warn('⚠️ 因为API数据无效，将使用模拟数据，这会导致所有用户显示相同的农历、古历、真太阳时')
     return getMockData(userData)
   }
   
-  console.log('API调用成功，开始转换数据')
+  console.log('✅ 阿里云API调用成功，开始转换数据')
+  console.log('🎯 使用真实API数据生成农历、古历、真太阳时，每个用户都会有不同的结果')
   const result = apiData.result
   
   // 解析八字
@@ -355,11 +407,38 @@ function transformApiData(apiData: any, userData: any) {
     return String(shenshaArray)
   }
 
+  // 生成各种日期格式并详细记录数据来源
+  const solarDate = `${result.year}年${String(result.month).padStart(2, '0')}月${String(result.day).padStart(2, '0')}日 ${String(result.hour).padStart(2, '0')}:${String(result.minute).padStart(2, '0')} ${result.lunarhour || '午时'}`
+  const lunarDate = `${formatLunarYear(result.lunaryear)}年${result.lunarmonth}${result.lunarday}日`
+  const ancientDate = `${yearGanZhi}年${monthGanZhi}月${dayGanZhi}日${hourGanZhi}时`
+  const trueSolarTime = `${result.year}年${String(result.month).padStart(2, '0')}月${String(result.day).padStart(2, '0')}日 ${String(result.hour).padStart(2, '0')}:${String(result.minute).padStart(2, '0')}`
+
+  console.log('🗓️ 各种日期格式生成详情:')
+  console.log('📅 阳历生辰 (solarDate):', {
+    生成结果: solarDate,
+    数据来源: `年:${result.year}, 月:${result.month}, 日:${result.day}, 时:${result.hour}, 分:${result.minute}, 时辰:${result.lunarhour || '午时'}`
+  })
+  console.log('🌙 农历生辰 (lunarDate):', {
+    生成结果: lunarDate,
+    数据来源: `农历年:${result.lunaryear}, 农历月:${result.lunarmonth}, 农历日:${result.lunarday}`,
+    原始数据: { lunaryear: result.lunaryear, lunarmonth: result.lunarmonth, lunarday: result.lunarday }
+  })
+  console.log('📊 古历生辰 (ancientDate):', {
+    生成结果: ancientDate,
+    数据来源: `八字干支 - 年柱:${yearGanZhi}, 月柱:${monthGanZhi}, 日柱:${dayGanZhi}, 时柱:${hourGanZhi}`,
+    原始八字数据: bazi
+  })
+  console.log('☀️ 真太阳时 (trueSolarTime):', {
+    生成结果: trueSolarTime,
+    数据来源: `年:${result.year}, 月:${result.month}, 日:${result.day}, 时:${result.hour}, 分:${result.minute}`,
+    说明: '与阳历生辰使用相同的API时间字段，但格式略有不同'
+  })
+
   return {
-    solarDate: `${result.year}年${String(result.month).padStart(2, '0')}月${String(result.day).padStart(2, '0')}日 ${String(result.hour).padStart(2, '0')}:${String(result.minute).padStart(2, '0')} ${result.lunarhour || '午时'}`,
-    lunarDate: `${formatLunarYear(result.lunaryear)}年${result.lunarmonth}${result.lunarday}日`,
-    ancientDate: `${yearGanZhi}年${monthGanZhi}月${dayGanZhi}日${hourGanZhi}时`,
-    trueSolarTime: `${result.year}年${String(result.month).padStart(2, '0')}月${String(result.day).padStart(2, '0')}日 ${String(result.hour).padStart(2, '0')}:${String(result.minute).padStart(2, '0')}`,
+    solarDate,
+    lunarDate,
+    ancientDate,
+    trueSolarTime,
     birthplace: formatBirthplace(result.city || convertAreaCodeToName(userData)),
     bazi: bazi, // 添加八字数据
     paipan: {
@@ -439,6 +518,25 @@ function getMockDayun() {
 
 // 获取模拟数据
 function getMockData(userData: any) {
+  console.log('⚠️ 使用模拟数据 - 各种日期格式详情:')
+  console.log('📅 阳历生辰 (solarDate):', {
+    生成结果: userData.birthDate ? formatDate(userData.birthDate, userData.birthTime || '10:13') : '2025年07月02日 10:13',
+    数据来源: '来自传入的userData参数 或 固定的模拟值'
+  })
+  console.log('🌙 农历生辰 (lunarDate):', {
+    生成结果: '二零二五年六月初八日',
+    数据来源: '硬编码的固定模拟值 - 这就是为什么所有用户显示相同农历的原因'
+  })
+  console.log('📊 古历生辰 (ancientDate):', {
+    生成结果: '二零二五年六月初八日',
+    数据来源: '硬编码的固定模拟值 - 这就是为什么所有用户显示相同古历的原因'
+  })
+  console.log('☀️ 真太阳时 (trueSolarTime):', {
+    生成结果: '2025年07月02日 09:35',
+    数据来源: '硬编码的固定模拟值 - 这就是为什么所有用户显示相同真太阳时的原因'
+  })
+  console.log('❗ 模拟数据原因: 阿里云API调用失败或未正确配置ALIYUN_APPCODE')
+  
   return {
     solarDate: userData.birthDate ? formatDate(userData.birthDate, userData.birthTime || '10:13') : '2025年07月02日 10:13',
     lunarDate: '二零二五年六月初八日',

@@ -1347,10 +1347,79 @@ export default function DashboardPage() {
         }
         return <PersonalityPage />
       case 'wealth':
+        // 确保设置用户数据到localStorage，避免WealthPage跳转到profile
+        const currentActiveUserWealth = activeUser || userInfo
+        if (currentActiveUserWealth) {
+          const userData = {
+            nickname: currentActiveUserWealth.name || currentActiveUserWealth.nickname,
+            gender: currentActiveUserWealth.gender === 'male' || currentActiveUserWealth.gender === '男' ? 'male' : 'female',
+            year: currentActiveUserWealth.year,
+            month: currentActiveUserWealth.month,
+            day: currentActiveUserWealth.day,
+            hour: currentActiveUserWealth.hour,
+            minute: currentActiveUserWealth.minute,
+            area: {
+              province: currentActiveUserWealth.area_province || currentActiveUserWealth.area?.province,
+              city: currentActiveUserWealth.area_city || currentActiveUserWealth.area?.city,
+              district: currentActiveUserWealth.area_district || currentActiveUserWealth.area?.district
+            }
+          }
+          localStorage.setItem('userData', JSON.stringify(userData))
+          
+          if (activeUser) {
+            localStorage.setItem('activeUser', JSON.stringify(activeUser))
+          }
+        }
         return <WealthPage />
       case 'marriage':
+        // 确保设置用户数据到localStorage，避免MarriagePage跳转到profile
+        const currentActiveUserMarriage = activeUser || userInfo
+        if (currentActiveUserMarriage) {
+          const userData = {
+            nickname: currentActiveUserMarriage.name || currentActiveUserMarriage.nickname,
+            gender: currentActiveUserMarriage.gender === 'male' || currentActiveUserMarriage.gender === '男' ? 'male' : 'female',
+            year: currentActiveUserMarriage.year,
+            month: currentActiveUserMarriage.month,
+            day: currentActiveUserMarriage.day,
+            hour: currentActiveUserMarriage.hour,
+            minute: currentActiveUserMarriage.minute,
+            area: {
+              province: currentActiveUserMarriage.area_province || currentActiveUserMarriage.area?.province,
+              city: currentActiveUserMarriage.area_city || currentActiveUserMarriage.area?.city,
+              district: currentActiveUserMarriage.area_district || currentActiveUserMarriage.area?.district
+            }
+          }
+          localStorage.setItem('userData', JSON.stringify(userData))
+          
+          if (activeUser) {
+            localStorage.setItem('activeUser', JSON.stringify(activeUser))
+          }
+        }
         return <MarriagePage />
       case 'health':
+        // 确保设置用户数据到localStorage，避免HealthPage跳转到profile
+        const currentActiveUserHealth = activeUser || userInfo
+        if (currentActiveUserHealth) {
+          const userData = {
+            nickname: currentActiveUserHealth.name || currentActiveUserHealth.nickname,
+            gender: currentActiveUserHealth.gender === 'male' || currentActiveUserHealth.gender === '男' ? 'male' : 'female',
+            year: currentActiveUserHealth.year,
+            month: currentActiveUserHealth.month,
+            day: currentActiveUserHealth.day,
+            hour: currentActiveUserHealth.hour,
+            minute: currentActiveUserHealth.minute,
+            area: {
+              province: currentActiveUserHealth.area_province || currentActiveUserHealth.area?.province,
+              city: currentActiveUserHealth.area_city || currentActiveUserHealth.area?.city,
+              district: currentActiveUserHealth.area_district || currentActiveUserHealth.area?.district
+            }
+          }
+          localStorage.setItem('userData', JSON.stringify(userData))
+          
+          if (activeUser) {
+            localStorage.setItem('activeUser', JSON.stringify(activeUser))
+          }
+        }
         return <HealthPage />
       case 'add-user':
         return <AddUserPage onSuccess={() => {

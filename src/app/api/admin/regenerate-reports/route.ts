@@ -142,7 +142,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Regenerat
     // 根据报告类型获取对应的表名
     const getTableName = (type: string) => {
       switch (type) {
-        case 'astrology': return 'astrology_reports'
+        case 'astrology': return 'bazi_reports'  // 修复：八字报告使用 bazi_reports 表
         case 'personality': return 'personality_reports'
         case 'wealth': return 'wealth_reports'
         case 'marriage': return 'marriage_reports'
@@ -232,8 +232,10 @@ export async function POST(request: NextRequest): Promise<NextResponse<Regenerat
           }
         }
 
-        // 调用对应的异步生成API
-        const apiEndpoint = `/api/${reportType === 'astrology' ? 'astrology' : reportType + '-report'}/generate-async`
+        // 调用对应的生成API
+        const apiEndpoint = reportType === 'astrology' 
+          ? '/api/bazi/generate'  // 八字报告使用 bazi/generate API
+          : `/api/${reportType}-report/generate-async`
         const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}${apiEndpoint}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
