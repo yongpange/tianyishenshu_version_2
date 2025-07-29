@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-
+import { devLog } from '@/utils/dev-logger'
 // 权限类型定义
 export interface UserPermissions {
   [module: string]: string[]
@@ -37,14 +37,36 @@ export function usePermissions(): UsePermissionsReturn {
       // 获取当前激活的用户
       const activeUser = localStorage.getItem('activeUser')
       if (!activeUser) {
-        console.warn('没有找到当前激活用户')
+        devLog.warn('没有找到当前激活用户')
         return
       }
 
       const parsedUser = JSON.parse(activeUser)
       if (!parsedUser.id) {
-        console.warn('用户ID无效')
+        devLog.warn('用户ID无效')
         return
+      }
+
+      // 验证activeUser是否仍然存在于数据库中
+      const verifyResponse = await fetch('/api/auth/verify-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userProfileId: parsedUser.id })
+      })
+
+      if (verifyResponse.ok) {
+        const verifyResult = await verifyResponse.json()
+        if (!verifyResult.success || !verifyResult.exists) {
+          devLog.warn('当前用户已被删除，清除登录状态')
+          // 清除所有本地存储
+          localStorage.removeItem('loginData')
+          localStorage.removeItem('userData')
+          localStorage.removeItem('activeUser')
+          sessionStorage.clear()
+          // 刷新页面回到登录状态
+          window.location.href = '/login'
+          return
+        }
       }
 
       // 调用API获取用户角色和权限
@@ -60,13 +82,13 @@ export function usePermissions(): UsePermissionsReturn {
           setUserRole(result.data)
           setPermissions(result.data.permissions || {})
         } else {
-          console.warn('获取权限失败:', result.message)
+          devLog.warn('获取权限失败:', result.message)
         }
       } else {
-        console.error('权限API调用失败:', response.status)
+        devLog.error('权限API调用失败:', response.status)
       }
     } catch (error) {
-      console.error('获取用户权限失败:', error)
+      devLog.error('获取用户权限失败:', error)
     } finally {
       setLoading(false)
     }

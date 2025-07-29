@@ -82,7 +82,7 @@ export async function POST(request: Request) {
       `minute=${minute}`,
       `city=${cityName}`, // 不对city进行编码
       `islunar=0`,
-      `istaiyang=0`
+      `istaiyang=1`
     ].join('&')
     
     console.log('使用的城市名称:', cityName)
@@ -245,9 +245,48 @@ function transformApiData(apiData: any, userData: any) {
     console.log('ganzhi数据:', result.dayun.ganzhi)
     
     for (let i = 0; i < Math.min(result.dayun.ganzhi.length, 10); i++) {
-      // 严格使用API返回的sui和year数据，不进行计算
-      const sui = result.dayun.sui?.[i] || (i === 0 ? '1-8岁' : `${i * 10 - 1}岁`)
-      const year = result.dayun.year?.[i] || (i === 0 ? '2000' : (2000 + i * 10 - 1))
+      // 处理API返回的数据，按新规则调整年龄和年份
+      let sui, year
+      
+      if (result.dayun.sui?.[i]) {
+        // API返回了年龄数据，需要按新规则调整
+        const apiSui = result.dayun.sui[i]
+        if (i === 0) {
+          // 第一个大运：保持起始年龄1岁不变，但结束年龄+1
+          if (apiSui.includes('-')) {
+            sui = apiSui.replace(/1-(\d+)岁/, (match: string, endAge: string) => `1-${parseInt(endAge) + 1}岁`)
+          } else {
+            sui = '1-9岁' // 默认情况
+          }
+        } else {
+          // 其余大运：年龄+1
+          if (apiSui.includes('岁')) {
+            const ageNum = parseInt(apiSui.replace('岁', ''))
+            sui = `${ageNum + 1}岁`
+          } else {
+            sui = `${i * 10}岁`
+          }
+        }
+      } else {
+        // API没有返回年龄数据，使用默认计算
+        sui = i === 0 ? '1-9岁' : `${i * 10}岁`
+      }
+      
+      if (result.dayun.year?.[i]) {
+        // API返回了年份数据，需要按新规则调整
+        const apiYear = parseInt(result.dayun.year[i])
+        if (i === 0) {
+          // 第一个大运年份保持不变
+          year = apiYear
+        } else {
+          // 其余大运年份+1
+          year = apiYear + 1
+        }
+      } else {
+        // API没有返回年份数据，使用默认计算
+        year = i === 0 ? '2000' : (2000 + i * 10)
+      }
+      
       const ganZhi = result.dayun.ganzhi[i]
       const pillarInfo = parseGanZhi(ganZhi)
       
@@ -381,8 +420,8 @@ function formatDate(dateStr: string, timeStr: string) {
 function getMockDayun() {
   const mockShishen = ["偏印", "正印", "七杀", "正官", "偏财", "正财", "食神", "伤官", "比肩", "劫财"]
   const mockNayin = ["漳下水", "漳下水", "山头火", "山头火", "剑锋金", "剑锋金", "路旁土", "路旁土", "大林木", "大林木"]
-  const mockSui = ["1-8岁", "9岁", "19岁", "29岁", "39岁", "49岁", "59岁", "69岁", "79岁", "89岁"]
-  const mockYear = ["2000", 2009, 2019, 2029, 2039, 2049, 2059, 2069, 2079, 2089]
+  const mockSui = ["1-9岁", "10岁", "20岁", "30岁", "40岁", "50岁", "60岁", "70岁", "80岁", "90岁"]
+  const mockYear = ["2000", 2010, 2020, 2030, 2040, 2050, 2060, 2070, 2080, 2090]
   
   return [
     { age: mockSui[0], year: mockYear[0], pillar: '丁丑', color: 'text-gray-600', element: '火', elementType: '阳火', shishen: mockShishen[0], nayin: mockNayin[0] },

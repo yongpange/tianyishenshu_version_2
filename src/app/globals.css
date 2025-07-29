@@ -170,3 +170,60 @@ a {
 .markdown-content::-webkit-scrollbar-thumb:hover {
   background: #f9fafb;
 }
+
+/* 三个点加载动画 */
+@keyframes dotFlashing {
+  0% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.3;
+  }
+}
+
+.dot-loading-1,
+.dot-loading-2,
+.dot-loading-3 {
+  animation: dotFlashing 1.4s infinite linear;
+  font-weight: bold;
+  font-size: 16px;
+}
+
+.dot-loading-1 {
+  animation-delay: 0s;
+}
+
+.dot-loading-2 {
+  animation-delay: 0.2s;
+}
+
+.dot-loading-3 {
+  animation-delay: 0.4s;
+}
+
+/* 白色滚动条样式 */
+.white-scrollbar {
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+.white-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.white-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.white-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+.white-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.5);
+}

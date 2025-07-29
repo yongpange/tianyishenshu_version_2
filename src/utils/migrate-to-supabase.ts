@@ -1,6 +1,7 @@
 // 数据迁移工具：从localStorage迁移到Supabase
 import { supabase } from '@/lib/supabase'
 import { PersonalityReport } from '@/lib/storage-adapter'
+import { devLog } from '@/utils/dev-logger'
 
 export interface MigrationResult {
   success: boolean
@@ -162,21 +163,21 @@ export function cleanupLocalStorage(phoneNumber: string): void {
     localStorage.removeItem(key)
   })
 
-  console.log('✅ localStorage清理完成')
+  devLog.log('✅ localStorage清理完成')
 }
 
 // 一键迁移函数
 export async function performFullMigration(phoneNumber: string): Promise<MigrationResult> {
-  console.log('🚀 开始数据迁移到Supabase...')
+  devLog.log('🚀 开始数据迁移到Supabase...')
   
   const result = await migrateUserDataToSupabase(phoneNumber)
   
   if (result.success) {
-    console.log(`✅ 迁移成功！共迁移 ${result.migratedCount} 项数据`)
+    devLog.log(`✅ 迁移成功！共迁移 ${result.migratedCount} 项数据`)
     // 迁移成功后清理localStorage
     cleanupLocalStorage(phoneNumber)
   } else {
-    console.error('❌ 迁移失败:', result.errors)
+    devLog.error('❌ 迁移失败:', result.errors)
   }
   
   return result
@@ -192,7 +193,7 @@ export async function testSupabaseConnection(): Promise<boolean> {
 
     return !error
   } catch (error) {
-    console.error('Supabase连接测试失败:', error)
+    devLog.error('Supabase连接测试失败:', error)
     return false
   }
 }

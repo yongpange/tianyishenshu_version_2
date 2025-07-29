@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Card, Button, message, Spin } from 'antd'
 import { ArrowLeftOutlined, MessageOutlined, InfoCircleOutlined } from '@ant-design/icons'
 import { getActiveUser } from '@/utils/client-utils'
+import { devLog } from '@/utils/dev-logger'
 
 // 类型定义
 interface AstrologyData {
@@ -238,7 +239,7 @@ export default function AstrologyPage() {
       // 当localStorage中的activeUser发生变化时，重新加载数据
       const activeUser = getActiveUser()
       if (activeUser) {
-        console.log('用户切换，重新加载八字数据:', activeUser.name)
+        devLog.log('用户切换，重新加载八字数据:', activeUser.name)
         setLoading(true)
         setUserInfo({
           nickname: activeUser.name,
@@ -271,14 +272,14 @@ export default function AstrologyPage() {
         // 使用激活用户的ID
         userId = activeUser.id
         isUserProfileId = true
-        console.log('📊 使用激活用户ID:', userId)
+        devLog.log('📊 使用激活用户ID:', userId)
       } else {
         // 备用方案：使用手机号
         const loginData = localStorage.getItem('loginData')
         if (loginData) {
           const parsed = JSON.parse(loginData)
           userId = parsed.phoneNumber
-          console.log('📊 使用手机号:', userId)
+          devLog.log('📊 使用手机号:', userId)
         }
       }
 
@@ -290,7 +291,7 @@ export default function AstrologyPage() {
         return
       }
 
-      console.log('🔮 从数据库获取八字报告:', { userId, isUserProfileId })
+      devLog.log('🔮 从数据库获取八字报告:', { userId, isUserProfileId })
 
       // 从数据库获取八字报告
       const response = await fetch('/api/bazi/get', {
@@ -307,10 +308,10 @@ export default function AstrologyPage() {
       const result = await response.json()
 
       if (result.success) {
-        console.log('✅ 成功获取八字报告')
+        devLog.log('✅ 成功获取八字报告')
         setData(result.report)
       } else {
-        console.warn('⚠️ 未找到八字报告，需要生成新报告')
+        devLog.warn('⚠️ 未找到八字报告，需要生成新报告')
         
         // 如果没有找到报告，尝试生成新的
         const activeUser = getActiveUser()
@@ -330,7 +331,7 @@ export default function AstrologyPage() {
             }
           }
 
-          console.log('🔮 生成新的八字报告...')
+          devLog.log('🔮 生成新的八字报告...')
           const generateResponse = await fetch('/api/bazi/generate', {
             method: 'POST',
             headers: {
@@ -346,7 +347,7 @@ export default function AstrologyPage() {
           const generateResult = await generateResponse.json()
           
           if (generateResult.success) {
-            console.log('✅ 八字报告生成成功')
+            devLog.log('✅ 八字报告生成成功')
             setData(generateResult.report.raw_payload)
           } else {
             throw new Error(generateResult.message || '生成八字报告失败')
@@ -614,11 +615,36 @@ export default function AstrologyPage() {
                   <thead>
                     <tr className="bg-gray-50">
                       <th className="border border-gray-300 p-3 text-center text-gray-700 w-20">大运</th>
-                      {data.dayun.slice(0, 5).map((item, index) => (
-                        <th key={index} className="border border-gray-300 p-3 text-center text-gray-700 w-24">
-                          {item.age}<br/>{item.year}
-                        </th>
-                      ))}
+                      {data.dayun.slice(0, 5).map((item, index) => {
+                        // 处理大运年龄和年份显示：第一个1-x变成1-(x-1)，其余-1
+                        let displayAge = String(item.age || '')
+                        let displayYear = String(item.year || '')
+                        
+                        if (index === 0) {
+                          // 第一个大运：保持起始年龄1岁不变，但结束年龄-1
+                          if (displayAge.includes('-') && displayAge.includes('岁')) {
+                            displayAge = displayAge.replace(/1-(\d+)岁/, (match: string, endAge: string) => `1-${parseInt(endAge) - 1}岁`)
+                          }
+                        } else {
+                          // 其余大运：年龄-1，年份-1
+                          if (displayAge.includes('岁')) {
+                            const ageNum = parseInt(displayAge.replace('岁', ''))
+                            if (!isNaN(ageNum)) {
+                              displayAge = `${ageNum - 1}岁`
+                            }
+                          }
+                          const yearNum = parseInt(displayYear)
+                          if (!isNaN(yearNum)) {
+                            displayYear = String(yearNum - 1)
+                          }
+                        }
+                        
+                        return (
+                          <th key={index} className="border border-gray-300 p-3 text-center text-gray-700 w-24">
+                            {displayAge}<br/>{displayYear}
+                          </th>
+                        )
+                      })}
                     </tr>
                   </thead>
                   <tbody>
@@ -646,11 +672,30 @@ export default function AstrologyPage() {
                     </tr>
                     <tr>
                       <td className="border border-gray-300 p-3 text-center font-medium bg-gray-50 w-20">大运</td>
-                      {data.dayun.slice(5, 10).map((item, index) => (
-                        <td key={index} className="border border-gray-300 p-3 text-center text-gray-700 w-24">
-                          {item.age}<br/>{item.year}
-                        </td>
-                      ))}
+                      {data.dayun.slice(5, 10).map((item, index) => {
+                        // 处理大运年龄和年份显示：这些是第6-10个大运，都需要-1
+                        const realIndex = index + 5 // 实际索引
+                        let displayAge = String(item.age || '')
+                        let displayYear = String(item.year || '')
+                        
+                        // 第6-10个大运：年龄-1，年份-1
+                        if (displayAge.includes('岁')) {
+                          const ageNum = parseInt(displayAge.replace('岁', ''))
+                          if (!isNaN(ageNum)) {
+                            displayAge = `${ageNum - 1}岁`
+                          }
+                        }
+                        const yearNum = parseInt(displayYear)
+                        if (!isNaN(yearNum)) {
+                          displayYear = String(yearNum - 1)
+                        }
+                        
+                        return (
+                          <td key={index} className="border border-gray-300 p-3 text-center text-gray-700 w-24">
+                            {displayAge}<br/>{displayYear}
+                          </td>
+                        )
+                      })}
                     </tr>
                     <tr>
                       <td className="border border-gray-300 p-3 text-center font-medium bg-gray-50 w-20">天干十神</td>

@@ -22,25 +22,36 @@ interface CozeAuthResult {
   token: string
 }
 
-// 默认配置
-const DEFAULT_CONFIG: CozeAuthConfig = {
-  patToken: process.env.COZE_API_TOKEN || '',
-  clientId: process.env.COZE_CLIENT_ID || '',
-  privateKeyFile: process.env.COZE_PRIVATE_KEY_FILE || '',
-  publicKeyId: process.env.COZE_PUBLIC_KEY_ID || '',
-  apiBase: process.env.COZE_API_BASE || 'api.coze.cn',
-  botId: process.env.BOT_ID || ''
+// 默认配置 - 使用函数避免客户端环境变量访问
+function getDefaultConfig(): CozeAuthConfig {
+  return {
+    patToken: typeof window !== 'undefined' ? '' : (process.env.COZE_API_TOKEN || ''),
+    clientId: typeof window !== 'undefined' ? '' : (process.env.COZE_CLIENT_ID || ''),
+    privateKeyFile: typeof window !== 'undefined' ? '' : (process.env.COZE_PRIVATE_KEY_FILE || ''),
+    publicKeyId: typeof window !== 'undefined' ? '' : (process.env.COZE_PUBLIC_KEY_ID || ''),
+    apiBase: 'api.coze.cn',
+    botId: typeof window !== 'undefined' ? '' : (process.env.BOT_ID || '')
+  }
 }
 
-// 读取私钥内容
+// 保持向后兼容
+const DEFAULT_CONFIG: CozeAuthConfig = getDefaultConfig()
+
+// 读取私钥内容 - 只在服务端环境执行
 function getPrivateKey(privateKeyFile: string): string {
   if (!privateKeyFile) {
     throw new Error('私钥文件路径未配置')
   }
   
+  // 检查是否在服务端环境
+  if (typeof window !== 'undefined') {
+    throw new Error('getPrivateKey 只能在服务端环境调用')
+  }
+  
   try {
-    const fs = require('fs')
-    const path = require('path')
+    // 动态导入 Node.js 模块，避免客户端打包错误
+    const fs = eval('require')('fs')
+    const path = eval('require')('path')
     
     // 支持相对路径和绝对路径
     const keyPath = path.isAbsolute(privateKeyFile) 
@@ -67,8 +78,13 @@ function getPrivateKey(privateKeyFile: string): string {
   }
 }
 
-// JWT认证函数 - 符合Coze官方OAuth JWT规范
+// JWT认证函数 - 符合Coze官方OAuth JWT规范 (仅服务端)
 export async function createJWTToken(config: CozeAuthConfig): Promise<string> {
+  // 检查是否在服务端环境
+  if (typeof window !== 'undefined') {
+    throw new Error('createJWTToken 只能在服务端环境调用')
+  }
+
   const { clientId, privateKeyFile, publicKeyId, apiBase } = config
   
   console.log('🔍 === JWT Token 创建详细调试 ===')
@@ -95,8 +111,13 @@ export async function createJWTToken(config: CozeAuthConfig): Promise<string> {
     console.log('   包含PRIVATE KEY:', privateKey.includes('PRIVATE KEY'))
     console.log('   私钥前50字符:', privateKey.substring(0, 50))
     
-    // 使用jsonwebtoken库生成JWT
-    const jwt = require('jsonwebtoken')
+    // 检查是否在服务端环境
+    if (typeof window !== 'undefined') {
+      throw new Error('createJWTToken 只能在服务端环境调用')
+    }
+
+    // 动态导入 jsonwebtoken 库，避免客户端打包错误
+    const jwt = eval('require')('jsonwebtoken')
     const now = Math.floor(Date.now() / 1000)
     
     console.log('⏰ 时间信息:')
@@ -182,8 +203,13 @@ export async function createJWTToken(config: CozeAuthConfig): Promise<string> {
   }
 }
 
-// 获取OAuth Access Token - 符合Coze官方规范
+// 获取OAuth Access Token - 符合Coze官方规范 (仅服务端)
 async function getOAuthAccessToken(config: CozeAuthConfig): Promise<string> {
+  // 检查是否在服务端环境
+  if (typeof window !== 'undefined') {
+    throw new Error('getOAuthAccessToken 只能在服务端环境调用')
+  }
+
   try {
     console.log('🔍 === OAuth Access Token 获取详细调试 ===')
     console.log('🔄 开始通过JWT获取OAuth Access Token...')
@@ -282,10 +308,15 @@ async function getOAuthAccessToken(config: CozeAuthConfig): Promise<string> {
   }
 }
 
-// 创建 Coze API 客户端 - 支持多种认证方式
+// 创建 Coze API 客户端 - 支持多种认证方式 (仅服务端)
 export async function createCozeClient(customConfig?: Partial<CozeAuthConfig>): Promise<CozeAuthResult> {
-  // 合并配置
-  const config: CozeAuthConfig = { ...DEFAULT_CONFIG, ...customConfig }
+  // 检查是否在服务端环境
+  if (typeof window !== 'undefined') {
+    throw new Error('createCozeClient 只能在服务端环境调用')
+  }
+
+  // 合并配置（使用动态配置避免客户端环境变量访问）
+  const config: CozeAuthConfig = { ...getDefaultConfig(), ...customConfig }
   
   let authToken = ''
   let authMethod = ''
@@ -293,12 +324,8 @@ export async function createCozeClient(customConfig?: Partial<CozeAuthConfig>): 
   // 检查JWT配置的完整性
   const hasJWTConfig = config.clientId && config.privateKeyFile && config.publicKeyId
   
-  // 暂时强制使用PAT Token认证，避免JWT OAuth问题
-  if (config.patToken) {
-    console.log('🔑 强制使用PAT Token认证（临时解决方案）')
-    authToken = config.patToken
-    authMethod = 'PAT Token (强制)'
-  } else if (hasJWTConfig) {
+  // 优先使用JWT OAuth认证，PAT Token作为降级方案
+  if (hasJWTConfig) {
     console.log('🔐 尝试使用JWT OAuth认证')
     try {
       authToken = await getOAuthAccessToken(config)
@@ -306,8 +333,20 @@ export async function createCozeClient(customConfig?: Partial<CozeAuthConfig>): 
       console.log('✅ JWT OAuth认证成功')
     } catch (error) {
       console.warn('⚠️ JWT OAuth认证失败:', error instanceof Error ? error.message : String(error))
+      
+      // JWT失败后检查是否有PAT Token作为降级方案
+      if (config.patToken && config.patToken.trim()) {
+        console.log('🔄 降级使用PAT Token认证')
+        authToken = config.patToken
+        authMethod = 'PAT Token (降级)'
+      } else {
       throw new Error('JWT OAuth认证失败且PAT Token未配置，请检查认证配置')
     }
+    }
+  } else if (config.patToken && config.patToken.trim()) {
+    console.log('🔑 使用PAT Token认证（JWT配置不完整）')
+    authToken = config.patToken
+    authMethod = 'PAT Token'
   } else {
     throw new Error('认证配置缺失：请配置JWT OAuth 或 PAT Token')
   }
@@ -327,7 +366,7 @@ export async function createCozeClient(customConfig?: Partial<CozeAuthConfig>): 
 }
 
 /**
- * 获取用户的 Coze Access Token
+ * 获取用户的 Coze Access Token (仅服务端)
  * 优先使用数据库缓存的token，过期时自动刷新
  */
 export async function getUserCozeToken(userInfo: any): Promise<{
@@ -335,6 +374,11 @@ export async function getUserCozeToken(userInfo: any): Promise<{
   authMethod: string
   client: CozeAPI | null
 }> {
+  // 检查是否在服务端环境
+  if (typeof window !== 'undefined') {
+    throw new Error('getUserCozeToken 只能在服务端环境调用')
+  }
+
   let accessToken: string | null = null
   let authMethod = 'PAT Token' // 默认认证方式
 
@@ -367,7 +411,7 @@ export async function getUserCozeToken(userInfo: any): Promise<{
           
           try {
             // 使用JWT OAuth获取新token
-            const newToken = await getOAuthAccessToken(DEFAULT_CONFIG)
+            const newToken = await getOAuthAccessToken(getDefaultConfig())
             
             // 由于getOAuthAccessToken只返回access_token字符串，我们使用默认过期时间（24小时）
             const expiresAt = new Date()
@@ -430,12 +474,17 @@ export async function getUserCozeToken(userInfo: any): Promise<{
 }
 
 /**
- * 重新获取用户的 Coze Access Token（强制刷新）
+ * 重新获取用户的 Coze Access Token（强制刷新） (仅服务端)
  */
 export async function refreshUserCozeToken(userInfo: any): Promise<{
   token: string | null
   client: CozeAPI | null
 }> {
+  // 检查是否在服务端环境
+  if (typeof window !== 'undefined') {
+    throw new Error('refreshUserCozeToken 只能在服务端环境调用')
+  }
+
   let newToken: string | null = null
   let client: CozeAPI | null = null
 
@@ -455,7 +504,7 @@ export async function refreshUserCozeToken(userInfo: any): Promise<{
         
         try {
           // 使用JWT OAuth获取新token
-          newToken = await getOAuthAccessToken(DEFAULT_CONFIG)
+          newToken = await getOAuthAccessToken(getDefaultConfig())
           
           // 计算过期时间（24小时减1秒）
           const now = new Date()
@@ -498,7 +547,7 @@ export async function refreshUserCozeToken(userInfo: any): Promise<{
 }
 
 /**
- * 带自动重试的 Coze API 调用包装器
+ * 带自动重试的 Coze API 调用包装器 (仅服务端)
  * 自动处理token过期和重试逻辑
  */
 export async function callCozeWithRetry<T>(
@@ -506,6 +555,11 @@ export async function callCozeWithRetry<T>(
   userInfo: any,
   maxRetries: number = 1
 ): Promise<T> {
+  // 检查是否在服务端环境
+  if (typeof window !== 'undefined') {
+    throw new Error('callCozeWithRetry 只能在服务端环境调用')
+  }
+
   // 获取初始客户端
   const { client: initialClient, authMethod } = await getUserCozeToken(userInfo)
   
@@ -551,7 +605,7 @@ export async function callCozeWithRetry<T>(
 
 // 验证Bot ID配置
 export function validateBotId(botId?: string): string {
-  const finalBotId = botId || DEFAULT_CONFIG.botId
+  const finalBotId = botId || getDefaultConfig().botId
   
   if (!finalBotId) {
     throw new Error('Bot ID配置缺失，请设置 BOT_ID 环境变量或传入 botId 参数')
@@ -562,7 +616,7 @@ export function validateBotId(botId?: string): string {
 
 // 检查认证配置完整性
 export function checkAuthConfig(config?: Partial<CozeAuthConfig>): void {
-  const finalConfig = { ...DEFAULT_CONFIG, ...config }
+  const finalConfig = { ...getDefaultConfig(), ...config }
   
   const hasJWTConfig = finalConfig.clientId && finalConfig.privateKeyFile && finalConfig.publicKeyId
   const hasPATConfig = finalConfig.patToken
@@ -573,7 +627,7 @@ export function checkAuthConfig(config?: Partial<CozeAuthConfig>): void {
 }
 
 /**
- * 通用获取用户Coze客户端函数
+ * 通用获取用户Coze客户端函数 (仅服务端)
  * 供各个API使用，统一token缓存逻辑
  */
 export async function getUserCozeClient(userInfo: any): Promise<{
@@ -581,6 +635,11 @@ export async function getUserCozeClient(userInfo: any): Promise<{
   authMethod: string
   accessToken: string | null
 }> {
+  // 检查是否在服务端环境
+  if (typeof window !== 'undefined') {
+    throw new Error('getUserCozeClient 只能在服务端环境调用')
+  }
+
   let accessToken: string | null = null
   let authMethod = 'PAT Token' // 默认认证方式
 
@@ -647,7 +706,7 @@ export async function getUserCozeClient(userInfo: any): Promise<{
 }
 
 /**
- * 带token刷新重试的API调用包装器
+ * 带token刷新重试的API调用包装器 (仅服务端)
  * 供各个API使用，自动处理token过期和重试逻辑
  */
 export async function callCozeAPIWithRetry<T>(
@@ -655,6 +714,11 @@ export async function callCozeAPIWithRetry<T>(
   userInfo: any,
   maxRetries: number = 1
 ): Promise<T> {
+  // 检查是否在服务端环境
+  if (typeof window !== 'undefined') {
+    throw new Error('callCozeAPIWithRetry 只能在服务端环境调用')
+  }
+
   // 获取初始客户端
   const { client: initialClient, authMethod, accessToken } = await getUserCozeClient(userInfo)
 
@@ -699,7 +763,7 @@ export async function callCozeAPIWithRetry<T>(
 }
 
 /**
- * 确保用户有有效的 Coze Access Token
+ * 确保用户有有效的 Coze Access Token (仅服务端)
  * 如果没有token或token已过期，则生成新的token并保存到数据库
  */
 export async function ensureUserCozeToken(userProfileId: string): Promise<{
@@ -707,6 +771,11 @@ export async function ensureUserCozeToken(userProfileId: string): Promise<{
   token?: string
   message?: string
 }> {
+  // 检查是否在服务端环境
+  if (typeof window !== 'undefined') {
+    throw new Error('ensureUserCozeToken 只能在服务端环境调用')
+  }
+
   try {
     console.log('🔍 检查用户Coze Token:', userProfileId)
     
@@ -845,32 +914,22 @@ export async function ensureUserCozeToken(userProfileId: string): Promise<{
 }
 
 /**
- * 简化的JWT认证函数，专门用于报告生成
- * 临时优先使用PAT Token绕过OAuth 4100错误
+ * 简化的JWT认证函数，专门用于报告生成 (仅服务端)
+ * 优先使用JWT OAuth认证，PAT Token作为降级方案
  */
 export async function createReportCozeClient(): Promise<{
   client: CozeAPI
   authMethod: string
 }> {
+  // 检查是否在服务端环境
+  if (typeof window !== 'undefined') {
+    throw new Error('createReportCozeClient 只能在服务端环境调用')
+  }
+
   try {
-    console.log('🔄 报告生成专用认证（临时优先PAT Token）')
+    console.log('🔄 报告生成专用认证（优先JWT OAuth）')
     
-    // 临时优先使用PAT Token绕过OAuth 4100错误
-    const patToken = process.env.COZE_API_TOKEN
-    if (patToken) {
-      console.log('🔑 优先使用PAT Token认证（绕过OAuth 4100问题）')
-      const client = new CozeAPI({
-        token: patToken,
-        baseURL: `https://${process.env.COZE_API_BASE || 'api.coze.cn'}/`
-      })
-      
-      return {
-        client,
-        authMethod: 'PAT Token (4100 workaround)'
-      }
-    }
-    
-    // 如果没有PAT Token，尝试JWT OAuth认证
+    // 优先尝试JWT OAuth认证
     const config = {
       clientId: process.env.COZE_CLIENT_ID!,
       publicKeyId: process.env.COZE_PUBLIC_KEY_ID!,
@@ -926,12 +985,42 @@ export async function createReportCozeClient(): Promise<{
           authMethod: 'JWT OAuth (reports)'
         }
       } catch (jwtError) {
-        console.warn('⚠️ JWT OAuth认证失败（可能是4100错误）:', jwtError instanceof Error ? jwtError.message : String(jwtError))
-        // 如果JWT失败且没有PAT Token，抛出错误
-        throw new Error('JWT OAuth认证失败且PAT Token未配置，请检查Bot权限或配置PAT Token')
+        console.warn('⚠️ JWT OAuth认证失败，尝试降级到PAT Token:', jwtError instanceof Error ? jwtError.message : String(jwtError))
+        
+        // JWT失败后检查是否有PAT Token作为降级方案
+        const patToken = process.env.COZE_API_TOKEN
+        if (patToken && patToken.trim()) {
+          console.log('🔄 降级使用PAT Token认证（报告生成）')
+          const client = new CozeAPI({
+            token: patToken,
+            baseURL: `https://${config.apiBase}/`
+          })
+          
+          return {
+            client,
+            authMethod: 'PAT Token (降级-报告)'
+          }
+        } else {
+          throw new Error('JWT OAuth认证失败且PAT Token未配置，请检查认证配置')
+        }
+      }
+    } else {
+      // JWT配置不完整，检查是否有PAT Token
+      const patToken = process.env.COZE_API_TOKEN
+      if (patToken && patToken.trim()) {
+        console.log('🔑 使用PAT Token认证（JWT配置不完整）')
+        const client = new CozeAPI({
+          token: patToken,
+          baseURL: `https://${process.env.COZE_API_BASE || 'api.coze.cn'}/`
+        })
+        
+        return {
+          client,
+          authMethod: 'PAT Token (报告)'
       }
     } else {
       throw new Error('认证配置缺失：请配置JWT OAuth或PAT Token')
+      }
     }
     
   } catch (error) {

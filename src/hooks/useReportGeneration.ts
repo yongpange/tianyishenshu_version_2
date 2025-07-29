@@ -1,8 +1,9 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { message } from 'antd'
 import { ReportModuleConfig } from '@/config/reportModules'
 import { getUserPhoneNumber, getActiveUser } from '@/utils/client-utils'
-
+import { useGlobalSessionManager, SessionStatus } from '@/hooks/useGlobalSessionManager'
+import { devLog } from '@/utils/dev-logger'
 interface UseReportGenerationProps {
   moduleConfig: ReportModuleConfig
   userInfo: any
@@ -31,10 +32,41 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
     nextCheckTime: null
   })
 
+  // 全局会话管理器
+  const globalSessionManager = useGlobalSessionManager()
+  
+  // 轮询任务引用管理
+  const pollingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const isPollingActiveRef = useRef<boolean>(false)
+  
+  // 生成会话ID
+  const generateSessionId = useCallback(() => {
+    const activeUser = getActiveUser()
+    const userId = activeUser?.id || getUserPhoneNumber() || 'anonymous'
+    return `${moduleConfig.moduleId}_${userId}`
+  }, [moduleConfig.moduleId])
+
+  // 停止轮询
+  const stopPolling = useCallback(() => {
+    devLog.log('🛑 停止轮询任务')
+    if (pollingTimeoutRef.current) {
+      clearTimeout(pollingTimeoutRef.current)
+      pollingTimeoutRef.current = null
+    }
+    isPollingActiveRef.current = false
+  }, [])
+
+  // 组件卸载时清理轮询
+  useEffect(() => {
+    return () => {
+      stopPolling()
+    }
+  }, [stopPolling])
+
   // 加载报告
   const loadReport = useCallback(async (fromPolling = false) => {
     try {
-      console.log(`🔄 loadReport调用 - fromPolling: ${fromPolling}`)
+      devLog.log(`🔄 loadReport调用 - fromPolling: ${fromPolling}`)
       
       // 如果是轮询调用，不重置loading状态（避免闪烁）
       if (!fromPolling) {
@@ -46,40 +78,40 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
       let reportUserId: string
       let isUserProfileId = false
 
-      console.log('🔍 开始确定用户身份:', { activeUser, moduleId: moduleConfig.moduleId })
+      devLog.log('🔍 开始确定用户身份:', { activeUser, moduleId: moduleConfig.moduleId })
 
       if (activeUser && activeUser.id) {
         // 激活子用户模式：使用激活用户的user_profiles.id
         reportUserId = activeUser.id
         isUserProfileId = true
-        console.log('📋 激活子用户模式：使用激活用户的user_profiles.id:', reportUserId)
+        devLog.log('📋 激活子用户模式：使用激活用户的user_profiles.id:', reportUserId)
       } else {
         // 备用方案：从URL参数中获取userId
         const searchParams = new URLSearchParams(window.location.search)
         const urlUserId = searchParams.get('userId')
         
-        console.log('🔍 URL参数检查:', { urlUserId })
+        devLog.log('🔍 URL参数检查:', { urlUserId })
         
         if (urlUserId) {
           // 子用户模式：使用URL中的user_profiles.id
           reportUserId = urlUserId
           isUserProfileId = true
-          console.log('📋 子用户模式：使用URL中的user_profiles.id:', reportUserId)
+          devLog.log('📋 子用户模式：使用URL中的user_profiles.id:', reportUserId)
         } else {
           // 主用户模式：使用手机号
           const phoneNumber = getUserPhoneNumber()
-          console.log('📱 获取到的手机号:', phoneNumber)
+          devLog.log('📱 获取到的手机号:', phoneNumber)
           
           if (!phoneNumber) {
             setState(prev => ({ ...prev, reportError: '未找到用户信息，请重新登录', reportLoading: false }))
             return
           }
           reportUserId = phoneNumber
-          console.log('📋 主用户模式：使用手机号:', reportUserId)
+          devLog.log('📋 主用户模式：使用手机号:', reportUserId)
         }
       }
 
-      console.log('📖 开始获取报告:', { reportUserId, isUserProfileId, moduleId: moduleConfig.moduleId })
+      devLog.log('📖 开始获取报告:', { reportUserId, isUserProfileId, moduleId: moduleConfig.moduleId })
 
       // 使用模块配置的API端点获取报告
       const response = await fetch(`${moduleConfig.apiEndpoint}/get`, {
@@ -94,7 +126,7 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
       })
 
       const result = await response.json()
-      console.log('📋 API响应结果 (详细):', { 
+      devLog.log('📋 API响应结果 (详细):', { 
         success: result.success, 
         error: result.error, 
         status: result.status,
@@ -109,7 +141,7 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
 
       // 优先检查status状态，而不是先检查content
       if (result.status === 'completed' && result.success && result.report && result.report.content) {
-        console.log('✅ 成功获取报告:', {
+        devLog.log('✅ 成功获取报告:', {
           contentLength: result.report.content?.length || 0,
           generatedAt: result.report.generatedAt,
           reportUserId: reportUserId,
@@ -133,7 +165,7 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
       } else if (result.status === 'generating') {
         // 如果是轮询调用且状态还是generating，说明有问题
         if (fromPolling) {
-          console.error('❌ 轮询调用loadReport时状态仍为generating，这不应该发生')
+          devLog.error('❌ 轮询调用loadReport时状态仍为generating，这不应该发生')
           setState(prev => ({ 
             ...prev, 
             reportError: '报告状态异常，请联系管理员重新生成~',
@@ -142,7 +174,7 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
           }))
         } else {
           // 正常情况：首次加载检测到generating状态，启动轮询
-          console.log('🔄 检测到generating状态，启动轮询机制:', { reportUserId, isUserProfileId })
+          devLog.log('🔄 检测到generating状态，启动轮询机制:', { reportUserId, isUserProfileId })
           setState(prev => ({ 
             ...prev, 
             reportError: `您的${moduleConfig.title}报告正在生成中，预计等待三分钟。`,
@@ -151,11 +183,12 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
             generationStatus: `正在生成${moduleConfig.title}报告...`,
             taskId: result.taskId || 'auto-generated'
           }))
-          // 启动轮询
+          // 启动轮询（先停止之前的轮询）
+          stopPolling()
           pollGenerationStatus(result.taskId || 'auto-generated', reportUserId, isUserProfileId)
         }
       } else if (result.status === 'failed') {
-        console.log('❌ 报告生成失败:', { reportUserId, isUserProfileId, fromPolling })
+        devLog.log('❌ 报告生成失败:', { reportUserId, isUserProfileId, fromPolling })
         setState(prev => ({ 
           ...prev, 
           reportError: '报告生成失败，请联系管理员重新生成~',
@@ -170,7 +203,7 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
           })
         }))
       } else {
-        console.log('❌ 获取报告失败:', { 
+        devLog.log('❌ 获取报告失败:', { 
           error: result.error, 
           status: result.status,
           reportUserId: reportUserId,
@@ -192,7 +225,7 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
         }))
       }
     } catch (error) {
-      console.error('❌ 加载报告失败:', error, { fromPolling })
+      devLog.error('❌ 加载报告失败:', error, { fromPolling })
       setState(prev => ({ 
         ...prev, 
         reportError: '加载报告失败，请稍后重试',
@@ -238,17 +271,17 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
   // 重新生成报告
   const regenerateReport = useCallback(async () => {
     try {
-      console.log('🔄 开始重新生成报告...', moduleConfig.moduleId)
+      devLog.log('🔄 开始重新生成报告...', moduleConfig.moduleId)
 
       // 防止重复点击
       if (state.isGenerating) {
-        console.log('⚠️ 报告正在生成中，忽略重复点击')
+        devLog.log('⚠️ 报告正在生成中，忽略重复点击')
         return
       }
 
       // 获取用户信息
       if (!userInfo) {
-        console.error('❌ 用户信息缺失')
+        devLog.error('❌ 用户信息缺失')
         message.error('用户信息缺失，请刷新页面重试')
         return
       }
@@ -256,15 +289,45 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
       // 转换用户信息格式
       const convertedUserInfo = convertUserInfoFormat(userInfo)
       if (!convertedUserInfo) {
-        console.error('❌ 用户信息转换失败')
+        devLog.error('❌ 用户信息转换失败')
         message.error('用户信息格式错误，请刷新页面重试')
         return
       }
 
-      console.log('📝 转换后的用户信息:', convertedUserInfo)
+      devLog.log('📝 转换后的用户信息:', convertedUserInfo)
+
+      // 🔒 检查全局会话并发限制
+      const sessionId = generateSessionId()
+      const activeUser = getActiveUser()
+      
+      // 检查当前会话是否已存在且处于活跃状态
+      const currentSession = globalSessionManager.getSession(sessionId)
+      if (currentSession && globalSessionManager.isSessionActive(sessionId)) {
+        message.warning('当前模块已有会话正在进行中，请等待完成后再试')
+        return
+      }
+      
+      // 检查是否可以开始新会话
+      const { allowed, reason } = globalSessionManager.canStartNewSession()
+      if (!allowed) {
+        message.warning(reason)
+        return
+      }
+      
+      // 创建或更新会话状态
+      const sessionCreated = globalSessionManager.createOrUpdateSession(sessionId, {
+        moduleType: moduleConfig.moduleId,
+        moduleTitle: moduleConfig.title,
+        userId: activeUser?.id || 'anonymous',
+        status: SessionStatus.GENERATING,
+        conversationId: null
+      })
+      
+      if (!sessionCreated) {
+        return // 会话创建失败，已在manager中显示错误信息
+      }
 
       // 确定用户ID和模式
-      const activeUser = getActiveUser()
       let reportUserId: string
       let isUserProfileId = false
 
@@ -272,19 +335,22 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
         // 激活子用户模式：使用激活用户的user_profiles.id
         reportUserId = activeUser.id
         isUserProfileId = true
-        console.log('📋 重新生成-子用户模式：使用激活用户的user_profiles.id:', reportUserId)
+        devLog.log('📋 重新生成-子用户模式：使用激活用户的user_profiles.id:', reportUserId)
       } else {
         // 主用户模式：使用手机号
         const phoneNumber = getUserPhoneNumber()
         if (!phoneNumber) {
-          console.error('❌ 无法获取用户手机号')
+          devLog.error('❌ 无法获取用户手机号')
           message.error('未找到用户信息，请重新登录')
           return
         }
         reportUserId = phoneNumber
-        console.log('📋 重新生成-主用户模式：使用手机号:', reportUserId)
+        devLog.log('📋 重新生成-主用户模式：使用手机号:', reportUserId)
       }
 
+      // 先停止之前的轮询（如果有的话）
+      stopPolling()
+      
       // 启动异步生成
       setState(prev => ({ 
         ...prev, 
@@ -310,41 +376,62 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
       
       if (result.success && result.taskId) {
         setState(prev => ({ ...prev, taskId: result.taskId }))
-        console.log('✅ 异步生成任务启动成功:', result.taskId)
+        devLog.log('✅ 异步生成任务启动成功:', result.taskId)
         
-        // 开始轮询状态
+        // 开始轮询状态（先停止之前的轮询）
+        stopPolling()
         pollGenerationStatus(result.taskId, reportUserId, isUserProfileId)
       } else {
-        console.error('❌ 启动异步生成失败:', result.error)
+        devLog.error('❌ 启动异步生成失败:', result.error)
         setState(prev => ({ 
           ...prev, 
           isGenerating: false,
           reportError: result.error || '启动生成失败，请稍后重试'
         }))
         message.error(result.error || '启动生成失败，请稍后重试')
+        
+        // 🔄 重置全局会话状态
+        const sessionId = generateSessionId()
+        globalSessionManager.updateSessionStatus(sessionId, SessionStatus.IDLE)
       }
 
     } catch (error) {
-      console.error('❌ 重新生成报告失败:', error)
+      devLog.error('❌ 重新生成报告失败:', error)
       setState(prev => ({ 
         ...prev, 
         isGenerating: false,
         reportError: '生成失败，请稍后重试'
       }))
       message.error('生成失败，请稍后重试')
+      
+      // 🔄 重置全局会话状态
+      const sessionId = generateSessionId()
+      globalSessionManager.updateSessionStatus(sessionId, SessionStatus.IDLE)
+      
+      // 确保停止轮询
+      stopPolling()
     }
-  }, [moduleConfig, userInfo, convertUserInfoFormat])
+      }, [moduleConfig, userInfo, convertUserInfoFormat, stopPolling, generateSessionId, globalSessionManager])
 
   // 轮询生成状态
   const pollGenerationStatus = useCallback(async (taskId: string, userId: string, isUserProfileId: boolean = false) => {
-    const maxAttempts = 10 // 最多轮询10次（10分钟）
+    // 标记轮询开始
+    isPollingActiveRef.current = true
+    
+    const maxAttempts = 20 // 最多轮询20次（10分钟，每30秒一次）
     let attempts = 0
 
     const poll = async () => {
+      // 检查轮询是否应该继续
+      if (!isPollingActiveRef.current) {
+        devLog.log('🛑 轮询已被停止，退出轮询')
+        return
+      }
+
       try {
         attempts++
-        console.log(`🔄 轮询生成状态 (${attempts}/${maxAttempts}):`, taskId)
-        console.log(`📡 状态查询参数:`, { userId, taskId, isUserProfileId, apiEndpoint: moduleConfig.apiEndpoint })
+        devLog.log(`🔄 轮询生成状态 (${attempts}/${maxAttempts}):`, taskId)
+        devLog.log(`📡 状态查询参数:`, { userId, taskId, isUserProfileId, apiEndpoint: moduleConfig.apiEndpoint })
 
         const response = await fetch(`${moduleConfig.apiEndpoint}/status`, {
           method: 'POST',
@@ -355,7 +442,7 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
         })
 
         const result = await response.json()
-        console.log('📊 状态轮询结果:', result)
+        devLog.log('📊 状态轮询结果:', result)
 
         if (result.success) {
           setState(prev => ({ 
@@ -365,11 +452,11 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
           }))
 
           if (result.status === 'completed') {
-            console.log('✅ 报告生成完成')
+            devLog.log('✅ 报告生成完成')
             
             // 如果轮询返回了报告内容，直接使用
             if (result.content && result.content.trim() !== '') {
-              console.log('🎯 轮询中直接获取报告内容，跳过额外API调用')
+              devLog.log('🎯 轮询中直接获取报告内容，跳过额外API调用')
               setState(prev => ({ 
                 ...prev, 
                 reportContent: result.content,
@@ -381,11 +468,19 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
                 taskId: null,
                 nextCheckTime: null
               }))
+              
+              // 🔄 重置全局会话状态
+              const sessionId = generateSessionId()
+              globalSessionManager.updateSessionStatus(sessionId, SessionStatus.IDLE)
+              
+              // 停止轮询
+              stopPolling()
+              
               message.success(`${moduleConfig.title}报告生成完成！`)
               return
             } else {
               // 如果轮询没有返回内容，才重新加载报告
-              console.log('🔄 轮询未返回内容，重新加载报告')
+              devLog.log('🔄 轮询未返回内容，重新加载报告')
               setState(prev => ({ 
                 ...prev, 
                 isGenerating: false,
@@ -405,13 +500,20 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
                   taskId: null,
                   nextCheckTime: null
                 }))
+                
+                // 🔄 重置全局会话状态
+                const sessionId = generateSessionId()
+                globalSessionManager.updateSessionStatus(sessionId, SessionStatus.IDLE)
+                
+                // 停止轮询
+                stopPolling()
               }, 1000)
               
               message.success(`${moduleConfig.title}报告生成完成！`)
               return
             }
           } else if (result.status === 'failed') {
-            console.error('❌ 报告生成失败:', result.error)
+            devLog.error('❌ 报告生成失败:', result.error)
             setState(prev => ({ 
               ...prev, 
               isGenerating: false,
@@ -423,58 +525,68 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
               nextCheckTime: null
             }))
             message.error('报告生成失败，请联系管理员重新生成')
+            
+            // 停止轮询
+            stopPolling()
             return
           }
         }
 
         // 继续轮询
-        if (attempts < maxAttempts) {
-          const nextCheck = new Date(Date.now() + 60000)
-          console.log(`⏰ 下次查询将在1分钟后进行 (${attempts + 1}/${maxAttempts}) - ${nextCheck.toLocaleTimeString()}`)
+        if (attempts < maxAttempts && isPollingActiveRef.current) {
+          const nextCheck = new Date(Date.now() + 30000)
+          devLog.log(`⏰ 下次查询将在30秒后进行 (${attempts + 1}/${maxAttempts}) - ${nextCheck.toLocaleTimeString()}`)
           setState(prev => ({ 
             ...prev, 
             nextCheckTime: nextCheck,
             generationStatus: `正在生成中... (${attempts}/${maxAttempts}次查询，下次: ${nextCheck.toLocaleTimeString()})`
           }))
-          setTimeout(poll, 60000) // 改为每分钟轮询一次
+          pollingTimeoutRef.current = setTimeout(poll, 30000) // 改为每30秒轮询一次
         } else {
-          console.warn('⚠️ 轮询超时')
+          devLog.warn('⚠️ 轮询超时或被停止')
           setState(prev => ({ 
             ...prev, 
             isGenerating: false,
             reportError: '生成超时，请稍后重试'
           }))
-          message.error('生成超时，请稍后重试')
+          if (isPollingActiveRef.current) {
+            message.error('生成超时，请稍后重试')
+          }
+          stopPolling()
         }
 
       } catch (error) {
-        console.error('❌ 状态轮询失败:', error)
-        if (attempts < maxAttempts) {
+        devLog.error('❌ 状态轮询失败:', error)
+        if (attempts < maxAttempts && isPollingActiveRef.current) {
           const nextCheck = new Date(Date.now() + 60000)
           setState(prev => ({ 
             ...prev, 
             nextCheckTime: nextCheck,
             generationStatus: `查询失败，将重试... (${attempts}/${maxAttempts}次，下次: ${nextCheck.toLocaleTimeString()})`
           }))
-          setTimeout(poll, 60000) // 出错后也改为每分钟重试
+          pollingTimeoutRef.current = setTimeout(poll, 60000) // 出错后也改为每分钟重试
         } else {
           setState(prev => ({ 
             ...prev, 
             isGenerating: false,
             reportError: '生成状态检查失败'
           }))
-          message.error('生成状态检查失败，请稍后重试')
+          if (isPollingActiveRef.current) {
+            message.error('生成状态检查失败，请稍后重试')
+          }
+          stopPolling()
         }
       }
     }
 
     // 开始轮询
-    setTimeout(poll, 5000) // 5秒后开始第一次轮询
-  }, [moduleConfig, loadReport])
+    pollingTimeoutRef.current = setTimeout(poll, 5000) // 5秒后开始第一次轮询
+  }, [moduleConfig, loadReport, stopPolling])
 
   return {
     ...state,
     loadReport,
-    regenerateReport
+    regenerateReport,
+    stopPolling
   }
 }

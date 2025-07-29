@@ -31,6 +31,11 @@ interface MarriageReportResponse {
 // 环境变量配置
 const MARRIAGE_BOT_ID = process.env.MARRIAGE_BOT_ID || process.env.BOT_ID || ''
 
+// 验证Bot ID配置
+if (!MARRIAGE_BOT_ID) {
+  console.error('❌ 婚恋报告Bot ID配置缺失: MARRIAGE_BOT_ID 和 BOT_ID 都未设置')
+}
+
 // 格式化用户信息为婚恋感情报告prompt
 function formatMarriagePrompt(userInfo: UserInfo, astrologyContext?: string): string {
   const { year, month, day, hour, minute, gender, area } = userInfo
@@ -99,12 +104,27 @@ const marriageReportConfig: ReportConfig = {
 
 export async function POST(request: NextRequest): Promise<NextResponse<MarriageReportResponse>> {
   try {
+    // 首先检查Bot ID配置
+    if (!MARRIAGE_BOT_ID) {
+      console.error('❌ 婚恋报告配置错误:', {
+        MARRIAGE_BOT_ID: process.env.MARRIAGE_BOT_ID || 'undefined',
+        BOT_ID: process.env.BOT_ID || 'undefined'
+      })
+      return NextResponse.json({
+        success: false,
+        error: 'Bot ID配置缺失，请联系管理员配置 MARRIAGE_BOT_ID 或 BOT_ID 环境变量',
+        details: `当前配置: MARRIAGE_BOT_ID=${process.env.MARRIAGE_BOT_ID || 'undefined'}, BOT_ID=${process.env.BOT_ID || 'undefined'}`
+      }, { status: 500 })
+    }
+
     const body: MarriageReportRequest = await request.json()
     const universalRequest: UniversalReportRequest = {
       userInfo: body.userInfo,
       userId: body.userId,
       isUserProfileId: body.isUserProfileId
     }
+
+    console.log('✅ 婚恋报告Bot ID配置正常:', MARRIAGE_BOT_ID)
 
     // 使用通用报告生成引擎
     return await generateReport(universalRequest, marriageReportConfig)

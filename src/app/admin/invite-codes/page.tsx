@@ -28,6 +28,7 @@ import {
   SettingOutlined,
   SearchOutlined 
 } from '@ant-design/icons'
+import { devLog } from '@/utils/dev-logger'
 
 const { Header, Content } = Layout
 const { TextArea } = Input
@@ -110,7 +111,7 @@ export default function InviteCodesManagement() {
       if (response.ok) {
         const result = await response.json()
         if (result.success) {
-          console.log('📊 从Supabase获取到的原始数据:', result.data?.length || 0, '条')
+          devLog.log('📊 从Supabase获取到的原始数据:', result.data?.length || 0, '条')
           
           // 按创建时间倒序排列（最新的在上面）
           const sortedCodes = result.data.sort((a: any, b: any) =>
@@ -123,15 +124,15 @@ export default function InviteCodesManagement() {
             usedAt: code.used_at
           }))
           
-          console.log('✅ 处理后的兑换码数据:', processedCodes?.length || 0, '条')
-          console.log('📋 数据示例:', processedCodes.slice(0, 2))
+          devLog.log('✅ 处理后的兑换码数据:', processedCodes?.length || 0, '条')
+          devLog.log('📋 数据示例:', processedCodes.slice(0, 2))
           
           setCodes(processedCodes)
           return
         }
       }
     } catch (error) {
-      console.error('从Supabase加载兑换码失败:', error)
+      devLog.error('从Supabase加载兑换码失败:', error)
     }
 
     // 降级到localStorage
@@ -150,7 +151,7 @@ export default function InviteCodesManagement() {
         }
       }
     } catch (error) {
-      console.error('加载角色选项失败:', error)
+      devLog.error('加载角色选项失败:', error)
     }
   }
 
@@ -178,7 +179,7 @@ export default function InviteCodesManagement() {
         body: JSON.stringify({ codes })
       })
     } catch (error) {
-      console.error('同步兑换码到服务器失败:', error)
+      devLog.error('同步兑换码到服务器失败:', error)
     }
   }
 
@@ -228,17 +229,17 @@ export default function InviteCodesManagement() {
       setRemarks('')
       message.success('兑换码生成成功！')
     } catch (error) {
-      console.error('生成兑换码失败:', error)
+      devLog.error('生成兑换码失败:', error)
       message.error('生成失败，请重试')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleDeleteCode = async (id: string) => {
+  const handleDeleteCode = async (id: string, record?: InviteCode) => {
     try {
-      // 优先使用Supabase API删除兑换码
-      const response = await fetch(`/api/invite-code/supabase?id=${id}`, {
+      // 使用级联删除API
+      const response = await fetch(`/api/invite-code/cascade-delete?id=${id}`, {
         method: 'DELETE'
       })
 
@@ -247,24 +248,28 @@ export default function InviteCodesManagement() {
         if (result.success) {
           // 重新加载兑换码列表以获取最新数据
           await loadCodes()
-          message.success('删除成功')
+          message.success(result.message || '删除成功')
+          return
+        } else {
+          // 检查是否是主用户有子用户的情况
+          if (result.hasChildUsers) {
+            message.error(result.message)
+            return
+          }
+          throw new Error(result.message)
+        }
+      } else {
+        const errorResult = await response.json()
+        if (errorResult.hasChildUsers) {
+          message.error(errorResult.message)
           return
         }
+        throw new Error(errorResult.message || '删除失败')
       }
-
-      // 降级到localStorage方式
-      const existingCodes = JSON.parse(localStorage.getItem('invite_codes') || '[]')
-      const filteredCodes = existingCodes.filter((code: any) => code.id !== id)
-      localStorage.setItem('invite_codes', JSON.stringify(filteredCodes))
-      
-      // 同步到服务器
-      await syncCodesToServer(filteredCodes)
-      
-      setCodes(filteredCodes)
-      message.success('删除成功')
     } catch (error) {
-      console.error('删除兑换码失败:', error)
-      message.error('删除失败，请重试')
+      devLog.error('删除兑换码失败:', error)
+      const errorMessage = error instanceof Error ? error.message : '删除失败，请重试'
+      message.error(errorMessage)
     }
   }
 
@@ -338,7 +343,7 @@ export default function InviteCodesManagement() {
       setEditRemarks('')
       message.success('兑换码修改成功')
     } catch (error) {
-      console.error('修改兑换码失败:', error)
+      devLog.error('修改兑换码失败:', error)
       message.error('修改失败，请重试')
     } finally {
       setLoading(false)
@@ -372,7 +377,7 @@ export default function InviteCodesManagement() {
             message.error(result.error || '重新生成失败')
           }
         } catch (error) {
-          console.error('重新生成报告失败:', error)
+          devLog.error('重新生成报告失败:', error)
           message.error('重新生成失败，请重试')
         } finally {
           setRegenerateLoading('')
@@ -416,7 +421,7 @@ export default function InviteCodesManagement() {
             message.error(result.error || '重新生成失败')
           }
         } catch (error) {
-          console.error('重新生成报告失败:', error)
+          devLog.error('重新生成报告失败:', error)
           message.error('重新生成失败，请重试')
         } finally {
           setRegenerateLoading('')
@@ -591,10 +596,20 @@ export default function InviteCodesManagement() {
             修改
           </Button>
           <Popconfirm
-            title="确定删除这个兑换码吗？"
-            onConfirm={() => handleDeleteCode(record.id)}
+            title={
+              <div>
+                <div>确定删除这个兑换码吗？</div>
+                {record.status === 'used' && record.user_name && (
+                  <div style={{ color: '#ff4d4f', fontSize: '12px', marginTop: '4px' }}>
+                    ⚠️ 此操作将同时删除用户 &quot;{record.user_name}&quot; 的所有数据（个人资料、报告、对话记录等），且不可恢复！
+                  </div>
+                )}
+              </div>
+            }
+            onConfirm={() => handleDeleteCode(record.id, record)}
             okText="确定"
             cancelText="取消"
+            okButtonProps={{ danger: true }}
           >
             <Button 
               size="small" 

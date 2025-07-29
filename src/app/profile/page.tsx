@@ -21,6 +21,8 @@ import {
   Col
 } from 'antd'
 import { CheckCircleFilled, LoadingOutlined, CalendarOutlined } from '@ant-design/icons'
+import { AuthGuard } from '@/components/AuthGuard'
+import { devLog } from '@/utils/dev-logger'
 
 // 动态导入地区选择器，避免 SSR 问题
 const AreaSelector = dynamic(
@@ -68,7 +70,7 @@ const stepMessages = {
   [GenerationStep.COMPLETED]: '报告生成完成，即将跳转...'
 }
 
-export default function ProfilePage() {
+function ProfilePageContent() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [generationStep, setGenerationStep] = useState(GenerationStep.IDLE)
@@ -122,12 +124,12 @@ export default function ProfilePage() {
       isInitialized = true
       
       try {
-        console.log('🎯 Profile页面初始化开始')
+        devLog.log('🎯 Profile页面初始化开始')
         
         // 检查是否已经完成了profile填写，如果是则不允许访问
         const profileCompleted = sessionStorage.getItem('profile_completed') === 'true'
         if (profileCompleted) {
-          console.log('❌ 用户已完成profile填写，不允许再次访问')
+          devLog.log('❌ 用户已完成profile填写，不允许再次访问')
           message.warning('您已完成个人信息填写，正在跳转到控制台')
           router.push('/dashboard')
           return
@@ -158,7 +160,7 @@ export default function ProfilePage() {
         // 原有的登录用户逻辑
         const loginData = localStorage.getItem('loginData')
         if (!loginData) {
-          console.log('❌ 没有登录信息，跳转主页')
+          devLog.log('❌ 没有登录信息，跳转主页')
           message.error('请先登录')
           router.push('/')
           return
@@ -166,7 +168,7 @@ export default function ProfilePage() {
 
         // 检查登录数据中是否包含用户资料
         const parsed = JSON.parse(loginData)
-        console.log('🔍 登录数据解析结果:', {
+        devLog.log('🔍 登录数据解析结果:', {
           hasUser: !!parsed.user,
           hasProfileData: !!parsed.user?.profile_data,
           redirectTo: parsed.user?.redirect_to,
@@ -178,7 +180,7 @@ export default function ProfilePage() {
         // 如果用户已有完整资料，直接跳转dashboard
         if (userProfileData && userProfileData.name && userProfileData.area && 
             userProfileData.area.province && userProfileData.area.city && userProfileData.area.district) {
-          console.log('✅ 用户已有完整资料，直接跳转dashboard')
+          devLog.log('✅ 用户已有完整资料，直接跳转dashboard')
           message.info('您已完成个人信息填写，正在跳转到控制台')
           router.push('/dashboard')
           return
@@ -186,14 +188,14 @@ export default function ProfilePage() {
 
         // 如果没有任何用户信息，跳转主页
         if (!parsed.user || !parsed.user.id) {
-          console.log('❌ 没有用户信息，跳转主页')
+          devLog.log('❌ 没有用户信息，跳转主页')
           message.error('用户信息异常，请重新登录')
           router.push('/')
           return
         }
 
         if (userProfileData) {
-          console.log('📋 发现部分用户资料，预填表单:', userProfileData)
+          devLog.log('📋 发现部分用户资料，预填表单:', userProfileData)
 
           // 直接使用登录时获取的用户资料预填表单
           setValue('nickname', userProfileData.name || '')
@@ -219,7 +221,7 @@ export default function ProfilePage() {
           if (savedData) {
             try {
               const userData = JSON.parse(savedData)
-              console.log('📋 发现localStorage中的数据，询问是否使用:', userData)
+              devLog.log('📋 发现localStorage中的数据，询问是否使用:', userData)
 
                              // 直接使用localStorage中的数据，安全地设置表单值
                if (userData.nickname && typeof userData.nickname === 'string') {
@@ -248,16 +250,16 @@ export default function ProfilePage() {
                }
               message.info('已恢复您的填写记录')
             } catch (error) {
-              console.error('加载保存的数据失败:', error)
+              devLog.error('加载保存的数据失败:', error)
               localStorage.removeItem('userData')
             }
           } else {
-            console.log('📋 没有发现已有数据，使用默认值')
-            console.log('💡 提示：如果您已有个人信息但被重定向到此页面，请检查数据库中的 user_profiles 表')
+            devLog.log('📋 没有发现已有数据，使用默认值')
+            devLog.log('💡 提示：如果您已有个人信息但被重定向到此页面，请检查数据库中的 user_profiles 表')
           }
         }
       } catch (error) {
-        console.error('检查登录状态失败:', error)
+        devLog.error('检查登录状态失败:', error)
         // 如果出现异常，跳转主页
         router.push('/')
       }
@@ -323,7 +325,7 @@ export default function ProfilePage() {
         isLeap: false
       })
     } catch (error) {
-      console.error('农历转换失败:', error)
+      devLog.error('农历转换失败:', error)
       message.error('农历转换失败，请检查日期是否正确')
     }
   }
@@ -357,10 +359,10 @@ export default function ProfilePage() {
           router.push('/add-user/verify-code')
           return
         }
-        console.log('🔧 新增用户：将用户资料保存到当前登录用户下')
+        devLog.log('🔧 新增用户：将用户资料保存到当前登录用户下')
       }
 
-      console.log('📝 提交表单数据:', data)
+      devLog.log('📝 提交表单数据:', data)
 
       // 保存到 localStorage (仅普通用户模式)
       if (!isAddingNewUser) {
@@ -383,7 +385,7 @@ export default function ProfilePage() {
       // 第二阶段：保存用户资料 (20-40%)
       updateProgressStep(GenerationStep.SAVING, 30)
 
-      console.log('💾 保存用户资料...')
+      devLog.log('💾 保存用户资料...')
       const saveResponse = await fetch('/api/user-profile/save', {
         method: 'POST',
         headers: {
@@ -403,13 +405,13 @@ export default function ProfilePage() {
         throw new Error(saveResult.message || '保存用户资料失败')
       }
 
-      console.log('✅ 用户资料保存成功:', saveResult.profile)
+      devLog.log('✅ 用户资料保存成功:', saveResult.profile)
       updateProgressStep(GenerationStep.SAVING, 40)
 
       // 第三阶段：同步生成性格报告 (40-100%)
       updateProgressStep(GenerationStep.GENERATING, 50)
 
-      console.log('🚀 开始生成性格报告...')
+      devLog.log('🚀 开始生成性格报告...')
       
       // 根据用户模式决定使用哪个用户标识符
       let reportUserId: string
@@ -418,18 +420,18 @@ export default function ProfilePage() {
         // 新增用户模式：使用新创建的user_profiles.id
         reportUserId = saveResult.profile.id
         isUserProfileId = true
-        console.log('📋 新增用户模式：使用user_profiles.id作为报告用户标识:', reportUserId)
+        devLog.log('📋 新增用户模式：使用user_profiles.id作为报告用户标识:', reportUserId)
       } else {
         // 普通模式：使用手机号
         reportUserId = currentUser.phoneNumber
         isUserProfileId = false
-        console.log('📋 普通模式：使用手机号作为报告用户标识:', reportUserId)
+        devLog.log('📋 普通模式：使用手机号作为报告用户标识:', reportUserId)
       }
 
       // 同步生成性格报告
       updateProgressStep(GenerationStep.GENERATING, 90)
 
-      console.log('✅ 性格报告生成完成')
+      devLog.log('✅ 性格报告生成完成')
       updateProgressStep(GenerationStep.COMPLETED, 100)
 
       // 存储其他报告生成所需的数据到sessionStorage，供dashboard页面使用
@@ -464,7 +466,7 @@ export default function ProfilePage() {
       }
 
     } catch (error) {
-      console.error('提交失败:', error)
+      devLog.error('提交失败:', error)
       message.error(error instanceof Error ? error.message : '保存失败，请重试')
       setShowProgress(false)
     } finally {
@@ -681,7 +683,7 @@ export default function ProfilePage() {
             <AreaSelector
               value={watchedValues.area as { province?: string; city?: string; district?: string }}
               onChange={handleAreaChange}
-              placeholder="请选择出生地区"
+              placeholder={{ province: '请选择省份', city: '请选择城市', district: '请选择区县' }}
             />
           </Form.Item>
 
@@ -806,5 +808,13 @@ export default function ProfilePage() {
         </Modal>
       </Card>
     </div>
+  )
+}
+
+export default function ProfilePage() {
+  return (
+    <AuthGuard>
+      <ProfilePageContent />
+    </AuthGuard>
   )
 }

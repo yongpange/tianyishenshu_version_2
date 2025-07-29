@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
+import { devLog } from '@/utils/dev-logger'
 
 interface WechatQRModalProps {
   isOpen: boolean
@@ -275,7 +276,7 @@ export default function RegisterPage() {
 
       return response.ok
     } catch (error) {
-      console.error('验证兑换码失败:', error)
+      devLog.error('验证兑换码失败:', error)
       return false
     }
   }

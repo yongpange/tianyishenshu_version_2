@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { devLog } from '@/utils/dev-logger'
 import { useRouter } from 'next/navigation'
 import {
   Button,
@@ -43,6 +44,8 @@ import {
   getActiveUser
 } from '@/utils/client-utils'
 import { ReportModuleConfig } from '@/config/reportModules'
+// 移除全局会话管理器，改用本地状态管理
+import { SessionStatusIndicator } from '@/components/SessionStatusIndicator'
 
 const { TextArea } = Input
 const { Title, Text, Paragraph } = Typography
@@ -83,6 +86,10 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
   const [loading, setLoading] = useState(false)
   const [isTyping, setIsTyping] = useState(false)
   
+  // 移除全局会话管理器，改用本地状态
+  
+  // 简化状态管理，不再需要复杂的会话ID生成
+  
   // 流式响应相关状态
   const [currentStreamingContent, setCurrentStreamingContent] = useState<string>('')
   const [currentBotMessageId, setCurrentBotMessageId] = useState<string | null>(null)
@@ -106,6 +113,32 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
 
   // 中间聊天记录区域的显示/隐藏
   const [chatHistoryVisible, setChatHistoryVisible] = useState(true)
+
+  // 本地流式响应状态管理
+  const [currentReader, setCurrentReader] = useState<ReadableStreamDefaultReader<Uint8Array> | null>(null)
+  
+  // 防止重复保存的标记
+  const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(new Set())
+
+  // 组件卸载时安全清理reader
+  useEffect(() => {
+    return () => {
+      if (currentReader) {
+        try {
+          currentReader.releaseLock()
+          devLog.log('🧹 组件卸载时安全释放reader')
+        } catch (error) {
+          // 忽略释放错误
+          devLog.log('🧹 组件卸载时reader已释放，跳过')
+        }
+      }
+    }
+  }, [currentReader])
+
+  // 简化的初始化逻辑
+  useEffect(() => {
+    devLog.log(`🔄 ${moduleConfig.title}页面初始化完成`)
+  }, [moduleConfig.moduleId])
   
   // 对话历史加载状态
   const [conversationsLoading, setConversationsLoading] = useState(true)
@@ -259,7 +292,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
             
             // 如果返回了内容，直接设置；否则重新加载
             if (result.content) {
-              console.log('🎯 PageTemplate轮询中直接获取报告内容')
+              devLog.log('🎯 PageTemplate轮询中直接获取报告内容')
               setReportContent(result.content)
               setReportLoading(false)
               setReportError(null) // 清除错误状态
@@ -270,7 +303,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
             } else {
               // 重新加载报告以获取最新内容
               setTimeout(async () => {
-                console.log('🔄 PageTemplate轮询完成，重新加载报告')
+                devLog.log('🔄 PageTemplate轮询完成，重新加载报告')
                 await loadReport()
                 // 重置生成状态
                 setIsGenerating(false)
@@ -316,7 +349,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         }
       }
     } catch (error) {
-      console.error('❌ 轮询请求失败:', error)
+      devLog.error('❌ 轮询请求失败:', error)
       setReportError('网络错误，请刷新页面重试')
       
       if (pollingIntervalRef.current) {
@@ -329,12 +362,12 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
   // 开始轮询
   const startPolling = (userId: string, taskId: string) => {
     pollReportStatus(userId, taskId)
-    console.log('⏰ 开始每分钟轮询报告生成状态')
+    devLog.log('⏰ 开始每30秒轮询报告生成状态')
 
     pollingIntervalRef.current = setInterval(() => {
-      console.log('🔄 执行定时查询报告状态...')
+      devLog.log('🔄 执行定时查询报告状态...')
       pollReportStatus(userId, taskId)
-    }, 60000) // 改为每分钟查询一次
+    }, 30000) // 改为每30秒查询一次
   }
 
   // 停止轮询
@@ -388,7 +421,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
 
       const result = await response.json()
       
-      console.log('📋 PageTemplate API响应结果 (详细):', { 
+      devLog.log('📋 PageTemplate API响应结果 (详细):', { 
         success: result.success, 
         error: result.error, 
         status: result.status,
@@ -409,10 +442,10 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         setChatDisabledReason('')
         setReportLoading(false)
         setIsGenerating(false)
-        console.log('✅ 报告加载成功，chat功能已启用')
+        devLog.log('✅ 报告加载成功，chat功能已启用')
       } else if (result.status === 'generating') {
         // 报告正在生成中，启动轮询
-        console.log('🔄 检测到generating状态，启动轮询机制:', { reportUserId })
+        devLog.log('🔄 检测到generating状态，启动轮询机制:', { reportUserId })
         setReportError(`您的${moduleConfig.title}报告正在生成中，预计等待三分钟。`)
         setChatDisabledReason('报告正在生成中，请等待生成完成后使用聊天功能')
         setChatAvailable(false)
@@ -424,7 +457,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         startPolling(reportUserId, result.taskId || 'auto-generated')
       } else if (result.status === 'failed') {
         // 数据库中有数据但status为failed
-        console.log('❌ 报告生成失败:', { reportUserId })
+        devLog.log('❌ 报告生成失败:', { reportUserId })
         setReportError('报告生成失败，请联系管理员重新生成~')
         setChatDisabledReason('报告生成失败，请重新生成后使用聊天功能')
         setChatAvailable(false)
@@ -432,7 +465,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         setIsGenerating(false)
       } else {
         // ❌ 报告不可用，禁用chat功能
-        console.log('❌ 报告不可用，chat功能已禁用:', result.status || '无报告')
+        devLog.log('❌ 报告不可用，chat功能已禁用:', result.status || '无报告')
         setChatAvailable(false)
         setReportError('报告生成失败，请联系管理员重新生成~')
         setChatDisabledReason('报告不存在，请先生成报告后使用聊天功能')
@@ -440,7 +473,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         setIsGenerating(false)
       }
     } catch (error) {
-      console.error('❌ 加载报告失败:', error)
+      devLog.error('❌ 加载报告失败:', error)
       setReportError('加载报告失败，请稍后重试')
     } finally {
       setReportLoading(false)
@@ -452,7 +485,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
     if (!reportContent) return
 
     const { copyReport: copyReportHelper } = await import('@/utils/copy-helper')
-    const success = await copyReportHelper(reportContent, reportTitle || '报告')
+    const success = await copyReportHelper(reportContent, moduleConfig.reportTitle || '报告')
     
     if (success) {
       setCopied(true)
@@ -520,7 +553,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       }
 
     } catch (error) {
-      console.error('❌ 重新生成报告失败:', error)
+      devLog.error('❌ 重新生成报告失败:', error)
       message.error(error instanceof Error ? error.message : '重新生成失败，请稍后重试')
       setIsGenerating(false)
       setReportLoading(false)
@@ -562,11 +595,11 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         )
       )
 
-      console.log(`✅ 加载对话 ${conversationId} 的消息成功:`, chatMessages.length, '条')
+      devLog.log(`✅ 加载对话 ${conversationId} 的消息成功:`, chatMessages.length, '条')
       return chatMessages
 
     } catch (error) {
-      console.error(`❌ 加载对话 ${conversationId} 的消息失败:`, error)
+      devLog.error(`❌ 加载对话 ${conversationId} 的消息失败:`, error)
       
       // 标记加载失败
       setConversations(prevConversations =>
@@ -590,6 +623,12 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
 
   // 处理对话选择，包括按需加载消息
   const handleConversationSelect = useCallback(async (conversation: ConversationHistory, closeMobile = false) => {
+    // 🔒 检查是否有活跃的流式响应
+    if (currentReader || isTyping) {
+      message.warning('当前有对话正在进行中，请等待完成后再切换')
+      return
+    }
+    
     setActiveConversationId(conversation.id)
     setCurrentContent('chat')
     
@@ -599,14 +638,14 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
     
     // 如果该对话的消息尚未加载，立即加载
     if (!conversation.messagesLoaded && !conversation.messagesLoadError && conversation.dbConversationId) {
-      console.log('🎯 选择对话，立即加载消息:', conversation.title)
+      devLog.log('🎯 选择对话，立即加载消息:', conversation.title)
       try {
         await loadConversationMessages(conversation.id, conversation.dbConversationId)
       } catch (error) {
-        console.warn('⚠️ 选择对话时加载消息失败:', error)
+        devLog.warn('⚠️ 选择对话时加载消息失败:', error)
       }
     }
-  }, [loadConversationMessages])
+  }, [loadConversationMessages, currentReader, isTyping])
 
   // 优化的对话历史加载
   const loadConversations = async () => {
@@ -619,12 +658,12 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       if (activeUser && activeUser.id) {
         userProfileId = activeUser.id
       } else {
-        console.warn('⚠️ 无法获取用户资料ID，跳过对话历史加载')
+        devLog.warn('⚠️ 无法获取用户资料ID，跳过对话历史加载')
         setConversationsLoading(false)
         return
       }
 
-      console.log('🚀 快速加载对话列表...')
+      devLog.log('🚀 快速加载对话列表...')
 
       const conversationsResponse = await fetch('/api/conversations/list', {
         method: 'POST',
@@ -663,7 +702,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       // 立即设置对话列表，让用户能马上看到
       setConversations(formattedConversations)
       setConversationsLoading(false)
-      console.log('✅ 对话列表加载完成:', formattedConversations.length, '个对话')
+      devLog.log('✅ 对话列表加载完成:', formattedConversations.length, '个对话')
 
       // 📱 第二步：异步加载最新5个对话的消息（包括置顶）
       const sortedConversations = [...formattedConversations].sort((a, b) => {
@@ -676,26 +715,26 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
 
       const priorityConversations = sortedConversations.slice(0, 5)
       
-      console.log('⚡ 开始异步加载优先对话的消息...')
+      devLog.log('⚡ 开始异步加载优先对话的消息...')
       
       // 并发加载前5个对话的消息
       const loadPriorityMessages = priorityConversations.map(async (conv) => {
         try {
           await loadConversationMessages(conv.id, conv.dbConversationId)
         } catch (error) {
-          console.warn(`⚠️ 加载优先对话 ${conv.id} 失败:`, error)
+          devLog.warn(`⚠️ 加载优先对话 ${conv.id} 失败:`, error)
         }
       })
 
       // 不等待这些加载完成，让它们在后台运行
       Promise.all(loadPriorityMessages).then(() => {
-        console.log('✅ 优先对话消息加载完成')
+        devLog.log('✅ 优先对话消息加载完成')
       }).catch(error => {
-        console.warn('⚠️ 部分优先对话消息加载失败:', error)
+        devLog.warn('⚠️ 部分优先对话消息加载失败:', error)
       })
 
     } catch (error) {
-      console.error('❌ 从数据库加载对话历史失败:', error)
+      devLog.error('❌ 从数据库加载对话历史失败:', error)
       
       try {
         const savedConversations = localStorage.getItem(`${moduleConfig.moduleId}_conversations`)
@@ -712,7 +751,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
           setConversations(fixedConversations)
         }
       } catch (localError) {
-        console.error('❌ 从本地存储加载对话历史也失败:', localError)
+        devLog.error('❌ 从本地存储加载对话历史也失败:', localError)
       }
     } finally {
       setConversationsLoading(false)
@@ -733,12 +772,12 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         const parsedUserData = JSON.parse(userData)
         setUserInfo(parsedUserData)
       } catch (error) {
-        console.error('❌ 解析用户信息失败:', error)
+        devLog.error('❌ 解析用户信息失败:', error)
         router.push('/profile')
         return
       }
     } else {
-      console.warn('⚠️ 未找到用户信息，跳转到个人信息页')
+      devLog.warn('⚠️ 未找到用户信息，跳转到个人信息页')
       router.push('/profile')
       return
     }
@@ -753,7 +792,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
     } else {
       const phoneNumber = getUserPhoneNumber()
       if (!phoneNumber) {
-        console.error('❌ 无法获取用户手机号')
+        devLog.error('❌ 无法获取用户手机号')
         router.push('/login')
         return
       }
@@ -827,6 +866,12 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       return
     }
 
+    // 🔒 检查是否有活跃的流式响应
+    if (currentReader || isTyping) {
+      message.warning('当前有对话正在进行中，请等待完成后再新建对话')
+      return
+    }
+
     setActiveConversationId(null)
     setCurrentContent('chat')
     // 重置显示数量，确保新对话可见
@@ -883,11 +928,11 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
             const updateResult = await updateResponse.json()
 
             if (!updateResult.success) {
-              console.warn('⚠️ 对话标题数据库更新失败:', updateResult.message)
+              devLog.warn('⚠️ 对话标题数据库更新失败:', updateResult.message)
             }
 
           } catch (error) {
-            console.error('❌ 异步更新对话标题失败:', error)
+            devLog.error('❌ 异步更新对话标题失败:', error)
           }
         }
 
@@ -937,7 +982,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       message.success(newPinnedStatus ? '已置顶' : '已取消置顶')
 
     } catch (error) {
-      console.error('❌ 更新置顶状态失败:', error)
+      devLog.error('❌ 更新置顶状态失败:', error)
       message.error(`操作失败: ${error instanceof Error ? error.message : '未知错误'}`)
     }
   }
@@ -1000,7 +1045,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       message.success('重命名成功')
 
     } catch (error) {
-      console.error('❌ 重命名对话失败:', error)
+      devLog.error('❌ 重命名对话失败:', error)
       message.error(`重命名失败: ${error instanceof Error ? error.message : '未知错误'}`)
     }
   }
@@ -1056,11 +1101,11 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                 const deleteResult = await deleteResponse.json()
 
                 if (!deleteResult.success) {
-                  console.warn('⚠️ 数据库删除失败，但页面已更新:', deleteResult.message)
+                  devLog.warn('⚠️ 数据库删除失败，但页面已更新:', deleteResult.message)
                 }
 
               } catch (error) {
-                console.error('❌ 数据库删除失败:', error)
+                devLog.error('❌ 数据库删除失败:', error)
               }
             }
           }
@@ -1093,12 +1138,18 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       return
     }
 
+    const activeUser = getActiveUser()
+    
+    // 🔒 检查是否有活跃的流式响应
+    if (currentReader || isTyping) {
+      message.warning('当前有会话正在进行中，请等待完成后再试')
+      return
+    }
+
     if (!userInfo) {
       alert('用户信息缺失，请先完善个人信息')
       return
     }
-
-    const activeUser = getActiveUser()
     if (!activeUser?.id) {
       alert('无法获取用户信息，请重新登录')
       return
@@ -1136,7 +1187,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         return
       }
     } catch (error) {
-      console.error('❌ 检查聊天次数失败:', error)
+      devLog.error('❌ 检查聊天次数失败:', error)
       message.error('检查聊天权限失败，请重试')
       return
     }
@@ -1170,11 +1221,8 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       workingConversations = [newConversation, ...conversations]
       currentActiveConversationId = newConversation.id
       
-      setConversations(workingConversations)
-      setActiveConversationId(currentActiveConversationId)
       // 重置显示数量，确保新对话可见
       setVisibleConversationsCount(5)
-      localStorage.setItem(`${moduleConfig.moduleId}_conversations`, JSON.stringify(workingConversations))
     }
 
     // 立即显示用户消息并更新标题
@@ -1188,19 +1236,6 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       }
     }
     
-    const updatedConversations = workingConversations.map(conv => {
-      if (conv.id === currentActiveConversationId) {
-        return {
-          ...conv,
-          title: isFirstMessageInNewConversation ? newTitle : conv.title,
-          messages: [...conv.messages, userMessage]
-        }
-      }
-      return conv
-    })
-    setConversations(updatedConversations)
-    localStorage.setItem(`${moduleConfig.moduleId}_conversations`, JSON.stringify(updatedConversations))
-
     // 立即创建空的AI消息，等待第一个内容块
     const typingMessageId = (Date.now() + 1).toString()
     const typingMessage: ChatMessage = {
@@ -1210,35 +1245,61 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       timestamp: new Date()
     }
 
-    const conversationsWithTyping = updatedConversations.map(conv => {
+    // 一次性更新：添加用户消息和空的AI消息
+    const finalConversations = workingConversations.map(conv => {
       if (conv.id === currentActiveConversationId) {
         return {
           ...conv,
-          messages: [...conv.messages, typingMessage]
+          title: isFirstMessageInNewConversation ? newTitle : conv.title,
+          messages: [...conv.messages, userMessage, typingMessage]
         }
       }
       return conv
     })
-    setConversations(conversationsWithTyping)
+    
+    devLog.log('📝 发送消息后更新对话状态:', {
+      currentActiveConversationId,
+      userMessage,
+      finalConversationsLength: finalConversations.length,
+      currentConvMessages: finalConversations.find(c => c.id === currentActiveConversationId)?.messages.length
+    })
+    
+    // 🔥 原子性状态更新：一次性设置所有相关状态
+    setConversations(finalConversations)
+    setActiveConversationId(currentActiveConversationId)
     setIsTyping(true)
+    localStorage.setItem(`${moduleConfig.moduleId}_conversations`, JSON.stringify(finalConversations))
 
     // 后台处理数据库操作
     let dbConversationId: string | undefined
+    let lockedUserProfileId: string = activeUser.id  // 🔒 锁定用户资料ID，确保整个对话过程中保持一致
     
-    const handleDatabaseOperations = async () => {
+    devLog.log('🔒 锁定关键参数:')
+    devLog.log('   lockedUserProfileId:', lockedUserProfileId)
+    devLog.log('   activeConversationId:', currentActiveConversationId)
+    
+    const handleDatabaseOperations = async (): Promise<string | undefined> => {
       try {
-        const currentConversation = updatedConversations.find(conv => conv.id === currentActiveConversationId)
+        
+        const currentConversation = finalConversations.find(conv => conv.id === currentActiveConversationId)
+        
+        let currentDbConversationId: string
         
         if (!currentConversation?.dbConversationId) {
           const conversationTitle = currentConversation?.title || '新对话'
 
+          devLog.log('🔍 创建对话参数检查:')
+          devLog.log('   userProfileId (user_profiles.id):', lockedUserProfileId)
+          devLog.log('   title:', conversationTitle)
+          devLog.log('   moduleType:', moduleConfig.moduleId)
+          
           const createResponse = await fetch('/api/conversations/create', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              userProfileId: activeUser.id,
+              userProfileId: lockedUserProfileId,
               title: conversationTitle,
               moduleType: moduleConfig.moduleId
             })
@@ -1251,32 +1312,40 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
           }
 
           const dbConversation = createResult.conversation
+          currentDbConversationId = dbConversation.id
+
+          devLog.log('✅ 数据库对话创建成功:', currentDbConversationId)
 
           setConversations(prevConversations => 
             prevConversations.map(conv => 
               conv.id === currentActiveConversationId 
-                ? { ...conv, dbConversationId: dbConversation.id, createdAt: new Date(dbConversation.created_at) }
+                ? { ...conv, dbConversationId: currentDbConversationId, createdAt: new Date(dbConversation.created_at) }
                 : conv
             )
           )
-
-          dbConversationId = dbConversation.id
         } else {
-          dbConversationId = currentConversation.dbConversationId
+          currentDbConversationId = currentConversation.dbConversationId
+          devLog.log('✅ 使用已存在的数据库对话ID:', currentDbConversationId)
         }
 
         // 保存用户消息到数据库
+        devLog.log('🔍 用户消息保存参数检查:')
+        devLog.log('   conversationId (conversations.id):', currentDbConversationId)
+        devLog.log('   lockedUserProfileId (user_profiles.id):', lockedUserProfileId)
+        devLog.log('   userMessage.content length:', userMessage.content.length)
+        
         const userMessageResponse = await fetch('/api/messages/create', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            conversationId: dbConversationId,
+            conversationId: currentDbConversationId,
             role: 'user',
             content: userMessage.content,
             metadata: {
-              frontend_id: userMessage.id
+              frontend_id: userMessage.id,
+              user_profile_id: lockedUserProfileId  // 使用锁定的用户资料ID
             }
           })
         })
@@ -1284,13 +1353,32 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         const userMessageResult = await userMessageResponse.json()
 
         if (!userMessageResult.success) {
-          throw new Error('保存用户消息失败')
+          devLog.error('❌ 用户消息保存失败详细信息:', userMessageResult)
+          throw new Error(`保存用户消息失败: ${userMessageResult.message || '未知错误'}`)
         }
 
-        return dbConversationId
+        devLog.log('✅ 用户消息保存成功，消息ID:', userMessageResult.message?.id)
+        devLog.log('✅ 返回数据库对话ID:', currentDbConversationId)
+        devLog.log('✅ 锁定的用户资料ID已在外部变量中保存:', lockedUserProfileId)
+
+        return currentDbConversationId
 
       } catch (error) {
-        console.error('❌ 后台数据库操作失败:', error)
+        devLog.error('❌ 用户消息保存过程失败:', error)
+        devLog.error('❌ 错误详情:', error instanceof Error ? error.message : String(error))
+        
+        // 获取当前可能已创建的对话ID
+        const currentConversation = finalConversations.find(conv => conv.id === currentActiveConversationId)
+        const fallbackDbConversationId = currentConversation?.dbConversationId
+        
+        devLog.error('❌ 当前fallbackDbConversationId状态:', fallbackDbConversationId)
+        
+        // 即使用户消息保存失败，也要返回对话ID（如果已创建）用于后续尝试
+        if (fallbackDbConversationId) {
+          devLog.log('⚠️ 虽然保存失败，但返回已创建的对话ID用于重试:', fallbackDbConversationId)
+          return fallbackDbConversationId
+        }
+        
         return undefined
       }
     }
@@ -1299,23 +1387,75 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
 
     // 发起AI请求
     try {
-      const currentConv = updatedConversations.find(conv => conv.id === currentActiveConversationId)
+      const currentConv = finalConversations.find(conv => conv.id === currentActiveConversationId)
       const isFirstMessage = !currentConv?.cozeConversationId
 
-      const userId = getUserPhoneNumber()
-      const consistentUserId = userId ? `user_${userId}` : `user_${Date.now()}`
+      // 🔧 修复：直接使用锁定的user_profiles.id，而不是格式化的手机号
+      const consistentUserId = lockedUserProfileId  // 使用正确的user_profiles.id
+
+      devLog.log('🔍 Coze API请求参数检查:')
+      devLog.log('   consistentUserId (user_profiles.id):', consistentUserId)
+      devLog.log('   lockedUserProfileId:', lockedUserProfileId)
+      devLog.log('   currentConv?.cozeConversationId:', currentConv?.cozeConversationId)
 
       // 🎯 构建聊天提示词模板
-      console.log(`🎯 构建${isFirstMessage ? '第一次' : '后续'}聊天的提示词模板...`)
+      devLog.log(`🎯 构建${isFirstMessage ? '第一次' : '后续'}聊天的提示词模板...`)
       const chatPrompt = await buildChatPrompt(userMessage.content, isFirstMessage)
-      console.log('📝 构建的提示词:', chatPrompt)
+      devLog.log('📝 构建的提示词:', chatPrompt)
+
+      // 🔄 强制等待数据库操作完成，获取数据库对话ID
+      devLog.log('⏳ 等待数据库操作完成...')
+      let dbConversationId: string | undefined
+      try {
+        dbConversationId = await dbOperationPromise
+        devLog.log('✅ 数据库操作完成，获取到对话ID:', dbConversationId)
+        
+        if (!dbConversationId) {
+          throw new Error('数据库对话ID为空')
+        }
+      } catch (error) {
+        devLog.error('❌ 数据库操作失败，无法继续AI请求:', error)
+        setIsTyping(false)
+        // 移除临时typing消息
+        setConversations(prevConversations => 
+          prevConversations.map(conv => 
+            conv.id === currentActiveConversationId 
+              ? { ...conv, messages: conv.messages.filter(msg => msg.id !== typingMessageId) }
+              : conv
+          )
+        )
+        // 添加错误消息
+        const errorMessage: ChatMessage = {
+          id: `error_${Date.now()}`,
+          type: 'bot',
+          content: '抱歉，系统出现错误，请稍后重试。',
+          timestamp: new Date()
+        }
+        setConversations(prevConversations => 
+          prevConversations.map(conv => 
+            conv.id === currentActiveConversationId 
+              ? { ...conv, messages: [...conv.messages, errorMessage] }
+              : conv
+          )
+        )
+        return
+      }
+
+      devLog.log('🚀 开始AI请求，使用数据库对话ID:', dbConversationId)
 
       const requestBody = {
         message: chatPrompt, // 使用构建的提示词模板
         userInfo: isFirstMessage ? userInfo : undefined,
-        conversationId: currentConv?.cozeConversationId,
-        userId: consistentUserId,
+        conversationId: currentConv?.cozeConversationId, // Coze的对话ID，用于保持对话连续性
+        dbConversationId: dbConversationId, // 数据库的对话ID，用于保存消息
+        userId: consistentUserId,  // 现在传递正确的user_profiles.id
+        userProfileId: lockedUserProfileId,  // 明确传递userProfileId参数
       }
+
+      devLog.log('📦 最终请求体:', {
+        ...requestBody,
+        message: `${requestBody.message.substring(0, 100)}...`
+      })
 
       const response = await fetch('/api/coze/chat', {
         method: 'POST',
@@ -1340,11 +1480,13 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         setCurrentBotMessageId(botMessageId)
         setCurrentStreamingContent('')
         
+        // 获取数据库对话ID
+        let dbConversationId: string | undefined
         try {
-          const dbConversationId = await dbOperationPromise
+          dbConversationId = await dbOperationPromise
           setCurrentDbConversationId(dbConversationId || null)
         } catch (error) {
-          console.warn('⚠️ 获取数据库对话ID失败，暂停保存可能受影响:', error)
+          devLog.warn('⚠️ 获取数据库对话ID失败，暂停保存可能受影响:', error)
         }
 
         setIsTyping(false)
@@ -1352,10 +1494,27 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         const reader = response.body?.getReader()
         const decoder = new TextDecoder()
 
+        // 🔄 将reader存储到本地状态中
+        setCurrentReader(reader || null)
+
         if (reader) {
           try {
             while (true) {
-              const { done, value } = await reader.read()
+              let readResult
+              try {
+                readResult = await reader.read()
+              } catch (readError: any) {
+                devLog.error('❌ 读取流时出错:', readError)
+                // 如果是 "stream reader has been released" 错误，直接退出
+                const errorMessage = readError instanceof Error ? readError.message : String(readError)
+                if (errorMessage.includes('released')) {
+                  devLog.log('🔚 检测到流读取器已释放，停止读取')
+                  break
+                }
+                throw readError
+              }
+              
+              const { done, value } = readResult
               if (done) break
 
               const chunk = decoder.decode(value)
@@ -1368,23 +1527,33 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
 
                     if (data.type === 'start') {
                       // 🚀 收到开始信号，准备接收内容
-                      console.log('🚀 收到开始信号，准备接收AI回复')
+                      devLog.log('🚀 收到开始信号，准备接收AI回复')
                       setIsTyping(false) // 移除"正在思考中..."
                       // 不再显示"正在生成回复..."，等待第一个content块立即更新
                     } else if (data.type === 'content') {
                       // 第一次收到内容时清除AI分析状态
                       if (streamingContent === '') {
                         setIsTyping(false)
+                        devLog.log('🤖 开始接收AI回复内容')
                       }
                       
                       streamingContent += data.content
                       finalConversationId = data.conversationId || finalConversationId
                       finalChatId = data.chatId || finalChatId
 
+                      devLog.log('📥 收到AI内容块:', {
+                        contentLength: data.content.length,
+                        totalLength: streamingContent.length,
+                        botMessageId,
+                        currentActiveConversationId
+                      })
+
+                      // 更新本地流式内容状态
+
                       setCurrentStreamingContent(streamingContent)
 
-                      setConversations(prevConversations =>
-                        prevConversations.map(conv => {
+                      setConversations(prevConversations => {
+                        const updated = prevConversations.map(conv => {
                           if (conv.id === currentActiveConversationId) {
                             return {
                               ...conv,
@@ -1398,7 +1567,15 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                           }
                           return conv
                         })
-                      )
+                        
+                        devLog.log('🔄 更新对话状态 - AI内容:', {
+                          conversationsCount: updated.length,
+                          currentConv: updated.find(c => c.id === currentActiveConversationId),
+                          botMessage: updated.find(c => c.id === currentActiveConversationId)?.messages.find(m => m.id === botMessageId)
+                        })
+                        
+                        return updated
+                      })
                     } else if (data.type === 'done') {
                       finalConversationId = data.conversationId || finalConversationId
                       finalChatId = data.chatId || finalChatId
@@ -1421,6 +1598,12 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
 
                         localStorage.setItem(`${moduleConfig.moduleId}_conversations`, JSON.stringify(finalConversations))
 
+                        // 📝 后端已经异步保存，前端仅做状态标记
+                        devLog.log('✅ 流式输出完成，后端已异步保存assistant消息')
+                        
+                        // 标记消息为已保存（仅用于前端状态管理）
+                        setSavedMessageIds(prev => new Set(prev).add(botMessageId))
+
                         return finalConversations
                       })
 
@@ -1428,92 +1611,57 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
 
                       // 打印认证信息到前端控制台
                       if (data.authInfo) {
-                        console.group('🔐 聊天完成 - 认证信息')
-                        console.log('认证方式:', data.authInfo.method)
-                        console.log('Token类型:', data.authInfo.tokenType)
-                        console.log('Token前缀:', data.authInfo.tokenPrefix)
-                        console.log('用户ID:', data.authInfo.userId)
-                        console.log('响应长度:', data.fullResponse?.length || 0, '字符')
-                        console.groupEnd()
+                        devLog.info('🔐 聊天完成 - 认证信息')
+                        devLog.log('认证方式:', data.authInfo.method)
+                        devLog.log('Token类型:', data.authInfo.tokenType)
+                        devLog.log('Token前缀:', data.authInfo.tokenPrefix)
+                        devLog.log('用户ID:', data.authInfo.userId)
+                        devLog.log('响应长度:', data.fullResponse?.length || 0, '字符')
                       } else {
-                        console.log('🔐 聊天完成 - 认证方式:', data.authMethod || '未知')
+                        devLog.log('🔐 聊天完成 - 认证方式:', data.authMethod || '未知')
                       }
 
-                      // 后台异步执行数据库保存操作
-                      const saveToDatabase = async () => {
-                        try {
-                          const botMessageResponse = await fetch('/api/messages/create', {
-                            method: 'POST',
-                            headers: {
-                              'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                              conversationId: dbConversationId as string,
-                              role: 'assistant',
-                              content: data.fullResponse || streamingContent,
-                              metadata: {
-                                frontend_id: botMessageId,
-                                coze_conversation_id: finalConversationId,
-                                coze_chat_id: finalChatId
-                              }
-                            })
-                          })
-
-                          const botMessageResult = await botMessageResponse.json()
-
-                          if (!botMessageResult.success) {
-                            console.warn('⚠️ AI回复异步保存失败:', botMessageResult.message)
-                          }
-                        } catch (saveError) {
-                          console.warn('⚠️ 异步保存AI回复失败:', saveError)
-                        }
-
-                        // 更新Coze对话ID
-                        if (finalConversationId && dbConversationId) {
-                          try {
-                            await fetch('/api/conversations/update', {
-                              method: 'POST',
-                              headers: {
-                                'Content-Type': 'application/json',
-                              },
-                              body: JSON.stringify({
-                                conversationId: dbConversationId as string,
-                                cozeConversationId: finalConversationId
-                              })
-                            })
-                          } catch (updateError) {
-                            console.warn('⚠️ 异步更新Coze对话ID失败:', updateError)
-                          }
-                        }
-
-                        // 更新用户聊天次数
-                        try {
-                          await updateUserChatCredits()
-                        } catch (error) {
-                          console.warn('⚠️ 异步更新聊天次数失败:', error)
-                        }
-                      }
-
-                      saveToDatabase().catch(error => {
-                        console.error('❌ 后台数据库操作失败:', error)
-                      })
+                      // 清理本地reader状态
+                      setCurrentReader(null)
 
                       break
                     } else if (data.type === 'error') {
-                      console.error('❌ 流式响应错误:', data.error)
+                      devLog.error('❌ 流式响应错误:', data.error)
                       
                       setIsTyping(false)
+                      
+                      // 清理本地reader状态
+                      setCurrentReader(null)
                       
                       throw new Error(data.error || 'AI回复失败，请重试')
                     }
                   } catch (parseError) {
-                    console.warn('⚠️ 解析流式数据失败:', parseError)
+                    devLog.warn('⚠️ 解析流式数据失败:', parseError)
                   }
                 }
               }
             }
           } finally {
-            reader.releaseLock()
+            try {
+              reader.releaseLock()
+              devLog.log('🧹 流读取器已释放')
+            } catch (error) {
+              // 捕获并记录错误，但不让错误中断清理过程
+              const errorMessage = error instanceof Error ? error.message : String(error)
+              
+              // 对于常见的错误类型，给出更友好的提示
+              if (errorMessage.includes('Releasing Default reader') || 
+                  errorMessage.includes('Default reader') ||
+                  errorMessage.includes('already been released') ||
+                  errorMessage.includes('InvalidStateError')) {
+                devLog.log('🔍 流读取器已处于释放状态或为默认状态，跳过释放')
+              } else {
+                devLog.warn('⚠️ 释放流读取器时出错（已忽略）:', errorMessage)
+              }
+            }
+            
+            // 清理本地reader状态
+            setCurrentReader(null)
           }
         }
       } else {
@@ -1521,92 +1669,61 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         const data = await response.json()
 
         if (data.success) {
-          setConversations(prevConversations => {
-            const finalConversations = prevConversations.map(conv => {
-              if (conv.id === currentActiveConversationId) {
-                return {
-                  ...conv,
-                  messages: conv.messages.map(msg =>
-                    msg.id === typingMessageId
-                      ? { ...msg, content: data.response }
-                      : msg
-                  ),
-                  cozeConversationId: conv.cozeConversationId || data.conversationId,
-                }
+                  setConversations(prevConversations => {
+          const finalConversations = prevConversations.map(conv => {
+            if (conv.id === currentActiveConversationId) {
+              return {
+                ...conv,
+                messages: conv.messages.map(msg =>
+                  msg.id === typingMessageId
+                    ? { ...msg, content: data.response }
+                    : msg
+                ),
+                cozeConversationId: conv.cozeConversationId || data.conversationId,
               }
-              return conv
-            })
-
-            localStorage.setItem(`${moduleConfig.moduleId}_conversations`, JSON.stringify(finalConversations))
-
-            return finalConversations
+            }
+            return conv
           })
 
-          setIsTyping(false)
+          localStorage.setItem(`${moduleConfig.moduleId}_conversations`, JSON.stringify(finalConversations))
 
-          // 打印认证信息到前端控制台（非流式响应）
-          if (data.authInfo) {
-            console.group('🔐 聊天完成 - 认证信息（非流式）')
-            console.log('认证方式:', data.authInfo.method)
-            console.log('Token类型:', data.authInfo.tokenType)
-            console.log('Token前缀:', data.authInfo.tokenPrefix)
-            console.log('用户ID:', data.authInfo.userId)
-            console.log('响应长度:', data.response?.length || 0, '字符')
-            console.groupEnd()
-          } else {
-            console.log('🔐 聊天完成 - 认证方式（非流式）:', data.authMethod || '未知')
-          }
+          // 📝 非流式响应：后端也会处理保存，前端仅做状态标记
+          devLog.log('✅ 非流式响应完成，后端已处理保存')
+          
+          // 标记消息为已保存（仅用于前端状态管理）
+          setSavedMessageIds(prev => new Set(prev).add(typingMessageId))
 
-          // 后台异步执行数据库保存操作
-          const saveToDatabase = async () => {
-            try {
-              const botMessageResponse = await fetch('/api/messages/create', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  conversationId: dbConversationId as string,
-                  role: 'assistant',
-                  content: data.response,
-                  metadata: {
-                    frontend_id: typingMessageId,
-                    coze_conversation_id: data.conversationId
-                  }
-                })
-              })
+          return finalConversations
+        })
 
-              const botMessageResult = await botMessageResponse.json()
+        setIsTyping(false)
 
-              if (!botMessageResult.success) {
-                console.warn('⚠️ AI回复异步保存失败:', botMessageResult.message)
-              }
-            } catch (saveError) {
-              console.warn('⚠️ 异步保存AI回复失败:', saveError)
-            }
-
-            // 更新用户聊天次数
-            try {
-              await updateUserChatCredits()
-            } catch (error) {
-              console.warn('⚠️ 异步更新聊天次数失败:', error)
-            }
-          }
-
-          saveToDatabase().catch(error => {
-            console.error('❌ 后台数据库操作失败:', error)
-          })
+        // 打印认证信息到前端控制台（非流式响应）
+        if (data.authInfo) {
+          devLog.info('🔐 聊天完成 - 认证信息（非流式）')
+          devLog.log('认证方式:', data.authInfo.method)
+          devLog.log('Token类型:', data.authInfo.tokenType)
+          devLog.log('Token前缀:', data.authInfo.tokenPrefix)
+          devLog.log('用户ID:', data.authInfo.userId)
+          devLog.log('响应长度:', data.response?.length || 0, '字符')
+          // devLog.groupEnd()
+        } else {
+          devLog.log('🔐 聊天完成 - 认证方式（非流式）:', data.authMethod || '未知')
+        }
 
         } else {
           throw new Error(data.error || 'AI回复失败，请重试')
         }
       }
     } catch (error: any) {
-      console.error('❌ 消息发送失败:', error)
+      devLog.error('❌ 消息发送失败:', error)
       
       setIsTyping(false)
       
-      setConversations(updatedConversations)
+      setConversations(finalConversations)
+      
+      // 清理本地reader状态
+      setCurrentReader(null)
       
       if (error.name === 'AbortError') {
         message.info('对话已中断')
@@ -1616,6 +1733,121 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
     } finally {
       setLoading(false)
       setIsTyping(false)
+    }
+  }
+
+  // 统一的消息保存函数
+  const saveAssistantMessage = async (
+    messageId: string,
+    content: string,
+    dbConversationId: string,
+    lockedUserProfileId: string,
+    finalConversationId?: string,
+    finalChatId?: string
+  ) => {
+    // 防止重复保存
+    if (savedMessageIds.has(messageId)) {
+      devLog.log(`⚠️ 消息 ${messageId} 已保存，跳过重复保存`)
+      return
+    }
+
+    try {
+      devLog.log('🔍 Assistant消息保存前状态检查:')
+      devLog.log('   dbConversationId:', dbConversationId)
+      devLog.log('   lockedUserProfileId:', lockedUserProfileId)
+      devLog.log('   messageId:', messageId)
+      devLog.log('   content length:', content.length)
+
+      // 先检查消息是否已经存在（防止重复保存）
+      const checkResponse = await fetch(`/api/messages/list?conversationId=${dbConversationId}&role=assistant&limit=1`)
+      const checkResult = await checkResponse.json()
+      
+      const messageExists = checkResult.success && 
+        checkResult.messages?.some((msg: any) => 
+          msg.content === content && msg.role === 'assistant'
+        )
+
+      if (messageExists) {
+        devLog.log('⚠️ Assistant消息已存在，跳过前端保存')
+        setSavedMessageIds(prev => new Set(prev).add(messageId))
+        return
+      }
+
+      // 保存assistant消息到数据库
+      const botMessageResponse = await fetch('/api/messages/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          conversationId: dbConversationId,
+          role: 'assistant',
+          content: content,
+          metadata: {
+            frontend_id: messageId,
+            coze_conversation_id: finalConversationId,
+            coze_chat_id: finalChatId,
+            user_profile_id: lockedUserProfileId,
+            saved_by: 'frontend_fallback'
+          }
+        })
+      })
+
+      devLog.log('📡 消息保存API响应状态:', botMessageResponse.status)
+      const botMessageResult = await botMessageResponse.json()
+      devLog.log('📦 消息保存API响应内容:', botMessageResult)
+
+      if (!botMessageResult.success) {
+        // 如果是重复创建错误，也标记为成功
+        if (botMessageResult.message?.includes('重复') || botMessageResult.message?.includes('存在')) {
+          devLog.log('⚠️ 消息可能已被后端保存，标记为成功')
+          setSavedMessageIds(prev => new Set(prev).add(messageId))
+        } else {
+          devLog.error('❌ AI回复保存失败:', botMessageResult.message)
+          devLog.error('❌ 详细错误信息:', JSON.stringify(botMessageResult, null, 2))
+        }
+      } else {
+        devLog.log('✅ AI回复保存成功，消息ID:', botMessageResult.message?.id)
+        
+        // 标记为已保存
+        setSavedMessageIds(prev => new Set(prev).add(messageId))
+      }
+
+      // 更新Coze对话ID
+      if (finalConversationId && dbConversationId) {
+        try {
+          const updateResponse = await fetch('/api/conversations/update', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              conversationId: dbConversationId,
+              cozeConversationId: finalConversationId
+            })
+          })
+
+          const updateResult = await updateResponse.json()
+          if (updateResult.success) {
+            devLog.log('✅ Coze对话ID更新成功')
+          } else {
+            devLog.warn('⚠️ Coze对话ID更新失败:', updateResult.message)
+          }
+        } catch (updateError) {
+          devLog.warn('⚠️ 更新Coze对话ID失败:', updateError)
+        }
+      }
+
+      // 更新用户聊天次数
+      try {
+        await updateUserChatCredits()
+        devLog.log('✅ 用户聊天次数更新成功')
+      } catch (error) {
+        devLog.warn('⚠️ 更新聊天次数失败:', error)
+      }
+
+    } catch (saveError) {
+      devLog.error('❌ 保存AI回复失败:', saveError)
     }
   }
 
@@ -1645,7 +1877,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         }))
       }
     } catch (error) {
-      console.error('❌ 更新聊天次数失败:', error)
+      devLog.error('❌ 更新聊天次数失败:', error)
     }
   }
 
@@ -1686,7 +1918,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         return null
       }
     } catch (error) {
-      console.error('❌ 获取占星上下文失败:', error)
+      devLog.error('❌ 获取占星上下文失败:', error)
       return null
     }
   }
@@ -1717,7 +1949,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         return null
       }
     } catch (error) {
-      console.error(`❌ 获取${moduleConfig.title}报告失败:`, error)
+      devLog.error(`❌ 获取${moduleConfig.title}报告失败:`, error)
       return null
     }
   }
@@ -1764,13 +1996,24 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
 
   // 获取当前对话
   const getCurrentConversation = () => {
-    return conversations.find(conv => conv.id === activeConversationId)
+    const current = conversations.find(conv => conv.id === activeConversationId)
+    devLog.log('🔍 getCurrentConversation调试:', {
+      activeConversationId,
+      conversationsCount: conversations.length,
+      currentFound: !!current,
+      currentTitle: current?.title,
+      currentMessages: current?.messages?.length || 0,
+      conversationIds: conversations.map(c => c.id),
+      conversationTitles: conversations.map(c => c.title),
+      lastMessage: current?.messages?.[current.messages.length - 1]?.content?.substring(0, 50)
+    })
+    return current
   }
 
   // Typing动画组件
   const TypingIndicator = () => (
     <div className="flex items-center space-x-1 text-gray-500">
-      <span className="text-sm ml-2">AI深度分析中，预计2分钟，道友稍后~</span>
+      <span className="text-sm ml-2">AI深度分析中，预计2分钟，道友稍后</span>
       <div className="flex space-x-1">
         <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
         <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
@@ -1820,8 +2063,12 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
   }
 
   return (
-    <div className="bg-white flex overflow-hidden h-full">
-      {/* 自定义滚动条样式 */}
+    <>
+      {/* 全局会话状态指示器 */}
+      <SessionStatusIndicator currentModuleId={moduleConfig.moduleId} />
+      
+      <div className="bg-white flex overflow-hidden h-full">
+        {/* 自定义滚动条样式 */}
       <style jsx>{`
         .custom-scrollbar::-webkit-scrollbar {
           width: 8px;
@@ -2308,7 +2555,16 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                   )}
                 </div>
               ) : (
-                getCurrentConversation()?.messages.map((message, index) => (
+                (getCurrentConversation()?.messages || []).map((message, index) => {
+                  devLog.log('🎨 渲染消息:', {
+                    messageId: message.id,
+                    type: message.type,
+                    contentLength: message.content.length,
+                    content: message.content.substring(0, 50) + (message.content.length > 50 ? '...' : ''),
+                    isTyping,
+                    isEmpty: message.content === ''
+                  })
+                  return (
                 <div key={message.id} className={`mb-6 ${message.type === 'user' ? 'flex justify-end' : 'flex justify-start'}`}>
                   <div className={`max-w-[80%] ${message.type === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-900'} rounded-lg p-4`}>
                     <div className={`flex items-center space-x-2 mb-2 ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -2323,6 +2579,15 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                     </div>
                     {message.type === 'bot' && message.content === '' && isTyping ? (
                       <TypingIndicator />
+                    ) : message.type === 'bot' && message.content === '' && !isTyping ? (
+                      <div className="text-gray-500 text-sm">
+                        AI深度分析中，预计2分钟，道友稍后~
+                        <span className="ml-1 inline-block">
+                          <span className="dot-loading-1">.</span>
+                          <span className="dot-loading-2">.</span>
+                          <span className="dot-loading-3">.</span>
+                        </span>
+                      </div>
                     ) : (
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
@@ -2361,7 +2626,8 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                     </div>
                   </div>
                 </div>
-                ))
+                  )
+                })
               )}
               <div ref={messagesEndRef} />
 
@@ -2416,7 +2682,17 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                       type={currentMessage.trim() && chatAvailable ? "primary" : "default"}
                       shape="circle"
                       icon={<ArrowUpOutlined />}
-                      onClick={sendMessage}
+                      onClick={() => {
+                        devLog.log('🚀 点击发送按钮:', {
+                          chatAvailable,
+                          currentMessage: currentMessage.trim(),
+                          loading,
+                          isTyping,
+                          activeConversationId,
+                          conversationsCount: conversations.length
+                        })
+                        sendMessage()
+                      }}
                       loading={loading}
                       disabled={!chatAvailable || !currentMessage.trim() || loading || isTyping}
                       className={`w-8 h-8 flex items-center justify-center transition-all duration-200 shadow-sm ${
@@ -2672,5 +2948,6 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         />
       </Modal>
     </div>
+    </>
   )
 } 

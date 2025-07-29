@@ -106,7 +106,7 @@ export default function AdminDashboard() {
         }
       }
     } catch (error) {
-      console.error('从Supabase加载兑换码失败:', error)
+      devLog.error('从Supabase加载兑换码失败:', error)
     }
 
     // 降级到localStorage
@@ -127,7 +127,7 @@ export default function AdminDashboard() {
         }
       }
     } catch (error) {
-      console.error('加载验证码失败:', error)
+      devLog.error('加载验证码失败:', error)
     }
     
     // 如果获取失败，设置为空数据
@@ -151,7 +151,7 @@ export default function AdminDashboard() {
         message.error('清理失败')
       }
     } catch (error) {
-      console.error('清理过期验证码失败:', error)
+      devLog.error('清理过期验证码失败:', error)
       message.error('清理失败')
     } finally {
       setLoading(false)
@@ -182,7 +182,7 @@ export default function AdminDashboard() {
         body: JSON.stringify({ codes })
       })
     } catch (error) {
-      console.error('同步兑换码到服务器失败:', error)
+      devLog.error('同步兑换码到服务器失败:', error)
     }
   }
 
@@ -232,7 +232,7 @@ export default function AdminDashboard() {
       setRemarks('')
       message.success('兑换码生成成功！')
     } catch (error) {
-      console.error('生成兑换码失败:', error)
+      devLog.error('生成兑换码失败:', error)
       message.error('生成失败，请重试')
     } finally {
       setLoading(false)

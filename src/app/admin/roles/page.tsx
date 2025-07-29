@@ -25,7 +25,7 @@ import {
   EyeOutlined,
   ArrowLeftOutlined
 } from '@ant-design/icons'
-
+import { devLog } from '@/utils/dev-logger'
 const { Header, Content } = Layout
 const { TextArea } = Input
 
@@ -107,7 +107,7 @@ export default function RoleManagement() {
         message.error('加载角色列表失败：' + result.error)
       }
     } catch (error) {
-      console.error('加载角色列表失败:', error)
+      devLog.error('加载角色列表失败:', error)
       message.error('加载失败，请重试')
     } finally {
       setLoading(false)
@@ -177,7 +177,7 @@ export default function RoleManagement() {
         message.error(result.error)
       }
     } catch (error) {
-      console.error('提交失败:', error)
+      devLog.error('提交失败:', error)
       message.error('操作失败，请重试')
     } finally {
       setLoading(false)
@@ -199,7 +199,7 @@ export default function RoleManagement() {
         message.error(result.error)
       }
     } catch (error) {
-      console.error('删除失败:', error)
+      devLog.error('删除失败:', error)
       message.error('删除失败，请重试')
     }
   }

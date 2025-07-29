@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { Select, Row, Col, Spin } from 'antd'
+import { devLog } from '@/utils/dev-logger'
 
 const { Option } = Select
 
@@ -57,7 +58,7 @@ export const AreaSelector: React.FC<AreaSelectorProps> = ({
         const data = await response.json()
         setProvinces(data)
       } catch (error) {
-        console.error('加载省份数据失败:', error)
+        devLog.error('加载省份数据失败:', error)
       } finally {
         setLoading(prev => ({ ...prev, provinces: false }))
       }

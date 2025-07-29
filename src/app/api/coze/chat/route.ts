@@ -10,6 +10,11 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
 // 环境变量配置
 const COZE_BOT_ID = process.env.CHAT_BOT_ID || ''
 
@@ -72,7 +77,19 @@ async function updateChatCount(userId: string): Promise<{ success: boolean; rema
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, userInfo, conversationId, userId } = await request.json()
+    const requestBody = await request.json()
+    const { message, userInfo, conversationId, dbConversationId, userId, userProfileId: requestUserProfileId } = requestBody
+    
+    // 🔍 完整请求体调试信息
+    console.log('🔍 Coze Chat API 收到请求:', {
+      hasMessage: !!message,
+      hasUserInfo: !!userInfo,
+      conversationId: conversationId || 'undefined',
+      dbConversationId: dbConversationId || 'undefined',
+      userId: userId || 'undefined',
+      requestUserProfileId: requestUserProfileId || 'undefined',
+      requestBodyKeys: Object.keys(requestBody)
+    })
 
     if (!message) {
       return NextResponse.json(
@@ -89,9 +106,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 生成一致的用户ID（基于手机号或传入的userId）
-    const consistentUserId = userId || `user_${Date.now()}`
-    console.log('🔑 使用用户ID:', consistentUserId)
+    // 🔧 修复：优先使用userProfileId，确保参数一致性
+    const consistentUserId = requestUserProfileId || userId || `user_${Date.now()}`
+    console.log('🔑 Coze API参数检查:')
+    console.log('   原始userId:', userId)
+    console.log('   传入requestUserProfileId:', requestUserProfileId)
+    console.log('   最终使用consistentUserId:', consistentUserId)
 
     // 检查并更新聊天次数（仅对user_profiles.id格式的用户）
     if (consistentUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(consistentUserId)) {
@@ -134,7 +154,7 @@ export async function POST(request: NextRequest) {
 
     // 快速获取用户token（简化流程以提高响应速度）
     let accessToken: string | null = null
-    let authMethod = 'PAT Token' // 默认认证方式
+    let authMethod = 'JWT OAuth' // 优先认证方式，会根据实际情况调整
     let userProfileId: string | null = null
 
     // 🚀 快速模式：只尝试最直接的方式，如果失败则使用系统token
@@ -437,6 +457,37 @@ export async function POST(request: NextRequest) {
               console.log('   用户ID:', consistentUserId)
               console.log('   消息长度:', fullResponse.length)
 
+              // ✨ 异步保存assistant消息到数据库（在流式输出完成后）
+              console.log('🔍 异步保存检查参数:', {
+                hasFullResponse: !!fullResponse,
+                fullResponseLength: fullResponse?.length || 0,
+                conversationId: conversationId,
+                dbConversationId: dbConversationId,
+                consistentUserId: consistentUserId,
+                finalConversationId: finalConversationId,
+                finalChatId: finalChatId
+              })
+              
+              if (fullResponse && dbConversationId && consistentUserId) {
+                console.log('✅ 开始异步保存assistant消息')
+                saveAssistantMessageAsync(
+                  dbConversationId, // 使用数据库对话ID
+                  fullResponse,
+                  finalConversationId,
+                  finalChatId,
+                  consistentUserId
+                ).catch((error: unknown) => {
+                  console.error('❌ 异步保存assistant消息失败:', error)
+                  // 不影响流式响应，仅记录错误
+                })
+              } else {
+                console.warn('⚠️ 异步保存跳过，缺少必要参数:', {
+                  hasFullResponse: !!fullResponse,
+                  hasDbConversationId: !!dbConversationId,
+                  hasConsistentUserId: !!consistentUserId
+                })
+              }
+
               const finalData = JSON.stringify({
                 type: 'done',
                 fullResponse: fullResponse,
@@ -492,6 +543,37 @@ export async function POST(request: NextRequest) {
               `${accessToken.substring(0, 12)}...` : '系统级Token')
             console.log('   用户ID:', consistentUserId)
             console.log('   消息长度:', fullResponse.length)
+
+            // ✨ 异步保存assistant消息到数据库（备用保存逻辑）
+            console.log('🔍 备用异步保存检查参数:', {
+              hasFullResponse: !!fullResponse,
+              fullResponseLength: fullResponse?.length || 0,
+              conversationId: conversationId,
+              dbConversationId: dbConversationId,
+              consistentUserId: consistentUserId,
+              finalConversationId: finalConversationId,
+              finalChatId: finalChatId
+            })
+            
+            if (fullResponse && dbConversationId && consistentUserId) {
+              console.log('✅ 开始备用异步保存assistant消息')
+              saveAssistantMessageAsync(
+                dbConversationId, // 使用数据库对话ID
+                fullResponse,
+                finalConversationId,
+                finalChatId,
+                consistentUserId
+              ).catch((error: unknown) => {
+                console.error('❌ 异步保存assistant消息失败（备用）:', error)
+                // 不影响流式响应，仅记录错误
+              })
+            } else {
+              console.warn('⚠️ 备用异步保存跳过，缺少必要参数:', {
+                hasFullResponse: !!fullResponse,
+                hasDbConversationId: !!dbConversationId,
+                hasConsistentUserId: !!consistentUserId
+              })
+            }
             
             const finalData = JSON.stringify({
               type: 'done',
@@ -554,5 +636,99 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     )
+  }
+}
+
+// 异步保存assistant消息到数据库的函数
+async function saveAssistantMessageAsync(
+  conversationId: string,
+  content: string,
+  cozeConversationId: string,
+  cozeChatId: string,
+  userProfileId: string
+): Promise<void> {
+  try {
+    console.log('💾 开始异步保存assistant消息:', {
+      conversationId,
+      contentLength: content.length,
+      cozeConversationId,
+      cozeChatId,
+      userProfileId
+    })
+
+    // 获取该对话中消息的最大索引
+    const { data: maxIndexResult, error: indexError } = await supabaseAdmin
+      .from('messages')
+      .select('message_index')
+      .eq('conversation_id', conversationId)
+      .order('message_index', { ascending: false })
+      .limit(1)
+
+    if (indexError) {
+      console.error('❌ 获取消息索引失败:', indexError)
+      // 继续执行，使用默认索引
+    }
+
+    const nextIndex = maxIndexResult && maxIndexResult.length > 0 
+      ? maxIndexResult[0].message_index + 1 
+      : 0
+
+    console.log('📝 准备创建assistant消息，索引:', nextIndex)
+
+    // 直接创建新的assistant消息，不做重复检查
+    const { data: message, error: createError } = await supabaseAdmin
+      .from('messages')
+      .insert({
+        conversation_id: conversationId,
+        role: 'assistant',
+        content: content,
+        metadata: {
+          coze_conversation_id: cozeConversationId,
+          coze_chat_id: cozeChatId,
+          user_profile_id: userProfileId,
+          saved_by: 'backend_async',
+          saved_at: new Date().toISOString()
+        },
+        message_index: nextIndex
+      })
+      .select('*')
+      .single()
+
+    if (createError) {
+      console.error('❌ 创建assistant消息失败:', createError)
+      console.error('❌ 创建失败详情:', JSON.stringify(createError, null, 2))
+      throw new Error(`创建消息失败: ${createError.message}`)
+    }
+
+    console.log('✅ Assistant消息创建成功:', {
+      messageId: message.id,
+      messageIndex: nextIndex,
+      conversationId,
+      contentLength: content.length
+    })
+
+    // 更新对话的updated_at时间戳
+    const { error: updateError } = await supabaseAdmin
+      .from('conversations')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', conversationId)
+
+    if (updateError) {
+      console.warn('⚠️ 更新对话时间戳失败:', updateError)
+    } else {
+      console.log('✅ 对话时间戳更新成功')
+    }
+
+    console.log('✅ Assistant消息异步保存完成:', {
+      messageId: message.id,
+      messageIndex: nextIndex,
+      conversationId
+    })
+
+  } catch (error) {
+    console.error('❌ 异步保存assistant消息失败:', error)
+    console.error('❌ 错误详情:', JSON.stringify(error, null, 2))
+    // 重新抛出错误，但不影响流式响应
+    throw error
   }
 }

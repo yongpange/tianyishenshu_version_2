@@ -2,6 +2,7 @@ import { UserInfo } from '@/lib/coze-client'
 import { calculateUserDataHash, generateReportId, formatAreaDisplay } from '@/utils/client-utils'
 import { getAstrologyContext } from '@/utils/personality-report'
 import { supabaseAdmin } from '@/lib/supabase'
+import { devLog } from '@/utils/dev-logger'
 
 // 身体健康报告接口
 export interface HealthReport {
@@ -35,7 +36,7 @@ export function createHealthReport(
 // 保存身体健康报告到数据库
 export async function saveHealthReport(report: HealthReport, userProfileId: string): Promise<void> {
   try {
-    console.log('💾 保存身体健康报告到数据库:', {
+    devLog.log('💾 保存身体健康报告到数据库:', {
       reportId: report.id,
       userProfileId: userProfileId,
       contentLength: report.content.length
@@ -49,13 +50,13 @@ export async function saveHealthReport(report: HealthReport, userProfileId: stri
       .single()
 
     if (checkError && checkError.code !== 'PGRST116') {
-      console.error('❌ 检查现有报告失败:', checkError)
+      devLog.error('❌ 检查现有报告失败:', checkError)
       throw new Error('检查现有报告失败')
     }
 
     if (existingReport) {
       // 更新现有报告
-      console.log('🔄 更新现有身体健康报告:', existingReport.id)
+      devLog.log('🔄 更新现有身体健康报告:', existingReport.id)
       const { error: updateError } = await supabaseAdmin
         .from('health_reports')
         .update({
@@ -67,14 +68,14 @@ export async function saveHealthReport(report: HealthReport, userProfileId: stri
         .eq('user_id', userProfileId)
 
       if (updateError) {
-        console.error('❌ 更新身体健康报告失败:', updateError)
+        devLog.error('❌ 更新身体健康报告失败:', updateError)
         throw new Error('更新报告失败')
       }
 
-      console.log('✅ 身体健康报告更新成功')
+      devLog.log('✅ 身体健康报告更新成功')
     } else {
       // 创建新报告
-      console.log('🆕 创建新的身体健康报告')
+      devLog.log('🆕 创建新的身体健康报告')
       const { error: insertError } = await supabaseAdmin
         .from('health_reports')
         .insert({
@@ -87,15 +88,15 @@ export async function saveHealthReport(report: HealthReport, userProfileId: stri
         })
 
       if (insertError) {
-        console.error('❌ 插入身体健康报告失败:', insertError)
+        devLog.error('❌ 插入身体健康报告失败:', insertError)
         throw new Error('保存报告失败')
       }
 
-      console.log('✅ 身体健康报告保存成功')
+      devLog.log('✅ 身体健康报告保存成功')
     }
 
   } catch (error) {
-    console.error('❌ 保存身体健康报告过程出错:', error)
+    devLog.error('❌ 保存身体健康报告过程出错:', error)
     throw error
   }
 }
@@ -103,7 +104,7 @@ export async function saveHealthReport(report: HealthReport, userProfileId: stri
 // 获取身体健康报告
 export async function getHealthReport(userProfileId: string): Promise<HealthReport | null> {
   try {
-    console.log('📖 获取身体健康报告:', userProfileId)
+    devLog.log('📖 获取身体健康报告:', userProfileId)
 
     const { data: report, error } = await supabaseAdmin
       .from('health_reports')
@@ -113,14 +114,14 @@ export async function getHealthReport(userProfileId: string): Promise<HealthRepo
 
     if (error) {
       if (error.code === 'PGRST116') {
-        console.log('📋 身体健康报告不存在:', userProfileId)
+        devLog.log('📋 身体健康报告不存在:', userProfileId)
         return null
       }
-      console.error('❌ 查询身体健康报告失败:', error)
+      devLog.error('❌ 查询身体健康报告失败:', error)
       throw new Error('查询报告失败')
     }
 
-    console.log('✅ 成功获取身体健康报告:', {
+    devLog.log('✅ 成功获取身体健康报告:', {
       reportId: report.id,
       contentLength: report.content?.length || 0,
       generatedAt: report.generated_at
@@ -128,7 +129,7 @@ export async function getHealthReport(userProfileId: string): Promise<HealthRepo
 
     return report
   } catch (error) {
-    console.error('❌ 获取身体健康报告过程出错:', error)
+    devLog.error('❌ 获取身体健康报告过程出错:', error)
     throw error
   }
 }
@@ -136,7 +137,7 @@ export async function getHealthReport(userProfileId: string): Promise<HealthRepo
 // 删除身体健康报告
 export async function deleteHealthReport(userProfileId: string): Promise<void> {
   try {
-    console.log('🗑️ 删除身体健康报告:', userProfileId)
+    devLog.log('🗑️ 删除身体健康报告:', userProfileId)
 
     const { error } = await supabaseAdmin
       .from('health_reports')
@@ -144,13 +145,13 @@ export async function deleteHealthReport(userProfileId: string): Promise<void> {
       .eq('user_id', userProfileId)
 
     if (error) {
-      console.error('❌ 删除身体健康报告失败:', error)
+      devLog.error('❌ 删除身体健康报告失败:', error)
       throw new Error('删除报告失败')
     }
 
-    console.log('✅ 身体健康报告删除成功')
+    devLog.log('✅ 身体健康报告删除成功')
   } catch (error) {
-    console.error('❌ 删除身体健康报告过程出错:', error)
+    devLog.error('❌ 删除身体健康报告过程出错:', error)
     throw error
   }
 }
@@ -165,13 +166,13 @@ export async function checkHealthReportExists(userProfileId: string): Promise<bo
       .single()
 
     if (error && error.code !== 'PGRST116') {
-      console.error('❌ 检查身体健康报告存在性失败:', error)
+      devLog.error('❌ 检查身体健康报告存在性失败:', error)
       return false
     }
 
     return !!data
   } catch (error) {
-    console.error('❌ 检查身体健康报告存在性过程出错:', error)
+    devLog.error('❌ 检查身体健康报告存在性过程出错:', error)
     return false
   }
 }
@@ -186,13 +187,13 @@ export async function getHealthReportStats(userProfileId: string) {
       .single()
 
     if (error && error.code !== 'PGRST116') {
-      console.error('❌ 获取身体健康报告统计失败:', error)
+      devLog.error('❌ 获取身体健康报告统计失败:', error)
       return null
     }
 
     return data
   } catch (error) {
-    console.error('❌ 获取身体健康报告统计过程出错:', error)
+    devLog.error('❌ 获取身体健康报告统计过程出错:', error)
     return null
   }
 }

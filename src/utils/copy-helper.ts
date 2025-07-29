@@ -1,6 +1,7 @@
 import { message, Modal } from 'antd'
 import { Input, Button, Space } from 'antd'
 import React from 'react'
+import { devLog } from '@/utils/dev-logger'
 
 const { TextArea } = Input
 
@@ -33,7 +34,7 @@ export const copyToClipboard = async (
         message.success(successMessage)
         return true
       } catch (clipboardError) {
-        console.warn('Clipboard API 失败，尝试备用方案:', clipboardError)
+        devLog.warn('Clipboard API 失败，尝试备用方案:', clipboardError)
       }
     }
 
@@ -70,7 +71,7 @@ export const copyToClipboard = async (
         return true
       }
     } catch (execCommandError) {
-      console.warn('execCommand 失败，使用最终备用方案:', execCommandError)
+      devLog.warn('execCommand 失败，使用最终备用方案:', execCommandError)
     }
 
     // 方案3：创建临时可选择的元素（兼容更多浏览器）
@@ -109,7 +110,7 @@ export const copyToClipboard = async (
       
       document.body.removeChild(container)
     } catch (rangeError) {
-      console.warn('Range 选择失败:', rangeError)
+      devLog.warn('Range 选择失败:', rangeError)
     }
 
     // 方案4：最终备用方案 - 显示Modal让用户手动复制
@@ -117,7 +118,7 @@ export const copyToClipboard = async (
     return false
     
   } catch (error) {
-    console.error('所有复制方案都失败了:', error)
+    devLog.error('所有复制方案都失败了:', error)
     showCopyModal(text, fallbackTitle, fallbackMessage)
     return false
   }
@@ -141,7 +142,7 @@ const showCopyModal = (text: string, title: string, messageText: string) => {
         return
       }
     } catch (e) {
-      console.warn('Modal中复制失败:', e)
+      devLog.warn('Modal中复制失败:', e)
     }
     
     // 提示用户手动选择

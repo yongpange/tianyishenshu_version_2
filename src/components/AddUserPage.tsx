@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, Input, Button, message, Form } from 'antd'
 import { CheckCircleFilled } from '@ant-design/icons'
+import { devLog } from '@/utils/dev-logger'
 
 interface AddUserPageProps {
   onSuccess?: () => void
@@ -71,7 +72,7 @@ export default function AddUserPage({ onSuccess }: AddUserPageProps) {
         message.error(error.message || '兑换码验证失败')
       }
     } catch (error) {
-      console.error('验证兑换码失败:', error)
+      devLog.error('验证兑换码失败:', error)
       message.error('验证失败，请重试')
     } finally {
       setLoading(false)
