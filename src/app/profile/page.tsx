@@ -18,7 +18,8 @@ import {
   Skeleton,
   Modal,
   Row,
-  Col
+  Col,
+  Checkbox
 } from 'antd'
 import { CheckCircleFilled, LoadingOutlined, CalendarOutlined } from '@ant-design/icons'
 import { AuthGuard } from '@/components/AuthGuard'
@@ -39,7 +40,7 @@ const { Option } = Select
 const profileSchema = z.object({
   nickname: z.string().min(1, '请输入昵称').max(20, '昵称不能超过20个字符'),
   gender: z.enum(['男', '女'], { errorMap: () => ({ message: '请选择性别' }) }),
-  year: z.number().min(1900, '年份不能早于1900年').max(2024, '年份不能晚于2024年'),
+  year: z.number().min(1900, '年份不能早于1900年').max(2025, '年份不能晚于2025年'),
   month: z.number().min(1, '月份必须在1-12之间').max(12, '月份必须在1-12之间'),
   day: z.number().min(1, '日期必须在1-31之间').max(31, '日期必须在1-31之间'),
   hour: z.number().min(0, '小时必须在0-23之间').max(23, '小时必须在0-23之间'),
@@ -296,17 +297,43 @@ function ProfilePageContent() {
     }, { shouldValidate: true })
   }
 
+  // 验证农历日期有效性
+  const validateLunarDate = (year, month, day, isLeap) => {
+    if (!year || !month || !day) return { valid: false, error: '请完整填写农历日期' }
+
+    try {
+      const { Lunar } = require('lunar-javascript')
+      const lunar = Lunar.fromYmd(year, month, day, isLeap)
+      return { valid: true, lunar }
+    } catch (error) {
+      return { valid: false, error: '农历日期无效' }
+    }
+  }
+
+  // 实时验证农历日期
+  useEffect(() => {
+    if (lunarDate.year && lunarDate.month && lunarDate.day) {
+      const validation = validateLunarDate(lunarDate.year, lunarDate.month, lunarDate.day, lunarDate.isLeap)
+      if (!validation.valid && lunarDate.isLeap) {
+        // 如果闰月无效，自动取消闰月选择
+        setLunarDate(prev => ({ ...prev, isLeap: false }))
+      }
+    }
+  }, [lunarDate.year, lunarDate.month, lunarDate.day, lunarDate.isLeap])
+
   // 农历转阳历
   const convertLunarToSolar = () => {
-    if (!lunarDate.year || !lunarDate.month || !lunarDate.day) {
-      message.error('请完整填写农历日期')
+    // 验证农历日期
+    const validation = validateLunarDate(lunarDate.year, lunarDate.month, lunarDate.day, lunarDate.isLeap)
+    if (!validation.valid) {
+      message.error(validation.error)
       return
     }
 
     try {
-      // 使用农历转换库
+      // 使用农历转换库，支持闰月
       const { Lunar, Solar } = require('lunar-javascript')
-      const lunar = Lunar.fromYmd(lunarDate.year, lunarDate.month, lunarDate.day)
+      const lunar = Lunar.fromYmd(lunarDate.year, lunarDate.month, lunarDate.day, lunarDate.isLeap)
       const solar = lunar.getSolar()
 
       // 更新表单值
@@ -314,7 +341,8 @@ function ProfilePageContent() {
       setValue('month', solar.getMonth(), { shouldValidate: true })
       setValue('day', solar.getDay(), { shouldValidate: true })
 
-      message.success(`农历${lunarDate.year}年${lunarDate.month}月${lunarDate.day}日 转换为 阳历${solar.getYear()}年${solar.getMonth()}月${solar.getDay()}日`)
+      const leapText = lunarDate.isLeap ? '闰' : ''
+      message.success(`农历${lunarDate.year}年${leapText}${lunarDate.month}月${lunarDate.day}日 转换为 阳历${solar.getYear()}年${solar.getMonth()}月${solar.getDay()}日`)
       setShowLunarModal(false)
 
       // 重置农历日期
@@ -760,7 +788,7 @@ function ProfilePageContent() {
                   style={{ width: '100%' }}
                   showSearch
                 >
-                  {Array.from({ length: 125 }, (_, i) => 2024 - i).map(year => (
+                  {Array.from({ length: 126 }, (_, i) => 2025 - i).map(year => (
                     <Select.Option key={year} value={year}>{year}年</Select.Option>
                   ))}
                 </Select>
@@ -780,6 +808,14 @@ function ProfilePageContent() {
                     <Select.Option key={month} value={month}>{month}月</Select.Option>
                   ))}
                 </Select>
+                <div className="mt-2">
+                  <Checkbox
+                    checked={lunarDate.isLeap}
+                    onChange={(e) => setLunarDate(prev => ({ ...prev, isLeap: e.target.checked }))}
+                  >
+                    闰月
+                  </Checkbox>
+                </div>
               </Col>
 
               <Col span={8}>
@@ -799,11 +835,7 @@ function ProfilePageContent() {
               </Col>
             </Row>
 
-            <div className="text-xs text-gray-500 mt-4">
-              <p>• 农历转阳历功能基于中国传统历法计算</p>
-              <p>• 转换结果将自动填入上方的出生日期字段</p>
-              <p>• 如遇闰月等特殊情况，请咨询客服处理</p>
-            </div>
+
           </div>
         </Modal>
       </Card>
