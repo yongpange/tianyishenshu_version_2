@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { Select, Row, Col } from 'antd'
+import { devLog } from '@/utils/dev-logger'
 
 const { Option } = Select
 
@@ -47,9 +48,9 @@ export default function SimpleAreaSelector({
         const data = await response.json()
         setAreaData(data)
         setLoading(false)
-        console.log('✅ 省市区数据加载完成:', data.length + '个省份')
+        devLog.log('✅ 省市区数据加载完成:', data.length + '个省份')
       } catch (error) {
-        console.error('❌ 加载省市区数据失败:', error)
+        devLog.error('❌ 加载省市区数据失败:', error)
         setLoading(false)
       }
     }

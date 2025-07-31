@@ -1,18 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ChatStatus, RoleType } from '@coze/api'
-import { supabaseAdmin } from '@/lib/supabase'
 import { UserInfo } from '@/lib/coze-client'
-import { createCozeClient, validateBotId, checkAuthConfig } from '@/lib/coze-auth'
-import {
-  validateUserInfo,
-  calculateUserDataHash,
-  formatUserInfoDisplay
-} from '@/utils/client-utils'
+import { formatUserInfoDisplay } from '@/utils/client-utils'
 import { 
   createMarriageReport, 
-  saveMarriageReport,
-  getAstrologyContext
+  saveMarriageReport
 } from '@/utils/marriage-report'
+import { 
+  generateReport,
+  UniversalReportRequest,
+  UniversalReportResponse,
+  ReportConfig
+} from '@/lib/report-generator'
 
 // 请求接口
 interface MarriageReportRequest {
@@ -30,8 +28,13 @@ interface MarriageReportResponse {
   authMethod?: string
 }
 
-// 环境变量配置（使用婚恋感情专用的Bot ID）
+// 环境变量配置
 const MARRIAGE_BOT_ID = process.env.MARRIAGE_BOT_ID || process.env.BOT_ID || ''
+
+// 验证Bot ID配置
+if (!MARRIAGE_BOT_ID) {
+  console.error('❌ 婚恋报告Bot ID配置缺失: MARRIAGE_BOT_ID 和 BOT_ID 都未设置')
+}
 
 // 格式化用户信息为婚恋感情报告prompt
 function formatMarriagePrompt(userInfo: UserInfo, astrologyContext?: string): string {
@@ -49,239 +52,89 @@ function formatMarriagePrompt(userInfo: UserInfo, astrologyContext?: string): st
 
 ${astrologyContext}
 
-请基于以上八字排盘信息，深入分析用户的感情运势、婚姻状况、恋爱特质等方面，生成专业的婚恋感情报告。`
-  } else {
-    prompt += `请基于用户的出生时间和地点信息，分析其感情运势、婚姻状况、恋爱特质等方面，生成专业的婚恋感情报告。`
+**请基于以上八字排盘信息，结合传统命理学知识，生成深度的婚恋感情分析报告。**
+
+`
   }
+
+  prompt += `请自由发挥，生成丰富全面的婚恋感情分析内容，可以包含但不限于：感情模式、伴侣特质、恋爱态度、婚姻运势、情感发展、关系维护、最佳匹配时期、注意事项等方面。
+
+请使用markdown格式，合理组织内容结构，让报告既专业又贴心。`
 
   return prompt
 }
 
+// 生成fallback内容
+function generateFallbackContent(userInfo: UserInfo): string {
+  return `# 婚恋感情分析报告
+
+基于您的出生信息：${formatUserInfoDisplay(userInfo)}
+
+## 基础分析
+
+由于AI服务暂时不可用，这里提供基础的婚恋感情分析框架。您可以稍后重新生成完整的报告。
+
+## 出生信息
+- 出生年份：${userInfo.year}年
+- 出生月日：${userInfo.month}月${userInfo.day}日  
+- 出生时辰：${userInfo.hour}时${userInfo.minute}分
+- 出生地区：${userInfo.area.province} ${userInfo.area.city} ${userInfo.area.district}
+- 性别：${userInfo.gender === 'male' || userInfo.gender === '男' ? '男' : '女'}
+
+## 基础建议
+- 感情需要真诚和理解
+- 建议多沟通，增进了解
+- 保持开放和包容的心态
+
+请稍后重试以获取完整的AI分析报告。`
+}
+
+// 婚恋感情报告配置
+const marriageReportConfig: ReportConfig = {
+  reportType: 'marriage',
+  reportName: '婚恋感情报告',
+  botId: MARRIAGE_BOT_ID,
+  tableName: 'marriage_reports',
+  formatPrompt: formatMarriagePrompt,
+  createReport: createMarriageReport,
+  saveReport: saveMarriageReport,
+  includeAstrology: true,
+  fallbackContent: generateFallbackContent
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse<MarriageReportResponse>> {
   try {
+    // 首先检查Bot ID配置
+    if (!MARRIAGE_BOT_ID) {
+      console.error('❌ 婚恋报告配置错误:', {
+        MARRIAGE_BOT_ID: process.env.MARRIAGE_BOT_ID || 'undefined',
+        BOT_ID: process.env.BOT_ID || 'undefined'
+      })
+      return NextResponse.json({
+        success: false,
+        error: 'Bot ID配置缺失，请联系管理员配置 MARRIAGE_BOT_ID 或 BOT_ID 环境变量',
+        details: `当前配置: MARRIAGE_BOT_ID=${process.env.MARRIAGE_BOT_ID || 'undefined'}, BOT_ID=${process.env.BOT_ID || 'undefined'}`
+      }, { status: 500 })
+    }
+
     const body: MarriageReportRequest = await request.json()
-    const { userInfo, userId, isUserProfileId } = body
-
-    console.log('🚀 开始生成婚恋感情报告:', { userId, userInfo, isUserProfileId })
-
-    // 验证请求参数
-    if (!userId || !userInfo) {
-      return NextResponse.json({
-        success: false,
-        error: '缺少必要参数'
-      }, { status: 400 })
+    const universalRequest: UniversalReportRequest = {
+      userInfo: body.userInfo,
+      userId: body.userId,
+      isUserProfileId: body.isUserProfileId
     }
 
-    // 验证用户信息完整性
-    if (!validateUserInfo(userInfo)) {
-      console.error('❌ 用户信息验证失败:', userInfo)
-      return NextResponse.json({
-        success: false,
-        error: '用户信息不完整，请检查所有必填字段'
-      }, { status: 400 })
-    }
+    console.log('✅ 婚恋报告Bot ID配置正常:', MARRIAGE_BOT_ID)
 
-    // 验证认证配置
-    try {
-      await checkAuthConfig()
-    } catch (authError) {
-      console.error('❌ 认证配置检查失败:', authError)
-      return NextResponse.json({
-        success: false,
-        error: authError instanceof Error ? authError.message : 'Coze认证配置缺失'
-      }, { status: 500 })
-    }
-
-    // 验证Bot ID
-    let botId: string
-    try {
-      botId = validateBotId(MARRIAGE_BOT_ID)
-    } catch (botError) {
-      console.error('❌ Bot ID验证失败:', botError)
-      return NextResponse.json({
-        success: false,
-        error: botError instanceof Error ? botError.message : 'Bot ID配置缺失'
-      }, { status: 500 })
-    }
-
-    // 获取八字排盘上下文信息 - 数据库优先
-    console.log('🔮 获取八字排盘数据...')
-    // 确定用户ID for 八字获取
-    let baziUserId: string
-
-    if (isUserProfileId) {
-      // 使用user_profiles.id
-      baziUserId = userId
-    } else {
-      // 通过手机号查找user_profiles.id
-      const { data: user, error: userError } = await supabaseAdmin
-        .from('users')
-        .select('id')
-        .eq('phone_number', userId)
-        .single()
-
-      if (userError || !user) {
-        throw new Error('找不到用户信息')
-      }
-
-      const { data: userProfile, error: profileError } = await supabaseAdmin
-        .from('user_profiles')
-        .select('id')
-        .eq('user_id', user.id)
-        .is('parent_id', null)
-        .single()
-
-      if (profileError || !userProfile) {
-        throw new Error('找不到用户资料')
-      }
-
-      baziUserId = userProfile.id
-    }
-
-    const astrologyContext = await getAstrologyContext(userInfo, baziUserId)
-    console.log('✅ 八字排盘数据获取完成')
-
-    // 生成婚恋感情报告prompt
-    const prompt = formatMarriagePrompt(userInfo, astrologyContext)
-
-    console.log('📝 发送给Coze的prompt:', prompt.substring(0, 200) + '...')
-
-    // 创建Coze客户端
-    const { client: coze, authMethod } = await createCozeClient()
-
-    // 尝试调用 Coze 智能体（带重试机制）
-    let lastError: Error | null = null
-    const maxRetries = 2
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        console.log(`🚀 开始调用Coze智能体 (尝试 ${attempt}/${maxRetries})`)
-
-        const result = await Promise.race([
-          coze.chat.createAndPoll({
-            bot_id: botId,
-            user_id: userId || `user_${Date.now()}`,
-            additional_messages: [
-              {
-                role: RoleType.User,
-                content: prompt,
-                content_type: 'text',
-              },
-            ],
-          }),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Coze API调用超时，请稍后重试')), 300000)
-          )
-        ]) as any
-
-        console.log('📡 Chat完成:', {
-          status: result.chat.status,
-          conversation_id: result.chat.conversation_id
-        })
-
-        if (result.chat.status === ChatStatus.COMPLETED && result.messages) {
-          console.log('📋 消息数量:', result.messages.length)
-
-          // 找到AI的回复
-          const aiMessage = result.messages.find(
-            (msg: any) => msg.role === RoleType.Assistant && msg.type === 'answer'
-          )
-
-          if (aiMessage && aiMessage.content) {
-            console.log('🎉 成功获取AI生成的婚恋感情报告!')
-            console.log('📄 报告长度:', aiMessage.content.length)
-
-            const reportContent = aiMessage.content
-
-            // 确定用户资料ID
-            let userProfileId: string
-
-            if (isUserProfileId === true) {
-              userProfileId = userId
-              console.log('✅ 直接使用传入的user_profiles.id:', userProfileId)
-            } else {
-              console.log('🔍 根据手机号查找user_profiles.id:', userId)
-              
-              const { data: user, error: userError } = await supabaseAdmin
-                .from('users')
-                .select('id')
-                .eq('phone', userId)
-                .single()
-
-              if (userError || !user) {
-                console.error('❌ 用户不存在:', userId)
-                throw new Error('用户不存在')
-              }
-
-              const { data: userProfile, error: profileError } = await supabaseAdmin
-                .from('user_profiles')
-                .select('id')
-                .eq('user_id', user.id)
-                .is('parent_id', null)
-                .single()
-
-              if (profileError || !userProfile) {
-                console.error('❌ 主账户用户资料不存在:', user.id)
-                throw new Error('主账户用户资料不存在')
-              }
-
-              userProfileId = userProfile.id
-            }
-
-            console.log('✅ 确定用户资料ID:', userProfileId)
-
-            // 保存到Supabase
-            console.log('💾 保存婚恋感情报告到数据库...')
-            const reportData = createMarriageReport(
-              userId,
-              reportContent,
-              userInfo,
-              result.chat.conversation_id
-            )
-            await saveMarriageReport(reportData, userProfileId)
-
-            console.log('✅ 婚恋感情报告保存成功:', { 
-              reportId: reportData.id, 
-              userProfileId: userProfileId,
-              isUserProfileId: isUserProfileId 
-            })
-
-            return NextResponse.json({
-              success: true,
-              reportId: reportData.id,
-              content: reportContent,
-              authMethod: authMethod
-            })
-
-          } else {
-            console.log('⚠️ 未找到AI回复消息')
-            throw new Error('未找到AI回复消息')
-          }
-        } else if (result.chat.status === ChatStatus.FAILED) {
-          throw new Error(`Coze对话失败: ${result.chat.last_error?.msg || '未知错误'}`)
-        } else {
-          throw new Error(`Coze对话状态异常: ${result.chat.status}`)
-        }
-
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error))
-        console.error(`❌ 第${attempt}次尝试失败:`, lastError.message)
-        
-        if (attempt < maxRetries) {
-          console.log(`⏳ 等待${attempt * 2}秒后重试...`)
-          await new Promise(resolve => setTimeout(resolve, attempt * 2000))
-        }
-      }
-    }
-
-    // 所有重试都失败了
-    throw lastError || new Error('生成婚恋感情报告失败')
+    // 使用通用报告生成引擎
+    return await generateReport(universalRequest, marriageReportConfig)
 
   } catch (error) {
-    console.error('❌ 生成婚恋感情报告失败:', error)
+    console.error('❌ 婚恋感情报告生成失败:', error)
     return NextResponse.json({
       success: false,
-      error: error instanceof Error ? error.message : '生成报告失败，请稍后重试'
+      error: '报告生成失败，请稍后重试',
+      details: error instanceof Error ? error.message : String(error)
     }, { status: 500 })
   }
 }

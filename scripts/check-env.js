@@ -21,7 +21,6 @@ const requiredEnvVars = [
   'NEXT_PUBLIC_SUPABASE_ANON_KEY',
   'SUPABASE_SERVICE_ROLE_KEY',
   'COZE_BASE_URL',
-  'COZE_API_TOKEN',
   'BOT_ID'
 ]
 

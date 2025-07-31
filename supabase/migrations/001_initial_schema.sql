@@ -45,10 +45,14 @@ create table public.user_profiles (
   chat_remaining_count integer null default 10,
   user_role character varying(50) null default 'basic_user'::character varying,
   parent_id uuid null,
+  coze_access_token text null,
+  coze_token_expires_at timestamp with time zone null,
+  coze_token_created_at timestamp with time zone null,
   constraint user_profiles_pkey primary key (id),
   constraint user_profiles_parent_id_fkey foreign KEY (parent_id) references user_profiles (id) on delete
   set null,
     constraint user_profiles_user_id_fkey foreign KEY (user_id) references users (id) on delete CASCADE,
+    constraint user_profiles_user_role_fkey foreign KEY (user_role) references user_roles_permissions (role_name) on update CASCADE,
     constraint chk_parent_not_self check (
       (
         (parent_id is null)
@@ -72,6 +76,7 @@ create index IF not exists idx_user_profiles_user_id on public.user_profiles usi
 create index IF not exists idx_user_profiles_parent_id on public.user_profiles using btree (parent_id) TABLESPACE pg_default;
 create unique INDEX IF not exists uniq_user_profiles_primary on public.user_profiles using btree (user_id) TABLESPACE pg_default
 where (parent_id is null);
+create index IF not exists idx_user_profiles_token_expires on public.user_profiles using btree (coze_token_expires_at) TABLESPACE pg_default;
 create trigger update_user_profiles_updated_at BEFORE
 update on user_profiles for EACH row execute FUNCTION update_updated_at_column ();
 -- 创建用户角色权限表
@@ -100,8 +105,66 @@ CREATE TABLE personality_reports (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(user_id)
 );
+-- 创建财富报告表
+create table public.wealth_reports (
+  id text not null,
+  -- user_id 为user_profiles表的id
+  user_id uuid null,
+  content text null,
+  generated_at timestamp with time zone null,
+  user_data_hash text null,
+  coze_conversation_id text null,
+  task_id text null,
+  status text null default 'completed'::text,
+  progress integer null default 100,
+  error_message text null,
+  created_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null default now(),
+  constraint wealth_reports_pkey primary key (id),
+  constraint wealth_reports_user_id_fkey foreign KEY (user_id) references user_profiles (id) on delete CASCADE
+) TABLESPACE pg_default;
+create index IF not exists idx_wealth_reports_user_id on public.wealth_reports using btree (user_id) TABLESPACE pg_default;
+create index IF not exists idx_wealth_reports_task_id on public.wealth_reports using btree (task_id) TABLESPACE pg_default;
+-- 创建健康报告表
+create table public.health_reports (
+  id text not null,
+  user_id uuid null,
+  content text null,
+  generated_at timestamp with time zone null,
+  user_data_hash text null,
+  coze_conversation_id text null,
+  task_id text null,
+  status text null default 'completed'::text,
+  progress integer null default 100,
+  error_message text null,
+  created_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null default now(),
+  constraint health_reports_pkey primary key (id),
+  constraint health_reports_user_id_fkey foreign KEY (user_id) references user_profiles (id) on delete CASCADE
+) TABLESPACE pg_default;
+create index IF not exists idx_health_reports_user_id on public.health_reports using btree (user_id) TABLESPACE pg_default;
+create index IF not exists idx_health_reports_task_id on public.health_reports using btree (task_id) TABLESPACE pg_default;
+-- 创建婚姻报告表
+create table public.marriage_reports (
+  id text not null,
+  user_id uuid null,
+  content text null,
+  generated_at timestamp with time zone null,
+  user_data_hash text null,
+  coze_conversation_id text null,
+  task_id text null,
+  status text null default 'completed'::text,
+  progress integer null default 100,
+  error_message text null,
+  created_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null default now(),
+  constraint marriage_reports_pkey primary key (id),
+  constraint marriage_reports_user_id_fkey foreign KEY (user_id) references user_profiles (id) on delete CASCADE
+) TABLESPACE pg_default;
+create index IF not exists idx_marriage_reports_user_id on public.marriage_reports using btree (user_id) TABLESPACE pg_default;
+create index IF not exists idx_marriage_reports_task_id on public.marriage_reports using btree (task_id) TABLESPACE pg_default;
 -- 创建八字报告表
-create table bazi_reports (
+create table public.bazi_reports (
   id uuid not null default gen_random_uuid (),
   user_id uuid not null,
   raw_payload jsonb not null,
@@ -110,6 +173,7 @@ create table bazi_reports (
   api_request_id character varying(200) null,
   created_at timestamp with time zone null default now(),
   updated_at timestamp with time zone null default now(),
+  astrology_context text null,
   constraint bazi_reports_pkey primary key (id),
   constraint bazi_reports_user_id_key unique (user_id),
   constraint bazi_reports_user_id_fkey foreign KEY (user_id) references user_profiles (id) on delete CASCADE
@@ -118,15 +182,59 @@ create index IF not exists idx_bazi_reports_user_id on public.bazi_reports using
 create trigger trg_bazi_reports_updated_at BEFORE
 update on bazi_reports for EACH row execute FUNCTION update_updated_at_column ();
 -- 创建对话表
-CREATE TABLE conversations (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+create table public.conversations (
+  id uuid not null default gen_random_uuid (),
   -- user_id 为user_profiles表的id
-  user_id UUID REFERENCES user_profiles(id) ON DELETE CASCADE,
-  title VARCHAR(200) NOT NULL,
-  messages JSONB DEFAULT '[]'::jsonb,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+  user_id uuid null,
+  title character varying(200) not null,
+  module_type character varying(50) not null check (
+    module_type in (
+      'personality',
+      'astrology',
+      'wealth',
+      'marriage',
+      'health',
+      'consultation'
+    )
+  ),
+  messages jsonb null default '[]'::jsonb,
+  coze_conversation_id character varying(200) null,
+  bot_id character varying(50) null,
+  is_pinned boolean null default false,
+  is_manual_title boolean null default false,
+  created_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null default now(),
+  constraint conversations_pkey primary key (id),
+  constraint conversations_user_id_fkey foreign KEY (user_id) references user_profiles (id) on delete CASCADE
+) TABLESPACE pg_default;
+create index IF not exists idx_conversations_user_id on public.conversations using btree (user_id) TABLESPACE pg_default;
+create index IF not exists idx_conversations_module_type on public.conversations using btree (module_type) TABLESPACE pg_default;
+create index IF not exists idx_conversations_user_module on public.conversations using btree (user_id, module_type) TABLESPACE pg_default;
+create index IF not exists idx_conversations_coze_conversation_id on public.conversations using btree (coze_conversation_id) TABLESPACE pg_default;
+create index IF not exists idx_conversations_user_id_created_at on public.conversations using btree (user_id, created_at desc) TABLESPACE pg_default;
+create index IF not exists idx_conversations_user_module_created_at on public.conversations using btree (user_id, module_type, created_at desc) TABLESPACE pg_default;
+create trigger update_conversations_updated_at BEFORE
+update on conversations for EACH row execute FUNCTION update_updated_at_column ();
+-- 创建消息表
+create table public.messages (
+  id uuid not null default gen_random_uuid (),
+  -- conversation_id 为 conversations表的id
+  conversation_id uuid not null,
+  role character varying(20) not null check (role in ('user', 'assistant', 'system', 'tool')),
+  content text not null,
+  metadata jsonb null default '{}'::jsonb,
+  message_index integer not null,
+  created_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null default now(),
+  constraint messages_pkey primary key (id),
+  constraint messages_conversation_id_fkey foreign KEY (conversation_id) references conversations (id) on delete CASCADE,
+  constraint messages_conversation_index_unique unique (conversation_id, message_index)
+) TABLESPACE pg_default;
+create index IF not exists idx_messages_conversation_id on public.messages using btree (conversation_id) TABLESPACE pg_default;
+create index IF not exists idx_messages_conversation_id_index on public.messages using btree (conversation_id, message_index) TABLESPACE pg_default;
+create index IF not exists idx_messages_created_at on public.messages using btree (created_at) TABLESPACE pg_default;
+create trigger update_messages_updated_at BEFORE
+update on messages for EACH row execute FUNCTION update_updated_at_column ();
 -- 创建兑换码表
 CREATE TABLE invite_codes (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -144,6 +252,11 @@ CREATE INDEX idx_users_phone ON users(phone_number);
 CREATE INDEX idx_user_profiles_user_id ON user_profiles(user_id);
 CREATE INDEX idx_personality_reports_user_id ON personality_reports(user_id);
 CREATE INDEX idx_conversations_user_id ON conversations(user_id);
+CREATE INDEX idx_conversations_module_type ON conversations(module_type);
+CREATE INDEX idx_conversations_user_module ON conversations(user_id, module_type);
+CREATE INDEX idx_conversations_user_module_created_at ON conversations(user_id, module_type, created_at DESC);
+CREATE INDEX idx_messages_conversation_id ON messages(conversation_id);
+CREATE INDEX idx_messages_conversation_id_index ON messages(conversation_id, message_index);
 CREATE INDEX idx_invite_codes_code ON invite_codes(code);
 CREATE INDEX idx_invite_codes_status ON invite_codes(status);
 -- 创建更新时间触发器函数
@@ -160,6 +273,8 @@ CREATE TRIGGER update_personality_reports_updated_at BEFORE
 UPDATE ON personality_reports FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_conversations_updated_at BEFORE
 UPDATE ON conversations FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_messages_updated_at BEFORE
+UPDATE ON messages FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_invite_codes_updated_at BEFORE
 UPDATE ON invite_codes FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 -- 启用行级安全策略 (RLS)
@@ -167,6 +282,7 @@ ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE personality_reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE invite_codes ENABLE ROW LEVEL SECURITY;
 -- 创建安全策略（用户只能访问自己的数据）
 CREATE POLICY "Users can view own data" ON users FOR
@@ -232,6 +348,54 @@ CREATE POLICY "Users can delete own conversations" ON conversations FOR DELETE U
     SELECT id
     FROM user_profiles
     WHERE user_id = auth.uid()
+  )
+);
+-- 消息表策略
+CREATE POLICY "Users can view own messages" ON messages FOR
+SELECT USING (
+    conversation_id IN (
+      SELECT id
+      FROM conversations
+      WHERE user_id IN (
+          SELECT id
+          FROM user_profiles
+          WHERE user_id = auth.uid()
+        )
+    )
+  );
+CREATE POLICY "Users can insert own messages" ON messages FOR
+INSERT WITH CHECK (
+    conversation_id IN (
+      SELECT id
+      FROM conversations
+      WHERE user_id IN (
+          SELECT id
+          FROM user_profiles
+          WHERE user_id = auth.uid()
+        )
+    )
+  );
+CREATE POLICY "Users can update own messages" ON messages FOR
+UPDATE USING (
+    conversation_id IN (
+      SELECT id
+      FROM conversations
+      WHERE user_id IN (
+          SELECT id
+          FROM user_profiles
+          WHERE user_id = auth.uid()
+        )
+    )
+  );
+CREATE POLICY "Users can delete own messages" ON messages FOR DELETE USING (
+  conversation_id IN (
+    SELECT id
+    FROM conversations
+    WHERE user_id IN (
+        SELECT id
+        FROM user_profiles
+        WHERE user_id = auth.uid()
+      )
   )
 );
 -- 兑换码表策略

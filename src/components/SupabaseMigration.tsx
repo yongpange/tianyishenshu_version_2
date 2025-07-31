@@ -15,6 +15,7 @@ import {
   MigrationResult 
 } from '@/utils/migrate-to-supabase'
 import { getUserPhoneNumber } from '@/utils/client-utils'
+import { devLog } from '@/utils/dev-logger'
 
 export default function SupabaseMigration() {
   const [migrating, setMigrating] = useState(false)
@@ -55,7 +56,7 @@ export default function SupabaseMigration() {
       }
     } catch (error) {
       message.error('迁移过程出错')
-      console.error('Migration error:', error)
+      devLog.error('Migration error:', error)
     } finally {
       setMigrating(false)
     }

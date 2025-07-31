@@ -242,6 +242,34 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // 如果有主账户资料，确保生成OAuth token
+    if (hasMainProfile && userProfiles) {
+      try {
+        // 找到主账户资料
+        const mainProfile = userProfiles.find(profile => 
+          !profile.parent_id || profile.parent_id === null || profile.parent_id === undefined || profile.parent_id === ''
+        )
+        
+        if (mainProfile) {
+          console.log('🔑 为主账户检查并生成OAuth Token:', mainProfile.id)
+          
+          // 动态导入ensureUserCozeToken函数
+          const { ensureUserCozeToken } = await import('@/lib/coze-auth')
+          const tokenResult = await ensureUserCozeToken(mainProfile.id)
+          
+          if (tokenResult.success) {
+            console.log('✅ 主账户OAuth Token准备完成:', tokenResult.message)
+          } else {
+            console.warn('⚠️ 主账户OAuth Token生成失败:', tokenResult.message)
+            // 不阻止登录，只记录警告
+          }
+        }
+      } catch (tokenError) {
+        console.error('❌ 登录时生成OAuth Token失败:', tokenError)
+        // 不阻止登录，只记录错误
+      }
+    }
+
     console.log('✅ 登录成功，跳转到:', redirectTo)
     return NextResponse.json(responseData)
 

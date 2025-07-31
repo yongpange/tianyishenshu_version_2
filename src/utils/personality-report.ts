@@ -3,6 +3,71 @@ import { PersonalityReport, storageManager } from '@/lib/storage-adapter'
 import { calculateUserDataHash, generateReportId, formatAreaDisplay } from '@/utils/client-utils'
 import fs from 'fs'
 import path from 'path'
+import { supabaseAdmin } from '@/lib/supabase'
+import { devLog } from '@/utils/dev-logger'
+
+// 统一处理用户ID到user_profiles.id的转换
+export async function getUserProfileId(userId: string, isUserProfileId: boolean = false): Promise<string | null> {
+  try {
+    if (isUserProfileId) {
+      // 直接使用传入的userId作为user_profiles.id
+      return userId
+    }
+
+    // 根据users.id或手机号查找user_profiles.id
+    devLog.log('🔍 转换用户ID到user_profiles.id:', userId)
+    
+    // 先假设是users.id，然后尝试手机号
+    let user: any = null
+    
+    // 检查是否是UUID格式（可能是users.id）
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+      const { data: userData, error: userError } = await supabaseAdmin
+        .from('users')
+        .select('id')
+        .eq('id', userId)
+        .single()
+      
+      if (!userError && userData) {
+        user = userData
+      }
+    }
+    
+    // 如果不是users.id，尝试作为手机号查找
+    if (!user) {
+      const { data: userData, error: userError } = await supabaseAdmin
+        .from('users')
+        .select('id')
+        .eq('phone_number', userId)
+        .single()
+      
+      if (userError || !userData) {
+        devLog.warn('⚠️ 未找到用户记录:', userId)
+        return null
+      }
+      user = userData
+    }
+
+    // 查找user_profiles
+    const { data: userProfile, error: profileError } = await supabaseAdmin
+      .from('user_profiles')
+      .select('id')
+      .eq('user_id', user.id)
+      .single()
+
+    if (profileError || !userProfile) {
+      devLog.warn('⚠️ 未找到用户资料:', user.id)
+      return null
+    }
+
+    devLog.log('✅ 成功转换到user_profiles.id:', userProfile.id)
+    return userProfile.id
+
+  } catch (error) {
+    devLog.error('❌ 转换用户ID失败:', error)
+    return null
+  }
+}
 
 // 干支数据类型
 interface GanZhiData {
@@ -63,11 +128,11 @@ function loadGanZhiData(): GanZhiData[] {
     
     // 缓存数据
     ganZhiDataCache = data
-    console.log(`✅ 成功加载干支历法数据，共 ${data.length} 条记录`)
+    devLog.log(`✅ 成功加载干支历法数据，共 ${data.length} 条记录`)
     
     return data
   } catch (error) {
-    console.error('读取干支历法数据失败:', error)
+    devLog.error('读取干支历法数据失败:', error)
     return []
   }
 }
@@ -80,11 +145,11 @@ function getGanZhiByYear(year: number): string {
     if (found) {
       return found.ganZhi
     } else {
-      console.warn(`未找到 ${year} 年的干支数据，使用默认值`)
+      devLog.warn(`未找到 ${year} 年的干支数据，使用默认值`)
       return '甲子'
     }
   } catch (error) {
-    console.error('获取干支失败:', error)
+    devLog.error('获取干支失败:', error)
     return '甲子'
   }
 }
@@ -125,18 +190,18 @@ function loadShishenTable(): ShishenTable {
     
     // 缓存数据
     shishenTableCache = table
-    // console.log(`✅ 成功加载十神表数据，共 ${Object.keys(table).length} 个日主`)
+    // devLog.log(`✅ 成功加载十神表数据，共 ${Object.keys(table).length} 个日主`)
     
     // 调试：检查己的关系
     // if (table['己']) {
-    //   console.log('🔍 己的关系表:', table['己'])
-    //   console.log('🔍 己-丑关系:', table['己']['丑'])
-    //   console.log('🔍 己-卯关系:', table['己']['卯'])
+    //   devLog.log('🔍 己的关系表:', table['己'])
+    //   devLog.log('🔍 己-丑关系:', table['己']['丑'])
+    //   devLog.log('🔍 己-卯关系:', table['己']['卯'])
     // }
     
     return table
   } catch (error) {
-    console.error('读取十神表数据失败:', error)
+    devLog.error('读取十神表数据失败:', error)
     return {}
   }
 }
@@ -153,7 +218,7 @@ function loadCangGanTable(): CangGanTable {
     const lines = csvContent.trim().split('\n')
     
     if (lines.length < 4) {
-      console.error('藏干表数据格式错误，行数不足')
+      devLog.error('藏干表数据格式错误，行数不足')
       return {}
     }
     
@@ -178,11 +243,11 @@ function loadCangGanTable(): CangGanTable {
     
     // 缓存数据
     cangganTableCache = table
-    // console.log(`✅ 成功加载藏干表数据，共 ${Object.keys(table).length} 个地支`)
+    // devLog.log(`✅ 成功加载藏干表数据，共 ${Object.keys(table).length} 个地支`)
     
     return table
   } catch (error) {
-    console.error('读取藏干表数据失败:', error)
+    devLog.error('读取藏干表数据失败:', error)
     return {}
   }
 }
@@ -197,22 +262,22 @@ function getCangGanByDiZhi(dizhi: string) {
 function getShishenByTianGan(rizhu: string, tiangan: string): string {
   try {
     const shishenTable = loadShishenTable()
-    // console.log(`🔍 计算天干十神 - 日主:${rizhu}, 天干:${tiangan}`)
+    // devLog.log(`🔍 计算天干十神 - 日主:${rizhu}, 天干:${tiangan}`)
     
     if (shishenTable[rizhu]) {
       const shishen = shishenTable[rizhu][tiangan]
       if (shishen) {
         return shishen
       } else {
-        console.warn(`❌ 未找到日主${rizhu}与天干${tiangan}的十神关系`)
+        devLog.warn(`❌ 未找到日主${rizhu}与天干${tiangan}的十神关系`)
         return ''
       }
     } else {
-      console.warn(`❌ 十神表中不存在日主${rizhu}`)
+      devLog.warn(`❌ 十神表中不存在日主${rizhu}`)
       return ''
     }
   } catch (error) {
-    console.error('❌ 计算天干十神失败:', error)
+    devLog.error('❌ 计算天干十神失败:', error)
     return ''
   }
 }
@@ -221,25 +286,25 @@ function getShishenByTianGan(rizhu: string, tiangan: string): string {
 function getShishenByDiZhi(rizhu: string, dizhi: string): string {
   try {
     const shishenTable = loadShishenTable()
-    // console.log(`🔍 计算十神 - 日主:${rizhu}, 地支:${dizhi}`)
-    // console.log(`🔍 十神表中日主${rizhu}存在:`, !!shishenTable[rizhu])
+    // devLog.log(`🔍 计算十神 - 日主:${rizhu}, 地支:${dizhi}`)
+    // devLog.log(`🔍 十神表中日主${rizhu}存在:`, !!shishenTable[rizhu])
     
     if (shishenTable[rizhu]) {
-      // console.log(`🔍 日主${rizhu}的所有关系:`, Object.keys(shishenTable[rizhu]))
-      // console.log(`🔍 地支${dizhi}对应的十神:`, shishenTable[rizhu][dizhi])
+      // devLog.log(`🔍 日主${rizhu}的所有关系:`, Object.keys(shishenTable[rizhu]))
+      // devLog.log(`🔍 地支${dizhi}对应的十神:`, shishenTable[rizhu][dizhi])
       
       if (shishenTable[rizhu][dizhi]) {
         return shishenTable[rizhu][dizhi]
       } else {
-        console.warn(`❌ 未找到日主${rizhu}与地支${dizhi}的十神关系`)
+        devLog.warn(`❌ 未找到日主${rizhu}与地支${dizhi}的十神关系`)
         return ''
       }
     } else {
-      console.warn(`❌ 十神表中不存在日主${rizhu}`)
+      devLog.warn(`❌ 十神表中不存在日主${rizhu}`)
       return ''
     }
   } catch (error) {
-    console.error('❌ 计算地支十神失败:', error)
+    devLog.error('❌ 计算地支十神失败:', error)
     return ''
   }
 }
@@ -279,7 +344,7 @@ export async function checkIfRegenerationNeeded(userInfo: UserInfo, userId: stri
     
     return false // 不需要重新生成
   } catch (error) {
-    console.error('检查重新生成需求失败:', error)
+    devLog.error('检查重新生成需求失败:', error)
     return true // 出错时默认重新生成
   }
 }
@@ -308,7 +373,7 @@ export async function getPersonalityReport(userId: string): Promise<PersonalityR
   try {
     return await storageManager.getPersonalityReport(userId)
   } catch (error) {
-    console.error('获取性格报告失败:', error)
+    devLog.error('获取性格报告失败:', error)
     return null
   }
 }
@@ -318,7 +383,7 @@ export async function savePersonalityReport(report: PersonalityReport, userProfi
   try {
     await storageManager.savePersonalityReport(userProfileId, report)
   } catch (error) {
-    console.error('保存性格报告失败:', error)
+    devLog.error('保存性格报告失败:', error)
     throw error
   }
 }
@@ -328,7 +393,7 @@ export async function savePersonalityReportWithAstrology(report: PersonalityRepo
   try {
     await storageManager.savePersonalityReportWithAstrology(userProfileId, report, astrologyContext)
   } catch (error) {
-    console.error('保存性格报告（含八字上下文）失败:', error)
+    devLog.error('保存性格报告（含八字上下文）失败:', error)
     throw error
   }
 }
@@ -338,94 +403,63 @@ export async function clearPersonalityReport(userId: string): Promise<void> {
   try {
     await storageManager.clearPersonalityReport(userId)
   } catch (error) {
-    console.error('清除性格报告失败:', error)
+    devLog.error('清除性格报告失败:', error)
     throw error
   }
 }
 
 
 
-// 获取八字排盘数据并格式化为提示词 - 数据库优先版本
-export async function getAstrologyContext(userInfo: UserInfo, userId?: string): Promise<string> {
+// 获取八字排盘数据 - 直接从数据库读取
+export async function getAstrologyContext(userInfo: UserInfo, userId?: string, isUserProfileId: boolean = true): Promise<string> {
   try {
-    // 如果提供了userId，优先从数据库获取格式化的八字上下文
-    if (userId) {
-      try {
-        console.log('🔮 优先从数据库获取格式化八字上下文:', userId)
-        
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
-        const response = await fetch(`${baseUrl}/api/bazi/get`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            userId: userId,
-            isUserProfileId: true // 假设传入的是user_profiles.id
-          })
-        })
-
-        if (response.ok) {
-          const result = await response.json()
-          if (result.success && result.astrologyContext) {
-            console.log('✅ 从数据库获取格式化八字上下文成功，长度:', result.astrologyContext.length)
-            return result.astrologyContext
-          }
-          // 如果有原始数据但没有格式化上下文，进行格式化
-          if (result.success && result.report) {
-            console.log('⚠️ 数据库中有原始数据但无格式化上下文，进行格式化')
-            return formatAstrologyPrompt(result.report, userInfo)
-          }
-        }
-        
-        console.log('⚠️ 数据库中无八字数据，回退到API调用')
-      } catch (dbError) {
-        console.warn('⚠️ 从数据库获取八字数据失败，回退到API调用:', dbError)
-      }
+    // 如果没有提供userId，返回基础信息
+    if (!userId) {
+      devLog.log('⚠️ 未提供用户ID，返回基础八字信息')
+      return formatBasicAstrologyInfo(userInfo)
     }
 
-    // 如果数据库没有数据或获取失败，调用外部API
-    console.log('🔮 调用外部八字API获取数据')
+    devLog.log('🔮 从数据库获取八字排盘数据:', userId)
     
-    // 构建八字排盘请求数据
-    const astrologyRequest = {
-      name: '用户',
-      gender: userInfo.gender,
-      birthDate: `${userInfo.year}-${String(userInfo.month).padStart(2, '0')}-${String(userInfo.day).padStart(2, '0')}`,
-      birthTime: `${String(userInfo.hour).padStart(2, '0')}:${String(userInfo.minute).padStart(2, '0')}`,
-      region: `${userInfo.area.province} ${userInfo.area.city} ${userInfo.area.district}`
-    }
-
-    // 调用八字排盘API（在服务器端直接调用内部API）
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
-    const response = await fetch(`${baseUrl}/api/astrology/generate`, {
+    const response = await fetch(`${baseUrl}/api/bazi/get`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(astrologyRequest)
+      body: JSON.stringify({
+        userId: userId,
+        isUserProfileId: isUserProfileId
+      })
     })
 
-    if (!response.ok) {
-      console.warn('八字排盘API调用失败，使用基础信息')
-      return formatBasicAstrologyInfo(userInfo)
+    if (response.ok) {
+      const result = await response.json()
+      if (result.success && result.astrologyContext) {
+        devLog.log('✅ 从数据库获取八字排盘数据成功，长度:', result.astrologyContext.length)
+        return result.astrologyContext
+      }
+      
+      if (result.error === 'REPORT_NOT_FOUND') {
+        devLog.log('📋 用户暂无八字排盘数据，可能需要重新生成')
+        return formatBasicAstrologyInfo(userInfo) + '\n\n【提示：用户暂无详细八字排盘数据，建议基于基础出生信息进行分析】'
+      }
     }
-
-    const astrologyData = await response.json()
-    return formatAstrologyPrompt(astrologyData, userInfo)
+    
+    devLog.log('⚠️ 获取八字排盘数据失败，返回基础信息')
+    return formatBasicAstrologyInfo(userInfo)
 
   } catch (error) {
-    console.error('获取八字排盘数据失败:', error)
+    devLog.error('❌ 获取八字排盘数据失败:', error)
     return formatBasicAstrologyInfo(userInfo)
   }
 }
 
-// 获取或生成八字数据（数据库优先）
-export async function getOrGenerateBaziData(userInfo: UserInfo, userId: string, isUserProfileId: boolean = true): Promise<any> {
+// 获取八字数据（直接从数据库读取）
+export async function getBaziData(userId: string, isUserProfileId: boolean = true): Promise<any> {
   try {
-    console.log('🔮 获取或生成八字数据:', { userId, isUserProfileId })
+    devLog.log('🔮 从数据库获取八字数据:', { userId, isUserProfileId })
     
-    // 首先尝试从数据库获取
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
     const getResponse = await fetch(`${baseUrl}/api/bazi/get`, {
       method: 'POST',
@@ -441,40 +475,16 @@ export async function getOrGenerateBaziData(userInfo: UserInfo, userId: string, 
     if (getResponse.ok) {
       const getResult = await getResponse.json()
       if (getResult.success && getResult.report) {
-        console.log('✅ 从数据库获取八字数据成功')
+        devLog.log('✅ 从数据库获取八字数据成功')
         return getResult.report
       }
     }
 
-    console.log('⚠️ 数据库中无八字数据，生成新数据')
-    
-    // 如果数据库没有数据，生成新的
-    const generateResponse = await fetch(`${baseUrl}/api/bazi/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        userInfo: userInfo,
-        userId: userId,
-        isUserProfileId: isUserProfileId
-      })
-    })
-
-    if (!generateResponse.ok) {
-      throw new Error('生成八字数据失败')
-    }
-
-    const generateResult = await generateResponse.json()
-    if (generateResult.success && generateResult.report) {
-      console.log('✅ 生成八字数据成功')
-      return generateResult.report.raw_payload
-    }
-
-    throw new Error('生成八字数据失败：无有效数据')
+    devLog.log('⚠️ 数据库中无八字数据')
+    throw new Error('数据库中无八字数据')
 
   } catch (error) {
-    console.error('获取或生成八字数据失败:', error)
+    devLog.error('❌ 获取八字数据失败:', error)
     throw error
   }
 }
@@ -484,13 +494,13 @@ export function formatAstrologyPrompt(astrologyData: any, userInfo: UserInfo): s
   const context = []
   
   // 调试信息
-  // console.log('🔍 formatAstrologyPrompt - astrologyData keys:', Object.keys(astrologyData))
-  // console.log('🔍 astrologyData.paipan 存在:', !!astrologyData.paipan)
-  // console.log('🔍 astrologyData.bazi 存在:', !!astrologyData.bazi)
-  // console.log('🔍 astrologyData.bazi 内容:', astrologyData.bazi)
+  // devLog.log('🔍 formatAstrologyPrompt - astrologyData keys:', Object.keys(astrologyData))
+  // devLog.log('🔍 astrologyData.paipan 存在:', !!astrologyData.paipan)
+  // devLog.log('🔍 astrologyData.bazi 存在:', !!astrologyData.bazi)
+  // devLog.log('🔍 astrologyData.bazi 内容:', astrologyData.bazi)
   // if (astrologyData.bazi) {
-  //   console.log('🔍 astrologyData.bazi[2] 存在:', !!astrologyData.bazi[2])
-  //   console.log('🔍 astrologyData.bazi[2] 内容:', astrologyData.bazi[2])
+  //   devLog.log('🔍 astrologyData.bazi[2] 存在:', !!astrologyData.bazi[2])
+  //   devLog.log('🔍 astrologyData.bazi[2] 内容:', astrologyData.bazi[2])
   // }
   
   // 八字排盘
@@ -525,12 +535,12 @@ export function formatAstrologyPrompt(astrologyData: any, userInfo: UserInfo): s
   // 方法1：从bazi数组获取
   if (astrologyData.bazi && astrologyData.bazi[2]) {
     rizhu = astrologyData.bazi[2].charAt(0)
-    // console.log('🔍 从bazi获取日主:', rizhu)
+    // devLog.log('🔍 从bazi获取日主:', rizhu)
   }
   // 方法2：从paipan的dayPillar获取
   else if (astrologyData.paipan?.dayPillar && astrologyData.paipan.dayPillar.heavenly) {
     rizhu = astrologyData.paipan.dayPillar.heavenly
-    // console.log('🔍 从dayPillar获取日主:', rizhu)
+    // devLog.log('🔍 从dayPillar获取日主:', rizhu)
   }
 
   // 地支部分（添加十神信息）
@@ -545,7 +555,7 @@ export function formatAstrologyPrompt(astrologyData: any, userInfo: UserInfo): s
       const dayShishen = getShishenByDiZhi(rizhu, dayPillar.earthly)
       const hourShishen = getShishenByDiZhi(rizhu, hourPillar.earthly)
       
-      // console.log('🔍 地支十神结果:', { yearShishen, monthShishen, dayShishen, hourShishen })
+      // devLog.log('🔍 地支十神结果:', { yearShishen, monthShishen, dayShishen, hourShishen })
       
       context.push(`- 年：${yearPillar.earthly}${yearShishen ? ' ' + yearShishen : ''}`)
       context.push(`- 月：${monthPillar.earthly}${monthShishen ? ' ' + monthShishen : ''}`)
@@ -553,7 +563,7 @@ export function formatAstrologyPrompt(astrologyData: any, userInfo: UserInfo): s
       context.push(`- 时：${hourPillar.earthly}${hourShishen ? ' ' + hourShishen : ''}`)
     } else {
       // 如果无法获取日主，只显示地支
-      // console.log('🔍 无法获取日主信息，只显示地支')
+      // devLog.log('🔍 无法获取日主信息，只显示地支')
       context.push(`- 年：${yearPillar.earthly}`)
       context.push(`- 月：${monthPillar.earthly}`)
       context.push(`- 日：${dayPillar.earthly}`)
@@ -561,7 +571,7 @@ export function formatAstrologyPrompt(astrologyData: any, userInfo: UserInfo): s
     }
     context.push('')
   } else {
-    // console.log('🔍 没有paipan数据，无法显示地支')
+    // devLog.log('🔍 没有paipan数据，无法显示地支')
   }
 
   // 藏干部分（使用canggan-table.csv数据）
@@ -625,10 +635,47 @@ export function formatAstrologyPrompt(astrologyData: any, userInfo: UserInfo): s
   if (astrologyData.dayun && astrologyData.dayun.length > 0) {
     context.push(`**大运信息：**`)
     astrologyData.dayun.forEach((dayun: any, index: number) => {
-      // 计算大运年份范围
-      const startYear = 2000 + index * 10 - (index === 0 ? 0 : 1)
-      const endYear = startYear + (index === 0 ? 8 : 9)
-      const ageRange = index === 0 ? `1-8岁` : `${index * 10 - 1}-${index * 10 + 8}岁`
+      // 处理API返回的数据，按新规则调整年龄和年份
+      let ageRange, year
+      
+      if (dayun.age) {
+        // API返回了年龄数据，需要按新规则调整
+        const apiAge = dayun.age
+                 if (index === 0) {
+           // 第一个大运：保持起始年龄1岁不变，但结束年龄+1
+           if (apiAge.includes('-')) {
+             ageRange = apiAge.replace(/1-(\d+)岁/, (match: string, endAge: string) => `1-${parseInt(endAge) - 1}岁`)
+           } else {
+             ageRange = '1-9岁' // 默认情况
+           }
+         } else {
+          // 其余大运：年龄-1
+          if (apiAge.includes('岁')) {
+            const ageNum = parseInt(apiAge.replace('岁', ''))
+            ageRange = `${ageNum - 1}岁`
+          } else {
+            ageRange = `${index * 10}岁`
+          }
+        }
+      } else {
+        // API没有返回年龄数据，使用默认计算
+        ageRange = index === 0 ? `1-9岁` : `${index * 10}岁`
+      }
+      
+      if (dayun.year) {
+        // API返回了年份数据，需要按新规则调整
+        const apiYear = parseInt(dayun.year)
+        if (index === 0) {
+          // 第一个大运年份保持不变
+          year = apiYear
+        } else {
+          // 其余大运年份-1
+          year = apiYear - 1
+        }
+      } else {
+        // API没有返回年份数据，使用默认计算
+        year = 2000 + index * 10
+      }
       
       // 计算大运地支十神
       let dayunDizhiShishen = ''
@@ -640,7 +687,10 @@ export function formatAstrologyPrompt(astrologyData: any, userInfo: UserInfo): s
       const tianganShishen = dayun.shishen || ''
       const dizhiShishenText = dayunDizhiShishen ? ` 地支十神：${dayunDizhiShishen}` : ''
       
-      context.push(`- ${dayun.pillar}大运（${startYear}-${endYear}年，${ageRange}） 天干十神：${tianganShishen}${dizhiShishenText}`)
+      // 如果有真实的年份数据，显示年份；否则只显示年龄范围
+      const yearInfo = dayun.year ? `${year}年起，` : ''
+      
+      context.push(`- ${dayun.pillar}大运（${yearInfo}${ageRange}） 天干十神：${tianganShishen}${dizhiShishenText}`)
     })
     context.push('')
   }
@@ -648,25 +698,69 @@ export function formatAstrologyPrompt(astrologyData: any, userInfo: UserInfo): s
   // 流年信息（显示大运开始年份）
   context.push(`**流年信息：**`)
   
-  // 大运开始年份和对应年龄
-  const dayunStartInfo = [
-    { year: 2000, age: 1 },
-    { year: 2009, age: 9 },
-    { year: 2019, age: 19 },
-    { year: 2029, age: 29 },
-    { year: 2039, age: 39 },
-    { year: 2049, age: 49 },
-    { year: 2059, age: 59 },
-    { year: 2069, age: 69 },
-    { year: 2079, age: 79 },
-    { year: 2089, age: 89 }
-  ]
-  
-  dayunStartInfo.forEach(({ year, age }) => {
-    // 从CSV文件中获取准确的干支数据
-    const ganzhi = getGanZhiByYear(year)
-    context.push(`- ${year}年 ${age}岁  ${ganzhi}`)
-  })
+  if (astrologyData.dayun && astrologyData.dayun.length > 0) {
+    // 基于上文生成的大运信息来计算流年
+    astrologyData.dayun.forEach((dayun: any, index: number) => {
+      let year, ageDisplay
+      
+      if (dayun.year) {
+        // 使用大运中的年份数据，按新规则调整
+        const apiYear = parseInt(dayun.year)
+        year = index === 0 ? apiYear : apiYear - 1
+      } else {
+        // 降级方案：使用默认计算
+        year = 2000 + index * 10
+      }
+      
+      if (dayun.age) {
+        // 使用大运中的年龄数据
+        const apiAge = dayun.age
+        if (index === 0) {
+          // 第一个大运：提取起始年龄
+          if (apiAge.includes('-')) {
+            const startAge = apiAge.split('-')[0].replace('岁', '')
+            ageDisplay = `${startAge}岁`
+          } else {
+            ageDisplay = '1岁'
+          }
+        } else {
+          // 其余大运：提取年龄并+1
+          if (apiAge.includes('岁')) {
+            const ageNum = parseInt(apiAge.replace('岁', ''))
+            ageDisplay = `${ageNum - 1}岁`
+          } else {
+            ageDisplay = `${index * 10}岁`
+          }
+        }
+      } else {
+        // 降级方案：使用默认年龄
+        ageDisplay = index === 0 ? '1岁' : `${index * 10}岁`
+      }
+      
+      // 从CSV文件中获取准确的干支数据
+      const ganzhi = getGanZhiByYear(year)
+      context.push(`- ${year}年 ${ageDisplay}  ${ganzhi}`)
+    })
+  } else {
+    // 如果没有大运数据，使用固定模板作为降级方案
+    const fallbackDayunStartInfo = [
+      { year: 2000, age: 1 },
+      { year: 2010, age: 10 },
+      { year: 2020, age: 20 },
+      { year: 2030, age: 30 },
+      { year: 2040, age: 40 },
+      { year: 2050, age: 50 },
+      { year: 2060, age: 60 },
+      { year: 2070, age: 70 },
+      { year: 2080, age: 80 },
+      { year: 2090, age: 90 }
+    ]
+    
+    fallbackDayunStartInfo.forEach(({ year, age }) => {
+      const ganzhi = getGanZhiByYear(year)
+      context.push(`- ${year}年 ${age}岁  ${ganzhi}`)
+    })
+  }
 
   return context.join('\n')
 }

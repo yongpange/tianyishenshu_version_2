@@ -1,24 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ChatStatus, RoleType } from '@coze/api'
-import { supabaseAdmin } from '@/lib/supabase'
 import { UserInfo } from '@/lib/coze-client'
-import { createCozeClient, validateBotId, checkAuthConfig } from '@/lib/coze-auth'
-import {
-  validateUserInfo,
-  calculateUserDataHash,
-  formatUserInfoDisplay
-} from '@/utils/client-utils'
+import { formatUserInfoDisplay } from '@/utils/client-utils'
 import {
   createWealthReport,
-  saveWealthReport,
-  getAstrologyContext
+  saveWealthReport
 } from '@/utils/wealth-report'
+import { 
+  generateReport,
+  UniversalReportRequest,
+  UniversalReportResponse,
+  ReportConfig
+} from '@/lib/report-generator'
 
 // 请求接口
 interface WealthReportRequest {
   userInfo: UserInfo
   userId: string
-  isUserProfileId?: boolean // 新增：标识userId是否为user_profiles.id
+  isUserProfileId?: boolean
 }
 
 // 响应接口
@@ -30,7 +28,7 @@ interface WealthReportResponse {
   authMethod?: string
 }
 
-// 环境变量配置（使用事业财富专用的Bot ID）
+// 环境变量配置
 const WEALTH_BOT_ID = process.env.WEALTH_BOT_ID || process.env.BOT_ID || ''
 
 // 格式化用户信息为事业财富报告prompt
@@ -49,258 +47,74 @@ function formatWealthPrompt(userInfo: UserInfo, astrologyContext?: string): stri
 
 ${astrologyContext}
 
-请基于以上八字排盘信息，深入分析用户的事业发展潜力、财富积累能力、职业适性等方面，生成专业的事业财富报告。`
-  } else {
-    prompt += `请基于用户的出生时间和地点信息，分析其事业发展潜力、财富积累能力、职业适性等方面，生成专业的事业财富报告。`
+**请基于以上八字排盘信息，结合传统命理学知识，生成深度的事业财富分析报告。**
+
+`
   }
 
+  prompt += `请自由发挥，生成丰富全面的事业财富分析内容，可以包含但不限于：事业发展方向、财富累积模式、投资理财建议、职业规划、商业机遇、风险防范、时机把握等方面。
+
+请使用markdown格式，合理组织内容结构，让报告既专业又实用。`
+
   return prompt
+}
+
+// 生成fallback内容
+function generateFallbackContent(userInfo: UserInfo): string {
+  return `# 事业财富分析报告
+
+基于您的出生信息：${formatUserInfoDisplay(userInfo)}
+
+## 基础分析
+
+由于AI服务暂时不可用，这里提供基础的事业财富分析框架。您可以稍后重新生成完整的报告。
+
+## 出生信息
+- 出生年份：${userInfo.year}年
+- 出生月日：${userInfo.month}月${userInfo.day}日  
+- 出生时辰：${userInfo.hour}时${userInfo.minute}分
+- 出生地区：${userInfo.area.province} ${userInfo.area.city} ${userInfo.area.district}
+- 性别：${userInfo.gender === 'male' || userInfo.gender === '男' ? '男' : '女'}
+
+## 基础建议
+- 请关注事业发展和财富规划
+- 建议结合自身实际情况制定计划
+- 投资理财需谨慎，分散风险
+
+请稍后重试以获取完整的AI分析报告。`
+}
+
+// 事业财富报告配置
+const wealthReportConfig: ReportConfig = {
+  reportType: 'wealth',
+  reportName: '事业财富报告',
+  botId: WEALTH_BOT_ID,
+  tableName: 'wealth_reports',
+  formatPrompt: formatWealthPrompt,
+  createReport: createWealthReport,
+  saveReport: saveWealthReport,
+  includeAstrology: true,
+  fallbackContent: generateFallbackContent
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse<WealthReportResponse>> {
   try {
     const body: WealthReportRequest = await request.json()
-    const { userInfo, userId, isUserProfileId } = body
-
-    console.log('🚀 开始生成事业财富报告:', { userId, userInfo, isUserProfileId })
-    console.log('🔍 详细参数检查:', {
-      userId: userId,
-      userIdType: typeof userId,
-      userIdLength: userId ? userId.length : 0,
-      isUserProfileId: isUserProfileId,
-      isUserProfileIdType: typeof isUserProfileId,
-      isUserProfileIdDefined: isUserProfileId !== undefined,
-      isUserProfileIdBooleanTrue: isUserProfileId === true,
-      requestBodyKeys: Object.keys(body),
-      requestBodyString: JSON.stringify(body).substring(0, 200) + '...'
-    })
-
-    // 验证请求参数
-    if (!userId || !userInfo) {
-      return NextResponse.json({
-        success: false,
-        error: '缺少必要参数'
-      }, { status: 400 })
+    const universalRequest: UniversalReportRequest = {
+      userInfo: body.userInfo,
+      userId: body.userId,
+      isUserProfileId: body.isUserProfileId
     }
 
-    // 验证用户信息完整性
-    if (!validateUserInfo(userInfo)) {
-      console.error('❌ 用户信息验证失败:', userInfo)
-      return NextResponse.json({
-        success: false,
-        error: '用户信息不完整，请检查所有必填字段'
-      }, { status: 400 })
-    }
-
-    // 验证认证配置
-    try {
-      await checkAuthConfig()
-    } catch (authError) {
-      console.error('❌ 认证配置检查失败:', authError)
-      return NextResponse.json({
-        success: false,
-        error: authError instanceof Error ? authError.message : 'Coze认证配置缺失'
-      }, { status: 500 })
-    }
-
-    // 验证Bot ID
-    let botId: string
-    try {
-      botId = validateBotId(WEALTH_BOT_ID)
-    } catch (botError) {
-      console.error('❌ Bot ID验证失败:', botError)
-      return NextResponse.json({
-        success: false,
-        error: botError instanceof Error ? botError.message : 'Bot ID配置缺失'
-      }, { status: 500 })
-    }
-
-    // 获取八字排盘上下文信息 - 数据库优先
-    console.log('🔮 获取八字排盘数据...')
-    // 确定用户ID for 八字获取
-    let baziUserId: string
-
-    if (isUserProfileId) {
-      // 使用user_profiles.id
-      baziUserId = userId
-    } else {
-      // 通过手机号查找user_profiles.id
-      const { data: user, error: userError } = await supabaseAdmin
-        .from('users')
-        .select('id')
-        .eq('phone_number', userId)
-        .single()
-
-      if (userError || !user) {
-        throw new Error('找不到用户信息')
-      }
-
-      const { data: userProfile, error: profileError } = await supabaseAdmin
-        .from('user_profiles')
-        .select('id')
-        .eq('user_id', user.id)
-        .is('parent_id', null)
-        .single()
-
-      if (profileError || !userProfile) {
-        throw new Error('找不到用户资料')
-      }
-
-      baziUserId = userProfile.id
-    }
-
-    const astrologyContext = await getAstrologyContext(userInfo, baziUserId)
-    console.log('✅ 八字排盘数据获取完成')
-
-    // 生成事业财富报告prompt
-    const prompt = formatWealthPrompt(userInfo, astrologyContext)
-
-    console.log('📝 发送给Coze的prompt:', prompt.substring(0, 200) + '...')
-
-    // 创建Coze客户端（支持JWT和PAT认证）
-    const { client: coze, authMethod } = await createCozeClient()
-
-    // 尝试调用 Coze 智能体（带重试机制）
-    let lastError: Error | null = null
-    const maxRetries = 2
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        console.log(`🚀 开始调用Coze智能体 (尝试 ${attempt}/${maxRetries})`)
-
-        // 设置更长的超时时间
-        const result = await Promise.race([
-          coze.chat.createAndPoll({
-            bot_id: botId,
-            user_id: userId || `user_${Date.now()}`,
-            additional_messages: [
-              {
-                role: RoleType.User,
-                content: prompt,
-                content_type: 'text',
-              },
-            ],
-          }),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Coze API调用超时，请稍后重试')), 300000) // 5分钟超时
-          )
-        ]) as any
-
-        console.log('📡 Chat完成:', {
-          status: result.chat.status,
-          conversation_id: result.chat.conversation_id
-        })
-
-        if (result.chat.status === ChatStatus.COMPLETED && result.messages) {
-          console.log('📋 消息数量:', result.messages.length)
-
-          // 找到AI的回复
-          const aiMessage = result.messages.find(
-            (msg: any) => msg.role === RoleType.Assistant && msg.type === 'answer'
-          )
-
-          if (aiMessage && aiMessage.content) {
-            console.log('🎉 成功获取AI生成的事业财富报告!')
-            console.log('📄 报告长度:', aiMessage.content.length)
-
-            const reportContent = aiMessage.content
-
-            // 确定用户资料ID
-            let userProfileId: string
-
-            if (isUserProfileId === true) {
-              // 直接使用传入的userId作为user_profiles.id
-              userProfileId = userId
-              console.log('✅ 直接使用传入的user_profiles.id:', userProfileId)
-            } else {
-              // 根据手机号查找user_profiles.id
-              console.log('🔍 根据手机号查找user_profiles.id:', userId)
-              
-              const { data: user, error: userError } = await supabaseAdmin
-                .from('users')
-                .select('id')
-                .eq('phone', userId)
-                .single()
-
-              if (userError || !user) {
-                console.error('❌ 用户不存在:', userId)
-                throw new Error('用户不存在')
-              }
-
-              const { data: userProfile, error: profileError } = await supabaseAdmin
-                .from('user_profiles')
-                .select('id')
-                .eq('user_id', user.id)
-                .is('parent_id', null) // 只查找主用户资料
-                .single()
-
-              if (profileError || !userProfile) {
-                console.error('❌ 主账户用户资料不存在:', user.id)
-                throw new Error('主账户用户资料不存在')
-              }
-
-              userProfileId = userProfile.id
-            }
-
-            console.log('✅ 确定用户资料ID:', userProfileId)
-
-            // 保存到Supabase
-            console.log('💾 保存事业财富报告到数据库...')
-            const reportData = createWealthReport(
-              userId,
-              reportContent,
-              userInfo,
-              result.chat.conversation_id
-            )
-            await saveWealthReport(reportData, userProfileId)
-
-            console.log('✅ 事业财富报告保存成功:', { 
-              reportId: reportData.id, 
-              userProfileId: userProfileId,
-              isUserProfileId: isUserProfileId 
-            })
-
-            return NextResponse.json({
-              success: true,
-              reportId: reportData.id,
-              content: reportContent,
-              authMethod: authMethod
-            })
-
-          } else {
-            console.log('⚠️ 未找到AI回复消息')
-            console.log('📋 所有消息:', result.messages.map((m: any) => ({
-              role: m.role,
-              type: m.type,
-              content_preview: m.content?.substring(0, 50) + '...'
-            })))
-            throw new Error('未找到AI回复消息')
-          }
-        } else if (result.chat.status === ChatStatus.FAILED) {
-          throw new Error(`Coze对话失败: ${result.chat.last_error?.msg || '未知错误'}`)
-        } else {
-          throw new Error(`Coze对话状态异常: ${result.chat.status}`)
-        }
-
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error))
-        console.error(`❌ 第${attempt}次尝试失败:`, lastError.message)
-        
-        if (attempt < maxRetries) {
-          console.log(`⏳ 等待${attempt * 2}秒后重试...`)
-          await new Promise(resolve => setTimeout(resolve, attempt * 2000))
-        }
-      }
-    }
-
-    // 所有重试都失败了
-    throw lastError || new Error('生成事业财富报告失败')
+    // 使用通用报告生成引擎
+    return await generateReport(universalRequest, wealthReportConfig)
 
   } catch (error) {
-    console.error('❌ 生成事业财富报告失败:', error)
+    console.error('❌ 事业财富报告生成失败:', error)
     return NextResponse.json({
       success: false,
-      error: error instanceof Error ? error.message : '生成报告失败，请稍后重试'
+      error: '报告生成失败，请稍后重试',
+      details: error instanceof Error ? error.message : String(error)
     }, { status: 500 })
   }
 }

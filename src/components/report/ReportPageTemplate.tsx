@@ -42,9 +42,12 @@ import {
   getActiveUser
 } from '@/utils/client-utils'
 import { ReportModuleConfig } from '@/config/reportModules'
+import { useGlobalSessionManager, StreamingSession } from '@/hooks/useGlobalSessionManager'
+import { SessionStatusIndicator } from '@/components/SessionStatusIndicator'
 import { useReportGeneration } from '@/hooks/useReportGeneration'
 import { useConversationHistory, ChatMessage, ConversationHistory } from '@/hooks/useConversationHistory'
 import { generateConversationTitle } from '@/utils/textrank'
+import { devLog } from '@/utils/dev-logger'
 
 const { TextArea } = Input
 const { Title, Text, Paragraph } = Typography
@@ -61,6 +64,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
   const [currentContent, setCurrentContent] = useState<ContentType>('chat') // 默认显示聊天界面
   const [currentMessage, setCurrentMessage] = useState('')
   const [loading, setLoading] = useState(false)
+  const [isTyping, setIsTyping] = useState(false)
   const [drawerVisible, setDrawerVisible] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -90,6 +94,57 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
   // 使用自定义Hooks
   const reportGeneration = useReportGeneration({ moduleConfig, userInfo })
   const conversationHistory = useConversationHistory({ moduleId: moduleConfig.moduleId })
+  
+  // 全局会话管理器
+  const globalSessionManager = useGlobalSessionManager()
+  
+  // 组件挂载时检查是否有正在进行的会话
+  useEffect(() => {
+    const checkActiveSession = () => {
+      const activeSession = globalSessionManager.getActiveSessionByModule(moduleConfig.moduleId)
+      if (activeSession) {
+        devLog.log('🔄 ReportPage检测到正在进行的会话，恢复状态:', activeSession.id)
+        
+        // 恢复流式内容显示
+        if (activeSession.streamingContent) {
+          setIsTyping(false)
+          
+          // 切换到聊天视图
+          setCurrentContent('chat')
+          
+          // 如果有机器人消息，更新对话历史中的内容
+          if (activeSession.botMessageId && activeSession.conversationId) {
+            setTimeout(() => {
+              conversationHistory.updateConversation(activeSession.conversationId, {
+                messages: conversationHistory.getCurrentConversation()?.messages.map(msg =>
+                  msg.id === activeSession.botMessageId
+                    ? { ...msg, content: activeSession.streamingContent }
+                    : msg
+                ) || []
+              })
+            }, 500)
+          }
+        }
+        
+        // 恢复会话为活跃状态
+        globalSessionManager.resumeSession(activeSession.id)
+        
+        devLog.log('✅ ReportPage会话状态恢复完成')
+      }
+    }
+
+    // 延迟检查，确保对话历史先加载
+    const timeoutId = setTimeout(checkActiveSession, 1000)
+    
+    return () => clearTimeout(timeoutId)
+  }, [moduleConfig.moduleId, globalSessionManager, conversationHistory])
+  
+  // 生成会话ID（基于模块和用户）
+  const generateSessionId = useCallback(() => {
+    const activeUser = getActiveUser()
+    const userId = activeUser?.id || getUserPhoneNumber() || 'anonymous'
+    return `${moduleConfig.moduleId}_${userId}`
+  }, [moduleConfig.moduleId])
 
   // 转换激活用户信息为标准格式
   const convertActiveUserToUserInfo = (activeUser: any) => {
@@ -124,9 +179,9 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
         // 优先从激活用户获取信息
         const activeUser = getActiveUser()
         if (activeUser) {
-          console.log('📱 原始激活用户信息:', activeUser)
+          devLog.log('📱 原始激活用户信息:', activeUser)
           const convertedUserInfo = convertActiveUserToUserInfo(activeUser)
-          console.log('📱 转换后的用户信息:', convertedUserInfo)
+          devLog.log('📱 转换后的用户信息:', convertedUserInfo)
           setUserInfo(convertedUserInfo)
           return
         }
@@ -135,7 +190,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
         const storedUserInfo = localStorage.getItem('userInfo')
         if (storedUserInfo) {
           const parsedUserInfo = JSON.parse(storedUserInfo)
-          console.log('📱 使用localStorage用户信息:', parsedUserInfo)
+          devLog.log('📱 使用localStorage用户信息:', parsedUserInfo)
           setUserInfo(parsedUserInfo)
           return
         }
@@ -146,18 +201,18 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
         if (userInfoParam) {
           try {
             const decodedUserInfo = JSON.parse(decodeURIComponent(userInfoParam))
-            console.log('📱 使用URL参数用户信息:', decodedUserInfo)
+            devLog.log('📱 使用URL参数用户信息:', decodedUserInfo)
             setUserInfo(decodedUserInfo)
             return
           } catch (error) {
-            console.warn('⚠️ URL参数解析失败:', error)
+            devLog.warn('⚠️ URL参数解析失败:', error)
           }
         }
 
-        console.warn('⚠️ 未找到用户信息，跳转到登录页')
+        devLog.warn('⚠️ 未找到用户信息，跳转到登录页')
         router.push('/login')
       } catch (error) {
-        console.error('❌ 初始化用户信息失败:', error)
+        devLog.error('❌ 初始化用户信息失败:', error)
         router.push('/login')
       }
     }
@@ -176,16 +231,14 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
   const copyReport = useCallback(async () => {
     if (!reportGeneration.reportContent) return
 
-    try {
-      await navigator.clipboard.writeText(reportGeneration.reportContent)
+    const { copyReport: copyReportHelper } = await import('@/utils/copy-helper')
+    const success = await copyReportHelper(reportGeneration.reportContent, moduleConfig.title)
+    
+    if (success) {
       setCopied(true)
-      message.success('报告内容已复制到剪贴板')
       setTimeout(() => setCopied(false), 2000)
-    } catch (error) {
-      console.error('❌ 复制失败:', error)
-      message.error('复制失败，请手动选择复制')
     }
-  }, [reportGeneration.reportContent])
+  }, [reportGeneration.reportContent, moduleConfig.title])
 
   // 智能滚动到底部
   const scrollToBottom = useCallback((force = false) => {
@@ -198,7 +251,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
       })
       setShowScrollToBottom(false)
     } catch (error) {
-      console.warn('⚠️ 滚动到底部失败:', error)
+      devLog.warn('⚠️ 滚动到底部失败:', error)
     }
   }, [isAutoScrollEnabled])
 
@@ -257,20 +310,40 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
     }
   }, [conversationHistory.getCurrentConversation()?.messages, scrollToBottom])
 
+  // Typing动画组件
+  const TypingIndicator = () => (
+    <div className="flex items-center space-x-1 text-gray-500">
+      <span className="text-sm ml-2">AI深度分析中，预计2分钟，道友稍后...</span>
+      <div className="flex space-x-1">
+        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+      </div>
+    </div>
+  )
+
   // 发送消息
   const sendMessage = async () => {
-    console.log('🔄 开始发送消息...')
-    console.log('📝 当前消息:', currentMessage)
-    console.log('👤 用户信息:', userInfo)
-    console.log('💬 活跃对话ID:', conversationHistory.activeConversationId)
+    devLog.log('🔄 开始发送消息...')
+    devLog.log('📝 当前消息:', currentMessage)
+    devLog.log('👤 用户信息:', userInfo)
+    devLog.log('💬 活跃对话ID:', conversationHistory.activeConversationId)
 
     if (!currentMessage.trim()) {
-      console.warn('⚠️ 消息内容为空')
+      devLog.warn('⚠️ 消息内容为空')
+      return
+    }
+
+    // 🔒 检查当前模块是否已有活跃会话
+    const activeUser = getActiveUser()
+    const existingSession = globalSessionManager.getActiveSessionByModule(moduleConfig.moduleId)
+    if (existingSession) {
+      message.warning('当前模块已有会话正在进行中，请等待完成后再试')
       return
     }
 
     if (!conversationHistory.activeConversationId) {
-      console.log('🆕 没有活跃对话，创建新对话')
+      devLog.log('🆕 没有活跃对话，创建新对话')
       conversationHistory.createNewConversation()
       return
     }
@@ -302,17 +375,18 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
         consistentUserId = phoneNumber || `user_${Date.now()}`
       }
 
-      console.log('🔑 使用用户ID:', consistentUserId)
+      devLog.log('🔑 使用用户ID:', consistentUserId)
 
       // 准备请求体
       const requestBody = {
         message: messageContent,
         userInfo: userInfo,
-        conversationId: conversationHistory.getCurrentConversation()?.cozeConversationId,
+        conversationId: conversationHistory.getCurrentConversation()?.cozeConversationId, // Coze的对话ID，用于保持对话连续性
+        dbConversationId: undefined, // 报告页面暂时不需要保存到数据库，设为undefined
         userId: consistentUserId
       }
 
-      console.log('📦 请求体:', requestBody)
+      devLog.log('📦 请求体:', requestBody)
 
       // 使用流式请求
       const response = await fetch('/api/coze/chat', {
@@ -323,7 +397,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
         body: JSON.stringify(requestBody),
       })
 
-      console.log('📡 API响应状态:', response.status)
+      devLog.log('📡 API响应状态:', response.status)
 
       if (!response.ok) {
         const errorData = await response.json()
@@ -350,6 +424,23 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
 
       // 添加空的机器人消息到对话
       conversationHistory.addMessageToConversation(conversationHistory.activeConversationId, botMessage)
+      
+      // 🔄 创建全局流式会话
+      const sessionId = `${moduleConfig.moduleId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      const streamingSession = globalSessionManager.createSession(
+        sessionId, 
+        moduleConfig.moduleId, 
+        conversationHistory.activeConversationId || '', 
+        botMessage.id
+      )
+      
+      // 🔄 将reader存储到全局会话中
+      globalSessionManager.updateSession(sessionId, {
+        reader: reader || undefined
+      })
+      
+      // 设置AI分析状态
+      setIsTyping(true)
 
       try {
         while (true) {
@@ -365,9 +456,21 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
                 const data = JSON.parse(line.slice(6))
 
                 if (data.type === 'content') {
+                  // 第一次收到内容时清除AI分析状态
+                  if (botMessageContent === '') {
+                    setIsTyping(false)
+                  }
+                  
                   botMessageContent += data.content
                   finalConversationId = data.conversationId || finalConversationId
                   finalChatId = data.chatId || finalChatId
+
+                  // 🔄 更新全局会话的流式内容
+                  globalSessionManager.updateSession(sessionId, {
+                    streamingContent: botMessageContent,
+                    finalConversationId: finalConversationId,
+                    finalChatId: finalChatId
+                  })
 
                   // 实时更新机器人消息内容
                   conversationHistory.updateConversation(conversationHistory.activeConversationId!, {
@@ -378,9 +481,22 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
                   })
 
                 } else if (data.type === 'done') {
-                  console.log('✅ 流式响应完成')
+                  devLog.log('✅ 流式响应完成')
                   finalConversationId = data.conversationId || finalConversationId
                   finalChatId = data.chatId || finalChatId
+
+                  // 打印认证信息到前端控制台
+                  if (data.authInfo) {
+                    devLog.info('🔐 报告聊天完成 - 认证信息')
+                    devLog.log('认证方式:', data.authInfo.method)
+                    devLog.log('Token类型:', data.authInfo.tokenType)
+                    devLog.log('Token前缀:', data.authInfo.tokenPrefix)
+                    devLog.log('用户ID:', data.authInfo.userId)
+                    devLog.log('响应长度:', botMessageContent?.length || 0, '字符')
+                    devLog.info('🔐 报告聊天完成 - 认证信息')
+                  } else {
+                    devLog.log('🔐 报告聊天完成 - 认证方式:', data.authMethod || '未知')
+                  }
 
                   // 最终更新
                   const finalConversations = conversationHistory.conversations.map(conv => {
@@ -405,28 +521,63 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
                     try {
                       await conversationHistory.saveConversationToSupabase(currentConv)
                     } catch (error) {
-                      console.warn('⚠️ 保存对话到Supabase失败，但不影响聊天功能:', error)
+                      devLog.warn('⚠️ 保存对话到Supabase失败，但不影响聊天功能:', error)
                     }
                   }
 
-                  console.log('✅ 流式消息发送成功')
+                  devLog.log('✅ 流式消息发送成功')
+                  
+                  // 🔄 结束全局会话
+                  globalSessionManager.endSession(sessionId)
+                  
                   break
 
                 } else if (data.type === 'error') {
+                  // 🔄 出错时结束全局会话
+                  globalSessionManager.endSession(sessionId)
+                  
                   throw new Error(data.error || 'AI服务响应失败')
                 }
               } catch (parseError) {
-                console.warn('⚠️ 解析流式数据失败:', parseError)
+                devLog.warn('⚠️ 解析流式数据失败:', parseError)
               }
             }
           }
         }
       } finally {
-        reader.releaseLock()
+        try {
+          reader.releaseLock()
+          devLog.log('🧹 流读取器已释放')
+        } catch (error) {
+          // 捕获并记录错误，但不让错误中断清理过程
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          
+          // 对于常见的错误类型，给出更友好的提示
+          if (errorMessage.includes('Releasing Default reader') || 
+              errorMessage.includes('Default reader') ||
+              errorMessage.includes('already been released') ||
+              errorMessage.includes('InvalidStateError')) {
+            devLog.log('🔍 流读取器已处于释放状态或为默认状态，跳过释放')
+          } else {
+            devLog.warn('⚠️ 释放流读取器时出错（已忽略）:', errorMessage)
+          }
+        }
+        
+        // 🔄 确保会话被清理（如果还未结束）
+        const session = globalSessionManager.getSession(sessionId)
+        if (session?.isActive) {
+          globalSessionManager.endSession(sessionId)
+        }
       }
 
     } catch (error) {
-      console.error('❌ 调用 Coze API 失败:', error)
+      devLog.error('❌ 调用 Coze API 失败:', error)
+
+      // 🔄 错误时结束全局会话
+      const activeSession = globalSessionManager.getActiveSessionByModule(moduleConfig.moduleId)
+      if (activeSession) {
+        globalSessionManager.endSession(activeSession.id)
+      }
 
       // 恢复用户输入的消息
       setCurrentMessage(messageContent)
@@ -447,6 +598,13 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
 
     } finally {
       setLoading(false)
+      setIsTyping(false)
+      
+      // 🔄 清理全局会话状态（如果存在）
+      const activeSession = globalSessionManager.getActiveSessionByModule(moduleConfig.moduleId)
+      if (activeSession) {
+        globalSessionManager.endSession(activeSession.id)
+      }
     }
   }
 
@@ -462,9 +620,31 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
   }
 
   return (
-    <div className="bg-white flex overflow-hidden h-screen">
+    <>
+      {/* 全局会话状态指示器 */}
+      <SessionStatusIndicator currentModuleId={moduleConfig.moduleId} />
+      
+      <div className="bg-white flex overflow-hidden h-screen">
+        {/* 自定义滚动条样式 */}
+      <style jsx>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #f3f4f6;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #ffffff;
+          border-radius: 4px;
+          border: 1px solid #e5e7eb;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #f9fafb;
+        }
+      `}</style>
+      
       {/* 移动端顶部导航 */}
-      <div className="md:hidden fixed top-0 left-0 right-0 bg-white shadow-lg border-b border-gray-200 p-4 z-20">
+      <div className="md:hidden fixed top-0 left-0 right-0 bg-white shadow-lg border-b border-gray-200 p-3 md:p-4 z-20">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center">
@@ -492,7 +672,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
         {chatHistoryVisible && (
           <div className="flex flex-col h-screen">
             {/* 标题区域 */}
-            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+            <div className="p-3 md:p-4 border-b border-gray-100 flex items-center justify-between">
               <h2 className="text-lg font-medium text-gray-900">{moduleConfig.title}</h2>
               <Button
                 type="text"
@@ -504,7 +684,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
             </div>
 
             {/* 功能按钮区域 */}
-            <div className="p-4 space-y-3">
+            <div className="p-3 md:p-4 space-y-3">
               <div
                 onClick={() => setCurrentContent('report')}
                 className={`flex items-center space-x-3 p-3 rounded-lg cursor-pointer transition-all duration-200 ${
@@ -519,7 +699,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
 
               <div
                 onClick={() => {
-                  console.log('🔄 点击开启新对话按钮')
+                  devLog.log('🔄 点击开启新对话按钮')
                   conversationHistory.createNewConversation()
                   setCurrentContent('chat') // 切换到聊天视图
                 }}
@@ -537,7 +717,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
             {/* 对话历史区域 */}
             {currentContent === 'chat' && (
               <div className="flex-1 overflow-hidden">
-                <div className="p-4 border-b border-gray-100">
+                <div className="p-3 md:p-4 border-b border-gray-100">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-gray-700">对话历史</span>
                     <Button
@@ -550,7 +730,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 space-y-2" style={{ overscrollBehavior: 'contain' }}>
+                <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-2 custom-scrollbar" style={{ overscrollBehavior: 'contain' }}>
                   {conversationHistory.conversations
                     .sort((a, b) => {
                       // 置顶的对话排在前面
@@ -652,7 +832,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
           /* 报告展示区域 */
           <div className="h-screen flex flex-col">
             {/* 报告标题栏 */}
-            <div className="p-6 border-b border-gray-100">
+            <div className="p-3 md:p-6 border-b border-gray-100">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
@@ -696,7 +876,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
             </div>
 
             {/* 报告内容区域 - 独立滚动 */}
-            <div className="flex-1 overflow-y-auto p-6" style={{ overscrollBehavior: 'contain' }}>
+            <div className="flex-1 overflow-y-auto p-3 md:p-6 custom-scrollbar" style={{ overscrollBehavior: 'contain' }}>
               {reportGeneration.reportLoading ? (
                 <div className="flex flex-col items-center justify-center py-20">
                   {reportGeneration.isGenerating ? (
@@ -710,7 +890,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
                         </div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-2">正在生成{moduleConfig.title}报告</h3>
                         <p className="text-gray-600">{reportGeneration.generationStatus}</p>
-                        <p className="text-sm text-gray-500 mt-2">{moduleConfig.title}报告正在生成，预计等候3分钟</p>
+                        <p className="text-sm text-gray-500 mt-2">系统每分钟检查一次生成状态，请耐心等待</p>
                       </div>
                     </div>
                   ) : (
@@ -722,17 +902,37 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
                   )}
                 </div>
               ) : reportGeneration.reportError ? (
-                <div className="text-center py-20">
-                  <Alert
-                    message={reportGeneration.reportError}
-                    type="warning"
-                    showIcon
-                    className="mb-4"
-                  />
-                  <Button type="primary" onClick={reportGeneration.regenerateReport}>
-                    重新生成报告
-                  </Button>
-                </div>
+                // 区分是生成中状态还是失败状态
+                reportGeneration.isGenerating ? (
+                  // 生成中状态：显示loading界面
+                  <div className="flex flex-col items-center justify-center py-20">
+                    <div className="w-full max-w-md">
+                      <div className="text-center mb-6">
+                        <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <Spin
+                            indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
+                          />
+                        </div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">您的{moduleConfig.title}报告正在生成中，预计等候三分钟。</h3>
+                        <p className="text-gray-600">{reportGeneration.generationStatus}</p>
+                        <p className="text-sm text-gray-500 mt-2">系统每分钟检查一次生成状态，请耐心等待</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  // 失败状态：显示错误信息
+                  <div className="text-center py-20">
+                    <Alert
+                      message={reportGeneration.reportError}
+                      type="error"
+                      showIcon
+                      className="mb-4"
+                    />
+                    {/* <Button type="primary" onClick={reportGeneration.regenerateReport}>
+                      重新生成报告
+                    </Button> */}
+                  </div>
+                )
               ) : reportGeneration.reportContent ? (
                 <div className="prose prose-gray max-w-none markdown-content">
                   <ReactMarkdown
@@ -759,7 +959,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
           /* 聊天界面 */
           <div className="h-screen flex flex-col">
             {/* 聊天标题栏 */}
-            <div className="p-4 border-b border-gray-100">
+            <div className="p-3 md:p-4 border-b border-gray-100">
               <div className="flex items-center space-x-3">
                 <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
                   <MessageOutlined className="text-white" />
@@ -773,7 +973,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
             {/* 聊天消息区域 */}
             <div
               ref={chatContainerRef}
-              className="flex-1 overflow-y-auto p-4 space-y-4"
+              className="flex-1 overflow-y-auto p-3 md:p-4 space-y-4 custom-scrollbar"
               style={{ overscrollBehavior: 'contain' }}
             >
               {conversationHistory.getCurrentConversation()?.messages.map((message) => (
@@ -816,6 +1016,20 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
                 </div>
               ))}
 
+              {/* AI分析中提示 */}
+              {isTyping && (
+                <div className="flex justify-start">
+                  <div className="flex items-start space-x-3 max-w-[80%]">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-gray-600">
+                      <RobotOutlined className="text-white text-sm" />
+                    </div>
+                    <div className="rounded-lg p-3 bg-gray-100 text-gray-900">
+                      <TypingIndicator />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* 滚动锚点 */}
               <div ref={messagesEndRef} />
             </div>
@@ -834,7 +1048,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
             )}
 
             {/* 输入区域 */}
-            <div className="p-4 border-t border-gray-100 bg-white">
+            <div className="p-3 md:p-4 border-t border-gray-100 bg-white">
               <div className="flex space-x-3">
                 <TextArea
                   value={currentMessage}
@@ -842,11 +1056,13 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
                   placeholder={`请输入您想咨询的${moduleConfig.title}问题...`}
                   autoSize={{ minRows: 1, maxRows: 4 }}
                   className="flex-1"
-                  disabled={loading}
+                  disabled={loading || isTyping}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
-                      sendMessage()
+                      if (!loading && !isTyping) {
+                        sendMessage()
+                      }
                     }
                   }}
                 />
@@ -855,7 +1071,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
                   icon={<SendOutlined />}
                   onClick={sendMessage}
                   loading={loading}
-                  disabled={!currentMessage.trim()}
+                  disabled={!currentMessage.trim() || isTyping}
                   className="self-end"
                 >
                   发送
@@ -960,5 +1176,6 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
         />
       </Modal>
     </div>
+    </>
   )
 }

@@ -16,6 +16,8 @@ interface GetHealthReportResponse {
     generatedAt: string
     cozeConversationId?: string
   }
+  status?: 'not_found' | 'generating' | 'completed' | 'failed'
+  taskId?: string
   error?: string
 }
 
@@ -95,10 +97,10 @@ export async function POST(request: NextRequest): Promise<NextResponse<GetHealth
     }
 
     try {
-      // 查询身体健康报告
+      // 查询身体健康报告，包含状态字段
       const { data: report, error: reportError } = await supabaseAdmin
         .from('health_reports')
-        .select('id, content, generated_at, coze_conversation_id')
+        .select('id, content, generated_at, coze_conversation_id, status, progress, error_message, task_id')
         .eq('user_id', userProfileId)
         .single()
 
@@ -107,40 +109,75 @@ export async function POST(request: NextRequest): Promise<NextResponse<GetHealth
           console.log('📋 身体健康报告不存在:', userProfileId)
           return NextResponse.json({
             success: false,
+            status: 'not_found',
             error: '身体健康报告未生成，请先生成报告'
           }, { status: 404 })
         }
         console.error('❌ 查询身体健康报告失败:', reportError)
         return NextResponse.json({
           success: false,
+          status: 'not_found',
           error: '查询报告失败'
         }, { status: 500 })
       }
 
-      // 检查报告内容是否有效
-      if (!report.content || report.content.trim() === '') {
-        console.log('📋 身体健康报告内容为空，可能正在生成中')
-        return NextResponse.json({
-          success: false,
-          error: '报告正在生成中，请稍后再试'
-        }, { status: 202 })
+      // 确定报告状态
+      let responseStatus: 'not_found' | 'generating' | 'completed' | 'failed' = 'not_found'
+      
+      if (report.status) {
+        // 使用数据库中的status字段
+        responseStatus = report.status
+      } else {
+        // 兼容旧数据：根据content判断状态
+        if (report.content && report.content.trim().length > 0) {
+          responseStatus = 'completed'
+        } else {
+          responseStatus = 'generating'
+        }
       }
 
-      console.log('✅ 成功获取身体健康报告:', {
+      console.log('✅ 身体健康报告状态查询结果:', {
         reportId: report.id,
-        contentLength: report.content.length,
-        generatedAt: report.generated_at
+        status: responseStatus,
+        contentLength: report.content?.length || 0,
+        generatedAt: report.generated_at,
+        taskId: report.task_id
       })
 
-      return NextResponse.json({
-        success: true,
-        report: {
-          id: report.id,
-          content: report.content,
-          generatedAt: report.generated_at,
-          cozeConversationId: report.coze_conversation_id
+      // 根据状态返回不同的响应
+      if (responseStatus === 'completed' && report.content && report.content.trim() !== '') {
+        return NextResponse.json({
+          success: true,
+          status: responseStatus,
+          taskId: report.task_id,
+          report: {
+            id: report.id,
+            content: report.content,
+            generatedAt: report.generated_at,
+            cozeConversationId: report.coze_conversation_id
+          }
+        })
+      } else {
+        // generating, failed, 或 completed但无内容
+        let errorMessage = ''
+        switch (responseStatus) {
+          case 'generating':
+            errorMessage = '身体健康报告正在生成中，请稍后再试'
+            break
+          case 'failed':
+            errorMessage = report.error_message || '报告生成失败'
+            break
+          default:
+            errorMessage = '报告暂不可用'
         }
-      })
+
+        return NextResponse.json({
+          success: false,
+          status: responseStatus,
+          taskId: report.task_id,
+          error: errorMessage
+        })
+      }
 
     } catch (error) {
       console.error('❌ 获取身体健康报告过程出错:', error)

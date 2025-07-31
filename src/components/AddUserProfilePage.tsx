@@ -12,6 +12,7 @@ import {
   Select,
   Button,
   Card,
+  Steps,
   Progress,
   message,
   Skeleton,
@@ -20,6 +21,7 @@ import {
   Col
 } from 'antd'
 import { CheckCircleFilled, LoadingOutlined, CalendarOutlined } from '@ant-design/icons'
+import { devLog } from '@/utils/dev-logger'
 
 // 动态导入地区选择器，避免 SSR 问题
 const AreaSelector = dynamic(
@@ -106,9 +108,9 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
       hour: 0,
       minute: 0,
       area: {
-        province: '',
-        city: '',
-        district: ''
+        province: '',  // 设置默认省份（北京市的编码）
+        city: '',     // 设置默认城市（北京市的编码）
+        district: ''   // 设置默认区县（东城区的编码）
       }
     }
   })
@@ -120,7 +122,7 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
   useEffect(() => {
     const verifiedCode = sessionStorage.getItem('verified_invite_code')
     if (!verifiedCode) {
-      message.error('请先验证兑换码')
+      // message.error('请先验证兑换码')
       onCancel?.()
       return
     }
@@ -139,14 +141,14 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
         userId: parsed.user?.id
       }
     } catch (error) {
-      console.error('获取当前用户失败:', error)
+      devLog.error('获取当前用户失败:', error)
       return null
     }
   }
 
   // 处理地区变化
   const handleAreaChange = (value: any) => {
-    setValue('area', value)
+    setValue('area', value, { shouldValidate: true })
   }
 
   // 农历转阳历
@@ -199,7 +201,7 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
       // 第二阶段：保存用户资料 (20-60%)
       updateProgressStep(GenerationStep.SAVING, 30)
 
-      console.log('💾 保存用户资料...')
+      devLog.log('💾 保存用户资料...')
       const saveResponse = await fetch('/api/user-profile/save', {
         method: 'POST',
         headers: {
@@ -219,14 +221,14 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
         throw new Error(saveResult.message || '保存用户资料失败')
       }
 
-      console.log('✅ 用户资料保存成功:', saveResult.profile)
+      devLog.log('✅ 用户资料保存成功:', saveResult.profile)
       const newUser = saveResult.profile
       updateProgressStep(GenerationStep.SAVING, 60)
 
       // 第三阶段：启动异步报告生成 (60-90%)
       updateProgressStep(GenerationStep.GENERATING, 70)
 
-      console.log('🚀 启动异步报告生成...')
+      devLog.log('🚀 启动异步报告生成...')
       
       // 新增用户模式：使用新创建的user_profiles.id
       const reportUserId = newUser.id
@@ -244,12 +246,60 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
       })
 
       const result = await response.json()
-      console.log('📋 异步生成结果:', result)
+      devLog.log('📋 异步生成结果:', result)
 
       if (result.success) {
         updateProgressStep(GenerationStep.GENERATING, 90)
 
-        // 第四阶段：准备完成 (90-100%)
+        // 第四阶段：验证用户数据已完全保存 (90-95%)
+        devLog.log('🔍 验证新用户数据是否已完全保存到数据库...')
+        let verificationAttempts = 0
+        const maxVerificationAttempts = 5
+        let userVerified = false
+
+        while (verificationAttempts < maxVerificationAttempts && !userVerified) {
+          try {
+            verificationAttempts++
+            devLog.log(`📋 第${verificationAttempts}次验证新用户数据...`)
+            
+            // 调用用户列表API验证新用户是否已存在
+            const verifyResponse = await fetch('/api/user-profiles/list', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ phoneNumber: currentUser.phoneNumber })
+            })
+
+            if (verifyResponse.ok) {
+              const verifyResult = await verifyResponse.json()
+              if (verifyResult.success) {
+                const profiles = verifyResult.data
+                // 检查新用户是否在列表中
+                const newUserExists = profiles.find((profile: any) => profile.id === newUser.id)
+                
+                if (newUserExists) {
+                  devLog.log('✅ 新用户数据验证成功，已存在于数据库中')
+                  userVerified = true
+                  break
+                } else {
+                  devLog.log(`⚠️ 第${verificationAttempts}次验证失败，新用户数据尚未在数据库中发现`)
+                }
+              }
+            }
+
+            // 如果还没验证成功，等待1秒后重试
+            if (!userVerified && verificationAttempts < maxVerificationAttempts) {
+              await new Promise(resolve => setTimeout(resolve, 1000))
+            }
+          } catch (verifyError) {
+            devLog.warn(`❌ 第${verificationAttempts}次验证过程出错:`, verifyError)
+          }
+        }
+
+        if (!userVerified) {
+          devLog.warn('⚠️ 无法验证新用户数据是否完全保存，但仍继续操作')
+        }
+
+        // 第五阶段：准备完成 (95-100%)
         updateProgressStep(GenerationStep.COMPLETED, 100)
 
         // 显示完成状态
@@ -257,20 +307,24 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
 
         message.success('子用户创建成功！')
         
-        // 清理标记
-        sessionStorage.removeItem('verified_invite_code')
-        sessionStorage.removeItem('is_adding_new_user')
-        
-        // 调用成功回调，传递新用户数据
+        // 先调用成功回调，传递新用户数据（让dashboard处理跳转）
         if (onSuccess) {
           onSuccess(newUser)
         }
+        
+        // 延迟清理标记，确保跳转完成后再清理
+        setTimeout(() => {
+          sessionStorage.removeItem('verified_invite_code')
+          sessionStorage.removeItem('is_adding_new_user')
+          sessionStorage.removeItem('pending_reports_data')
+          devLog.log('🧹 延迟清理新增用户相关标记完成')
+        }, 1000)
       } else {
         throw new Error(result.error || '启动报告生成失败')
       }
 
     } catch (error) {
-      console.error('提交失败:', error)
+      devLog.error('提交失败:', error)
       message.error(error instanceof Error ? error.message : '保存失败，请重试')
       setShowProgress(false)
     } finally {
@@ -279,26 +333,44 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
   }
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <div className="max-w-4xl mx-auto">
-        <Card className="shadow-lg">
-          {/* 头部 */}
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-white font-bold text-2xl">乙</span>
+    <div className="bg-white flex overflow-hidden h-full">
+      <div className="flex-1 flex items-center justify-center px-4 py-8 bg-gray-50">
+        <Card
+          className="w-full max-w-4xl shadow-lg"
+        >
+        {/* 头部 */}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center mb-4">
+            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center mr-3">
+              <span className="text-white text-sm font-bold">天</span>
             </div>
-            
-            <h2 className="text-xl font-semibold text-gray-700 mb-2">
-              新增用户信息
-            </h2>
-            <p className="text-gray-500">
-              请填写新用户的详细信息
-            </p>
-            
-            <div className="mt-2 text-sm text-blue-600">
-              兑换码: {inviteCode}
-            </div>
+            <h1 className="text-2xl font-bold text-gray-800 m-0">天乙神算</h1>
           </div>
+          
+          <h2 className="text-xl font-semibold text-gray-700 mb-2">
+            新增用户信息
+          </h2>
+          <p className="text-gray-500">
+            请填写新用户的详细信息
+          </p>
+          
+          <div className="mt-2 text-sm text-blue-600">
+            兑换码: {inviteCode}
+          </div>
+
+          {/* 步骤指示器 */}
+          <div className="mt-6">
+            <Steps
+              current={1}
+              size="small"
+              items={[
+                { title: '身份验证', icon: <CheckCircleFilled className="text-green-500" /> },
+                { title: '完善信息', icon: loading ? <LoadingOutlined /> : undefined },
+                { title: '查看报告' }
+              ]}
+            />
+          </div>
+        </div>
 
           {/* 表单 */}
           <Form layout="vertical" onFinish={handleSubmit(onSubmit)}>
@@ -316,7 +388,7 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
                   render={({ field }) => (
                     <Input 
                       {...field}
-                      placeholder="请输入用户昵称"
+                      placeholder="请输入您的昵称"
                       size="large"
                     />
                   )}
@@ -348,16 +420,20 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
             </div>
 
             {/* 出生日期时间 */}
-            <Form.Item label="出生日期时间" required>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm text-gray-600">请选择阳历出生日期时间</span>
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  <span className="text-red-500 mr-1">*</span>
+                  阳历出生日期时间
+                </label>
                 <Button
                   type="link"
                   icon={<CalendarOutlined />}
                   onClick={() => setShowLunarModal(true)}
                   className="text-blue-600 hover:text-blue-700"
+                  style={{ padding: 0, height: 'auto' }}
                 >
-                  农历转换成阳历
+                  农历日期输入
                 </Button>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -450,19 +526,36 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
               {(errors.year || errors.month || errors.day || errors.hour || errors.minute) && (
                 <div className="text-red-500 text-sm mt-1">请完整填写出生日期时间</div>
               )}
-            </Form.Item>
+            </div>
 
             {/* 出生地区 */}
             <Form.Item 
               label="出生地区" 
               validateStatus={errors.area ? 'error' : ''}
-              help={errors.area?.province?.message || errors.area?.city?.message || errors.area?.district?.message}
+              help={(() => {
+                // 根据当前选择状态提供动态错误提示
+                if (errors.area) {
+                  if (!watchedValues.area?.province) {
+                    return '请选择省份';
+                  } else if (!watchedValues.area?.city) {
+                    return '请选择城市';
+                  } else if (!watchedValues.area?.district) {
+                    return '请选择区县';
+                  }
+                  return errors.area?.province?.message || errors.area?.city?.message || errors.area?.district?.message;
+                }
+                return '';
+              })()}
               required
             >
               <AreaSelector
                 value={watchedValues.area}
                 onChange={handleAreaChange}
-                placeholder="请选择出生地区"
+                placeholder={{
+                  province: '请选择省份',
+                  city: '请选择城市',
+                  district: '请选择区县'
+                }}
               />
             </Form.Item>
 
@@ -473,7 +566,7 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
                 className="flex-1"
                 onClick={() => onCancel?.()}
               >
-                取消
+                返回
               </Button>
               <Button
                 type="primary"
@@ -496,13 +589,13 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
                   <div className="mb-4">
                     <LoadingOutlined style={{ fontSize: 48, color: '#1890ff' }} />
                   </div>
-                  <h3 className="text-lg font-semibold mb-2">正在生成性格报告</h3>
+                  <h3 className="text-lg font-semibold mb-2">AI深度分析中，道友稍后~</h3>
                   <p className="text-gray-600 mb-4">{stepMessages[generationStep]}</p>
 
                   {/* 预计等候时间提示 */}
                   <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <p className="text-blue-800 font-medium text-sm">
-                      性格报告正在生成，预计等候3分钟
+                      {progress < 90 ? '正在生成性格报告，预计等候1-2分钟' : '性格报告已完成，其他报告将在后台生成'}
                     </p>
                   </div>
 
@@ -581,7 +674,7 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
               <div className="text-xs text-gray-500 mt-4">
                 <p>• 农历转阳历功能基于中国传统历法计算</p>
                 <p>• 转换结果将自动填入上方的出生日期字段</p>
-                <p>• 如遇闰月等特殊情况，请咨询专业人士</p>
+                <p>• 如遇闰月等特殊情况，请咨询客服处理</p>
               </div>
             </div>
           </Modal>

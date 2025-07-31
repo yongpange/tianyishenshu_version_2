@@ -3,6 +3,7 @@ import { message } from 'antd'
 import { getUserPhoneNumber } from '@/utils/client-utils'
 import { getUserConversations, saveConversation, deleteConversationFromSupabase } from '@/lib/user-manager'
 import { generateConversationTitle } from '@/utils/textrank'
+import { devLog } from '@/utils/dev-logger'
 
 // 聊天消息接口
 export interface ChatMessage {
@@ -39,7 +40,7 @@ export const useConversationHistory = ({ moduleId }: UseConversationHistoryProps
   // 加载对话历史
   const loadConversations = useCallback(async () => {
     try {
-      console.log(`🔄 加载${moduleId}模块的对话历史...`)
+      devLog.log(`🔄 加载${moduleId}模块的对话历史...`)
       
       // 先从localStorage加载
       const storageKey = getStorageKey()
@@ -56,9 +57,9 @@ export const useConversationHistory = ({ moduleId }: UseConversationHistoryProps
               timestamp: new Date(msg.timestamp)
             }))
           }))
-          console.log(`📱 从localStorage加载了${localConversations.length}个对话`)
+          devLog.log(`📱 从localStorage加载了${localConversations.length}个对话`)
         } catch (error) {
-          console.warn('⚠️ localStorage数据解析失败:', error)
+          devLog.warn('⚠️ localStorage数据解析失败:', error)
           localConversations = []
         }
       }
@@ -68,7 +69,7 @@ export const useConversationHistory = ({ moduleId }: UseConversationHistoryProps
         const userId = getUserPhoneNumber()
         if (userId) {
           const supabaseConversations = await getUserConversations(userId, moduleId)
-          console.log(`☁️ 从Supabase加载了${supabaseConversations.length}个对话`)
+          devLog.log(`☁️ 从Supabase加载了${supabaseConversations.length}个对话`)
           
           // 合并数据（以Supabase为准，但保留localStorage中的新数据）
           const mergedConversations = mergeConversations(localConversations, supabaseConversations)
@@ -81,12 +82,12 @@ export const useConversationHistory = ({ moduleId }: UseConversationHistoryProps
           setConversations(localConversations)
         }
       } catch (error) {
-        console.warn('⚠️ 从Supabase加载对话失败，使用localStorage数据:', error)
+        devLog.warn('⚠️ 从Supabase加载对话失败，使用localStorage数据:', error)
         setConversations(localConversations)
       }
 
     } catch (error) {
-      console.error('❌ 加载对话历史失败:', error)
+      devLog.error('❌ 加载对话历史失败:', error)
       setConversations([])
     }
   }, [moduleId, getStorageKey])
@@ -106,29 +107,17 @@ export const useConversationHistory = ({ moduleId }: UseConversationHistoryProps
     return merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   }
 
-  // 创建新对话
+  // 重置聊天界面 - 不创建新对话，只刷新到初始状态
   const createNewConversation = useCallback(() => {
-    const newConversation: ConversationHistory = {
-      id: `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      title: `新对话 ${new Date().toLocaleString()}`,
-      messages: [],
-      createdAt: new Date(),
-      isPinned: false,
-      isManualTitle: false
-    }
-
-    console.log('🆕 创建新对话:', newConversation.id)
+    devLog.log('🔄 重置聊天界面到初始状态...')
     
-    setConversations(prev => [newConversation, ...prev])
-    setActiveConversationId(newConversation.id)
+    // 重置为初始状态：清除活跃对话ID，显示欢迎界面
+    setActiveConversationId(null)
     
-    // 保存到localStorage
-    const storageKey = getStorageKey()
-    const updatedConversations = [newConversation, ...conversations]
-    localStorage.setItem(storageKey, JSON.stringify(updatedConversations))
+    devLog.log('✅ 聊天界面已重置为初始状态')
     
-    return newConversation.id
-  }, [conversations, getStorageKey])
+    return null
+  }, [])
 
   // 更新对话
   const updateConversation = useCallback((conversationId: string, updates: Partial<ConversationHistory>) => {
@@ -169,7 +158,7 @@ export const useConversationHistory = ({ moduleId }: UseConversationHistoryProps
   // 删除对话
   const deleteConversation = useCallback(async (conversationId: string) => {
     try {
-      console.log('🗑️ 删除对话:', conversationId)
+      devLog.log('🗑️ 删除对话:', conversationId)
       
       // 从状态中移除
       setConversations(prev => {
@@ -192,16 +181,16 @@ export const useConversationHistory = ({ moduleId }: UseConversationHistoryProps
         const userId = getUserPhoneNumber()
         if (userId) {
           await deleteConversationFromSupabase(userId, conversationId)
-          console.log('✅ 已从Supabase删除对话')
+          devLog.log('✅ 已从Supabase删除对话')
         }
       } catch (error) {
-        console.warn('⚠️ 从Supabase删除对话失败，但本地已删除:', error)
+        devLog.warn('⚠️ 从Supabase删除对话失败，但本地已删除:', error)
       }
       
       message.success('对话已删除')
       
     } catch (error) {
-      console.error('❌ 删除对话失败:', error)
+      devLog.error('❌ 删除对话失败:', error)
       message.error('删除对话失败')
     }
   }, [activeConversationId, getStorageKey])
@@ -263,7 +252,7 @@ export const useConversationHistory = ({ moduleId }: UseConversationHistoryProps
           updateConversation(conversationId, { title: newTitle })
         }
       } catch (error) {
-        console.warn('⚠️ 生成对话标题失败:', error)
+        devLog.warn('⚠️ 生成对话标题失败:', error)
       }
     }
   }, [conversations, updateConversation])
@@ -274,10 +263,10 @@ export const useConversationHistory = ({ moduleId }: UseConversationHistoryProps
       const userId = getUserPhoneNumber()
       if (userId) {
         await saveConversation(userId, conversation)
-        console.log('✅ 对话已保存到Supabase')
+        devLog.log('✅ 对话已保存到Supabase')
       }
     } catch (error) {
-      console.warn('⚠️ 保存对话到Supabase失败，但不影响聊天功能:', error)
+      devLog.warn('⚠️ 保存对话到Supabase失败，但不影响聊天功能:', error)
     }
   }, [])
 

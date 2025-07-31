@@ -148,21 +148,82 @@ a {
   }
 }
 
-/* 滚动条美化 */
-.prose::-webkit-scrollbar {
+/* 滚动条美化 - 与其他滚动条保持一致 */
+.prose::-webkit-scrollbar,
+.markdown-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.prose::-webkit-scrollbar-track,
+.markdown-content::-webkit-scrollbar-track {
+  background: #f3f4f6;
+}
+
+.prose::-webkit-scrollbar-thumb,
+.markdown-content::-webkit-scrollbar-thumb {
+  background: #ffffff;
+  border-radius: 4px;
+  border: 1px solid #e5e7eb;
+}
+
+.prose::-webkit-scrollbar-thumb:hover,
+.markdown-content::-webkit-scrollbar-thumb:hover {
+  background: #f9fafb;
+}
+
+/* 三个点加载动画 */
+@keyframes dotFlashing {
+  0% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.3;
+  }
+}
+
+.dot-loading-1,
+.dot-loading-2,
+.dot-loading-3 {
+  animation: dotFlashing 1.4s infinite linear;
+  font-weight: bold;
+  font-size: 16px;
+}
+
+.dot-loading-1 {
+  animation-delay: 0s;
+}
+
+.dot-loading-2 {
+  animation-delay: 0.2s;
+}
+
+.dot-loading-3 {
+  animation-delay: 0.4s;
+}
+
+/* 白色滚动条样式 */
+.white-scrollbar {
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+.white-scrollbar::-webkit-scrollbar {
   width: 6px;
 }
 
-.prose::-webkit-scrollbar-track {
-  background: #f1f1f1;
+.white-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.white-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.3);
   border-radius: 3px;
 }
 
-.prose::-webkit-scrollbar-thumb {
-  background: #666666;
-  border-radius: 3px;
-}
-
-.prose::-webkit-scrollbar-thumb:hover {
-  background: #333333;
+.white-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.5);
 }

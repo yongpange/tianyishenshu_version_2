@@ -1,4 +1,5 @@
 import { UserInfo } from '@/lib/coze-client'
+import { devLog } from '@/utils/dev-logger'
 
 // 从localStorage获取用户手机号
 export function getUserPhoneNumber(): string | null {
@@ -21,7 +22,7 @@ export function getUserPhoneNumber(): string | null {
     
     return null
   } catch (error) {
-    console.error('获取用户手机号失败:', error)
+    devLog.error('获取用户手机号失败:', error)
     return null
   }
 }
@@ -37,7 +38,7 @@ export function saveUserPhoneNumber(phoneNumber: string): void {
     }
     localStorage.setItem('loginData', JSON.stringify(loginData))
   } catch (error) {
-    console.error('保存用户手机号失败:', error)
+    devLog.error('保存用户手机号失败:', error)
   }
 }
 
@@ -52,7 +53,7 @@ export function getActiveUser(): any | null {
     }
     return null
   } catch (error) {
-    console.error('获取当前激活用户失败:', error)
+    devLog.error('获取当前激活用户失败:', error)
     return null
   }
 }
@@ -64,7 +65,7 @@ export function setActiveUser(user: any): void {
   try {
     localStorage.setItem('activeUser', JSON.stringify(user))
   } catch (error) {
-    console.error('设置当前激活用户失败:', error)
+    devLog.error('设置当前激活用户失败:', error)
   }
 }
 
@@ -75,7 +76,7 @@ export function clearActiveUser(): void {
   try {
     localStorage.removeItem('activeUser')
   } catch (error) {
-    console.error('清除当前激活用户失败:', error)
+    devLog.error('清除当前激活用户失败:', error)
   }
 }
 

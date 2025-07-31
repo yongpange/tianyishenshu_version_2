@@ -564,7 +564,8 @@ export async function saveUserProfileToUser(userId: string, userInfo: UserInfo, 
       } catch (inviteCodeError) {
         console.error('❌ 更新invite_codes表失败:', inviteCodeError)
         // 不抛出错误，因为用户资料已经保存成功
-        console.warn('⚠️ invite_codes表更新失败，但用户资料保存成功')
+        console.warn('⚠️ invite_codes表更新失败，但用户资料保存成功，继续执行后续流程')
+        // 注意：这里不要显示错误消息给用户，因为用户资料保存是成功的
       }
     } else {
       console.log('ℹ️ 没有提供invite_code，跳过invite_codes表更新')
@@ -666,6 +667,7 @@ export async function markInviteCodeAsUsed(code: string, phoneNumberOrProfileId:
     console.log('✅ 兑换码已标记为已使用:', code)
   } catch (error) {
     console.error('标记兑换码失败:', error)
-    throw new Error('标记兑换码失败')
+    // 记录错误但不抛出，避免影响主流程
+    console.warn('⚠️ 兑换码标记失败，但不影响用户资料保存')
   }
 }

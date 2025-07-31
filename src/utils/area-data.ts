@@ -1,4 +1,5 @@
 import { PcaCodeData, ProvinceData, CityData, DistrictData, AreaDataCache } from '@/types/area'
+import { devLog } from '@/utils/dev-logger'
 
 // 全局缓存
 let areaDataCache: AreaDataCache | null = null
@@ -21,7 +22,7 @@ export async function loadAreaData(): Promise<AreaDataCache> {
   // 开始加载数据
   dataLoadPromise = (async () => {
     try {
-      console.log('🌍 开始加载省市区数据...')
+      devLog.log('🌍 开始加载省市区数据...')
       const startTime = Date.now()
       
       const response = await fetch('/pca-code.json')
@@ -56,12 +57,12 @@ export async function loadAreaData(): Promise<AreaDataCache> {
       }
       
       const loadTime = Date.now() - startTime
-      console.log(`✅ 省市区数据加载完成，耗时: ${loadTime}ms`)
-      console.log(`📊 数据统计: ${provinces.length}个省份, ${cities.size}个城市组, ${districts.size}个区县组`)
+      devLog.log(`✅ 省市区数据加载完成，耗时: ${loadTime}ms`)
+      devLog.log(`📊 数据统计: ${provinces.length}个省份, ${cities.size}个城市组, ${districts.size}个区县组`)
       
       return areaDataCache
     } catch (error) {
-      console.error('❌ 加载省市区数据失败:', error)
+      devLog.error('❌ 加载省市区数据失败:', error)
       dataLoadPromise = null
       throw error
     }
@@ -150,5 +151,5 @@ export async function getAreaPath(provinceCode?: string, cityCode?: string, dist
 export function clearAreaDataCache() {
   areaDataCache = null
   dataLoadPromise = null
-  console.log('🧹 省市区数据缓存已清除')
+  devLog.log('🧹 省市区数据缓存已清除')
 } 

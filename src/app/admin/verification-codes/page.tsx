@@ -20,7 +20,7 @@ import {
   EyeOutlined,
   ClockCircleOutlined
 } from '@ant-design/icons'
-
+import { devLog } from '@/utils/dev-logger'
 const { Header, Content } = Layout
 
 // 类型定义
@@ -82,7 +82,7 @@ export default function VerificationCodesPage() {
         message.error('服务器错误')
       }
     } catch (error) {
-      console.error('加载验证码失败:', error)
+      devLog.error('加载验证码失败:', error)
       message.error('加载失败')
     } finally {
       setLoading(false)
@@ -111,7 +111,7 @@ export default function VerificationCodesPage() {
             message.error('清理失败')
           }
         } catch (error) {
-          console.error('清理过期验证码失败:', error)
+          devLog.error('清理过期验证码失败:', error)
           message.error('清理失败')
         } finally {
           setLoading(false)

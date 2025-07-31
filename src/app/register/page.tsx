@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
+import { devLog } from '@/utils/dev-logger'
 
 interface WechatQRModalProps {
   isOpen: boolean
@@ -15,6 +16,41 @@ interface PhoneExistsDialogProps {
   phoneNumber: string
   onGoToLogin: () => void
   onReenterPhone: () => void
+}
+
+// 错误提醒Dialog组件
+function ErrorDialog({ isOpen, onClose, title, message, iconEmoji }: {
+  isOpen: boolean
+  onClose: () => void
+  title: string
+  message: string
+  iconEmoji: string
+}) {
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-8 max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+        <div className="text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="text-red-600 text-2xl">{iconEmoji}</div>
+          </div>
+          <h3 className="text-xl font-bold text-gray-900 mb-2">{title}</h3>
+          <p className="text-gray-600 text-sm mb-6">
+            {message}
+          </p>
+          <div className="space-y-3">
+            <button
+              onClick={onClose}
+              className="w-full py-3 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors"
+            >
+              确定
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function PhoneExistsDialog({ isOpen, onClose, phoneNumber, onGoToLogin, onReenterPhone }: PhoneExistsDialogProps) {
@@ -132,6 +168,10 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false)
   const [showWechatModal, setShowWechatModal] = useState(false)
   const [showPhoneExistsDialog, setShowPhoneExistsDialog] = useState(false)
+  const [showErrorDialog, setShowErrorDialog] = useState(false)
+  const [errorDialogTitle, setErrorDialogTitle] = useState('')
+  const [errorDialogMessage, setErrorDialogMessage] = useState('')
+  const [errorDialogIconEmoji, setErrorDialogIconEmoji] = useState('')
 
   // 从URL参数中获取手机号
   useEffect(() => {
@@ -153,7 +193,10 @@ export default function RegisterPage() {
   // 发送验证码
   const sendSmsCode = async () => {
     if (!phoneNumber || phoneNumber.length !== 11) {
-      alert('请输入正确的手机号')
+      setErrorDialogTitle('手机号格式错误')
+      setErrorDialogMessage('请输入正确的11位手机号码')
+      setErrorDialogIconEmoji('📱')
+      setShowErrorDialog(true)
       return
     }
 
@@ -187,10 +230,17 @@ export default function RegisterPage() {
       if (response.ok) {
         setCountdown(60)
       } else {
-        throw new Error('发送失败')
+        const errorData = await response.json()
+        setErrorDialogTitle('验证码发送失败')
+        setErrorDialogMessage(errorData.message || '验证码发送失败，请稍后重试')
+        setErrorDialogIconEmoji('📨')
+        setShowErrorDialog(true)
       }
     } catch (error) {
-      alert('发送验证码失败，请重试')
+      setErrorDialogTitle('验证码发送失败')
+      setErrorDialogMessage('验证码发送失败，请检查网络连接后重试')
+      setErrorDialogIconEmoji('📨')
+      setShowErrorDialog(true)
     } finally {
       setLoading(false)
     }
@@ -226,7 +276,7 @@ export default function RegisterPage() {
 
       return response.ok
     } catch (error) {
-      console.error('验证兑换码失败:', error)
+      devLog.error('验证兑换码失败:', error)
       return false
     }
   }
@@ -278,22 +328,34 @@ export default function RegisterPage() {
   const handleRegister = async () => {
     // 额外安全检查
     if (!canRegister()) {
-      alert('请完成所有必填信息并确保兑换码有效')
+      setErrorDialogTitle('信息不完整')
+      setErrorDialogMessage('请完成所有必填信息并确保兑换码有效')
+      setErrorDialogIconEmoji('⚠️')
+      setShowErrorDialog(true)
       return
     }
     
     if (!phoneNumber || !smsCode || !inviteCode) {
-      alert('请填写完整信息')
+      setErrorDialogTitle('信息不完整')
+      setErrorDialogMessage('请填写完整的手机号、验证码和兑换码信息')
+      setErrorDialogIconEmoji('⚠️')
+      setShowErrorDialog(true)
       return
     }
 
     if (smsCode.length !== 6) {
-      alert('请输入6位验证码')
+      setErrorDialogTitle('验证码格式错误')
+      setErrorDialogMessage('请输入正确的6位数字验证码')
+      setErrorDialogIconEmoji('🔢')
+      setShowErrorDialog(true)
       return
     }
 
     if (!validateInviteCode(inviteCode)) {
-      alert('请输入正确的16位兑换码')
+      setErrorDialogTitle('兑换码格式错误')
+      setErrorDialogMessage('请输入正确的16位兑换码（仅包含字母和数字）')
+      setErrorDialogIconEmoji('🎟️')
+      setShowErrorDialog(true)
       return
     }
 
@@ -348,11 +410,17 @@ export default function RegisterPage() {
         if (error.error === 'PHONE_ALREADY_REGISTERED') {
           setShowPhoneExistsDialog(true)
         } else {
-          alert(error.message || '注册失败')
+          setErrorDialogTitle('注册失败')
+          setErrorDialogMessage(error.message || '注册失败，请稍后重试')
+          setErrorDialogIconEmoji('❌')
+          setShowErrorDialog(true)
         }
       }
     } catch (error) {
-      alert('注册失败，请重试')
+      setErrorDialogTitle('注册失败')
+      setErrorDialogMessage('注册失败，请检查网络连接后重试')
+      setErrorDialogIconEmoji('❌')
+      setShowErrorDialog(true)
     } finally {
       setLoading(false)
     }
@@ -553,6 +621,15 @@ export default function RegisterPage() {
         phoneNumber={phoneNumber}
         onGoToLogin={handleGoToLogin}
         onReenterPhone={handleReenterPhone}
+      />
+
+      {/* Error Dialog */}
+      <ErrorDialog
+        isOpen={showErrorDialog}
+        onClose={() => setShowErrorDialog(false)}
+        title={errorDialogTitle}
+        message={errorDialogMessage}
+        iconEmoji={errorDialogIconEmoji}
       />
     </div>
   )
