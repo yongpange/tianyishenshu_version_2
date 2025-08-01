@@ -67,8 +67,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<Regenerat
         console.log(`📊 找到指定用户资料: ${profile.name} (${profile.parent_id ? '子用户' : '主用户'})`)
         
       } else if (userPhone) {
-        // 备用方案：通过手机号查找（可能返回多个资料）
+        // 备用方案：通过手机号查找（这种方式已不推荐使用）
         console.log('📞 通过手机号查找用户资料:', userPhone)
+        console.log('⚠️  建议使用userProfileId参数以获得更精确的控制')
         
       const { data: user, error: userError } = await supabaseAdmin
         .from('users')
@@ -83,29 +84,32 @@ export async function POST(request: NextRequest): Promise<NextResponse<Regenerat
         }, { status: 404 })
       }
 
-        const { data: profiles, error: profileError } = await supabaseAdmin
+        // 在单用户模式下，即使使用手机号，也只操作主用户资料
+        const { data: profile, error: profileError } = await supabaseAdmin
         .from('user_profiles')
           .select('id, name, gender, year, month, day, hour, minute, area_province, area_city, area_district, parent_id')
         .eq('user_id', user.id)
+          .is('parent_id', null)  // 只查找主用户资料
+          .single()
 
         if (profileError) {
-          console.error('❌ 查询用户资料失败:', profileError)
+          console.error('❌ 查询主用户资料失败:', profileError)
           return NextResponse.json({
             success: false,
-            error: '查询用户资料失败'
+            error: '查询主用户资料失败'
           }, { status: 500 })
         }
 
-        if (!profiles || profiles.length === 0) {
+        if (!profile) {
         return NextResponse.json({
           success: false,
-          error: '找不到用户资料'
+          error: '找不到主用户资料'
         }, { status: 404 })
       }
 
-        userProfiles = profiles
-        console.log(`📊 通过手机号找到 ${profiles.length} 个用户资料 (包含主账户和子账户)`)
-        console.log('⚠️  注意：将为所有相关用户生成报告，如需精确控制请使用userProfileId参数')
+        userProfiles = [profile]
+        console.log(`📊 通过手机号找到主用户资料: ${profile.name}`)
+        console.log('✅ 单用户模式：仅为主用户重新生成报告')
         
       } else {
         return NextResponse.json({

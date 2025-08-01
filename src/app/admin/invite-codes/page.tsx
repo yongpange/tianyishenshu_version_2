@@ -48,6 +48,7 @@ interface InviteCode {
   user_role?: string
   latest_verification_code?: string
   verification_code_expires_at?: string
+  user_profiles_id?: string // 添加精确的用户资料ID
 }
 
 // 角色选项类型
@@ -387,14 +388,14 @@ export default function InviteCodesManagement() {
   }
 
   const handleRegenerateReportForUser = async (record: InviteCode, reportType: string) => {
-    if (!record.user_phone || !record.user_name) {
-      message.error('该兑换码没有绑定用户信息')
+    if (!record.user_profiles_id || !record.user_name) {
+      message.error('该兑换码没有绑定用户信息或缺少用户资料ID')
       return
     }
 
     Modal.confirm({
       title: '确认重新生成报告',
-      content: `确定要为用户 ${record.user_name} (${record.user_phone}) 重新生成${getReportDisplayName(reportType)}报告吗？此操作将删除现有报告并生成新的报告，不可撤销。`,
+      content: `确定要为用户 ${record.user_name} (${record.user_phone || '未知手机号'}) 重新生成${getReportDisplayName(reportType)}报告吗？此操作将删除现有报告并生成新的报告，不可撤销。`,
       okText: '确定重新生成',
       okType: 'danger',
       cancelText: '取消',
@@ -407,7 +408,7 @@ export default function InviteCodesManagement() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
               reportType,
-              userPhone: record.user_phone,
+              userProfileId: record.user_profiles_id, // 使用精确的用户资料ID
               singleUser: true,
               adminToken: localStorage.getItem('admin_token')
             })
@@ -620,8 +621,8 @@ export default function InviteCodesManagement() {
             </Button>
           </Popconfirm>
           
-          {/* 报告重新生成按钮 - 只有已使用的兑换码才显示 */}
-          {record.status === 'used' && record.user_phone && (
+          {/* 报告重新生成按钮 - 只有已使用的兑换码且有用户资料ID才显示 */}
+          {record.status === 'used' && record.user_profiles_id && (
             <>
               <Button
                 size="small"

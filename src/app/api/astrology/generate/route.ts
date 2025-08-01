@@ -41,6 +41,36 @@ function convertAreaCodeToName(userData: any) {
   }
 }
 
+// 提取城市名称函数：有县输入县，没有县输入市
+function extractCityName(fullLocationName: string): string {
+  try {
+    // 去掉空格后进行解析
+    const cleanName = fullLocationName.replace(/\s+/g, '')
+    
+    // 检查是否包含"县"
+    const countyMatch = cleanName.match(/([^省市]*县)/)
+    if (countyMatch) {
+      console.log(`🏘️ 检测到县级单位: ${countyMatch[1]}`)
+      return countyMatch[1]
+    }
+    
+    // 检查是否包含"市"
+    const cityMatch = cleanName.match(/([^省]*市)/)
+    if (cityMatch) {
+      console.log(`🏙️ 检测到市级单位: ${cityMatch[1]}`)
+      return cityMatch[1]
+    }
+    
+    // 如果都没有匹配到，返回处理后的原名称
+    console.log(`⚠️ 未能提取到标准的市/县名称，使用原名称: ${cleanName}`)
+    return cleanName
+    
+  } catch (error) {
+    console.error('城市名称提取失败:', error)
+    return fullLocationName.replace(/\s+/g, '')
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const userData = await request.json()
@@ -67,9 +97,9 @@ export async function POST(request: Request) {
     // 性别转换：male -> 1, female -> 0
     const sex = gender === 'male' ? '1' : '0'
     
-    // 转换地区编码为实际名称，并去掉空格
+    // 转换地区编码为实际名称，并提取所需的城市信息
     const cityNameWithSpaces = convertAreaCodeToName(userData)
-    const cityName = cityNameWithSpaces.replace(/\s+/g, '') // 去掉所有空格
+    const cityName = extractCityName(cityNameWithSpaces) // 用于API调用的简化城市名
     
     // 手动构建查询字符串，对中文参数进行URL编码
     const queryString = [
@@ -85,8 +115,9 @@ export async function POST(request: Request) {
       `istaiyang=1`  // 修复：使用真太阳时
     ].join('&')
     
-    console.log('🔗 编码前参数:', { name, cityName })
+    console.log('🔗 编码前参数:', { name, cityName: cityName, fullLocationName: cityNameWithSpaces })
     console.log('🔗 编码后查询字符串:', queryString)
+    console.log('📍 地区信息: API调用用:', cityName, '| 前端显示用:', cityNameWithSpaces)
     
     console.log('使用的城市名称:', cityName)
     console.log('查询参数:', queryString)
@@ -382,15 +413,18 @@ function transformApiData(apiData: any, userData: any) {
 
   // 格式化出生地区，添加空格分隔
   const formatBirthplace = (city: string): string => {
-    if (!city) return convertAreaCodeToName(userData)
+    // 始终使用完整的地区名称（不是提取后的城市名称）
+    const fullLocationName = convertAreaCodeToName(userData)
+    
+    if (!fullLocationName) return city || '北京市'
     
     // 如果是北京市市辖区朝阳区这种格式，添加空格
-    if (city.includes('市辖区')) {
-      return city.replace(/市辖区/, '市 市辖区 ').replace(/区$/, '区')
+    if (fullLocationName.includes('市辖区')) {
+      return fullLocationName.replace(/市辖区/, '市 市辖区 ').replace(/区$/, '区')
     }
     
     // 其他情况保持原样
-    return city
+    return fullLocationName
   }
 
   // 获取神煞数据
@@ -439,7 +473,7 @@ function transformApiData(apiData: any, userData: any) {
     lunarDate,
     ancientDate,
     trueSolarTime,
-    birthplace: formatBirthplace(result.city || convertAreaCodeToName(userData)),
+    birthplace: formatBirthplace(''), // 传空字符串，函数内部会使用完整地区名称
     bazi: bazi, // 添加八字数据
     paipan: {
       solarYear: parseInt(result.year),

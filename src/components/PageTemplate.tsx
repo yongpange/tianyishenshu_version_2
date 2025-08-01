@@ -55,6 +55,7 @@ interface ChatMessage {
   type: 'user' | 'bot'
   content: string
   timestamp: Date
+  displayContent?: string // 用于显示的过滤内容
 }
 
 interface ConversationHistory {
@@ -582,7 +583,11 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
           id: dbMsg.metadata?.frontend_id || dbMsg.id,
           type: dbMsg.role === 'user' ? 'user' : 'bot',
           content: dbMsg.content,
-          timestamp: new Date(dbMsg.created_at)
+          timestamp: new Date(dbMsg.created_at),
+          // 为bot消息添加显示内容过滤
+          displayContent: dbMsg.role === 'assistant' || dbMsg.role === 'bot' 
+            ? extractDisplayContent(dbMsg.content) 
+            : undefined
         }))
       }
 
@@ -1498,6 +1503,8 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         setCurrentReader(reader || null)
 
         if (reader) {
+          let hasReachedContentStart = false // 标记是否已经到达真正的内容开始
+          
           try {
             while (true) {
               let readResult
@@ -1531,35 +1538,42 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                       setIsTyping(false) // 移除"正在思考中..."
                       // 不再显示"正在生成回复..."，等待第一个content块立即更新
                     } else if (data.type === 'content') {
-                      // 第一次收到内容时清除AI分析状态
-                      if (streamingContent === '') {
-                        setIsTyping(false)
-                        devLog.log('🤖 开始接收AI回复内容')
-                      }
-                      
                       streamingContent += data.content
                       finalConversationId = data.conversationId || finalConversationId
                       finalChatId = data.chatId || finalChatId
 
+                      // 检查是否已经到达真正的内容开始标记
+                      const contentStartMarker = "fabuwc directly streaming reply."
+                      if (!hasReachedContentStart && streamingContent.includes(contentStartMarker)) {
+                        hasReachedContentStart = true
+                        setIsTyping(false) // 这时才移除loading状态
+                        devLog.log('🤖 到达内容开始标记，开始显示AI回复')
+                      }
+
                       devLog.log('📥 收到AI内容块:', {
                         contentLength: data.content.length,
                         totalLength: streamingContent.length,
+                        hasReachedContentStart,
                         botMessageId,
                         currentActiveConversationId
                       })
 
-                      // 更新本地流式内容状态
-
+                      // 更新本地流式内容状态 - 保存原始内容但显示过滤内容
                       setCurrentStreamingContent(streamingContent)
 
                       setConversations(prevConversations => {
                         const updated = prevConversations.map(conv => {
                           if (conv.id === currentActiveConversationId) {
+                            const displayContent = hasReachedContentStart ? extractDisplayContent(streamingContent) : ''
                             return {
                               ...conv,
                               messages: conv.messages.map(msg =>
                                 msg.id === botMessageId
-                                  ? { ...msg, content: streamingContent }
+                                  ? { 
+                                      ...msg, 
+                                      content: streamingContent, // 保存原始完整内容
+                                      displayContent: displayContent // 只有到达标记后才显示内容
+                                    }
                                   : msg
                               ),
                               cozeConversationId: conv.cozeConversationId || finalConversationId,
@@ -1583,11 +1597,16 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                       setConversations(prevConversations => {
                         const finalConversations = prevConversations.map(conv => {
                           if (conv.id === currentActiveConversationId) {
+                            const fullContent = data.fullResponse || streamingContent
                             return {
                               ...conv,
                               messages: conv.messages.map(msg =>
                                 msg.id === botMessageId
-                                  ? { ...msg, content: data.fullResponse || streamingContent }
+                                  ? { 
+                                      ...msg, 
+                                      content: fullContent, // 保存原始完整内容
+                                      displayContent: extractDisplayContent(fullContent) // 添加显示内容字段
+                                    }
                                   : msg
                               ),
                               cozeConversationId: conv.cozeConversationId || finalConversationId,
@@ -2049,6 +2068,72 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
     } catch (error) {
       return '未知时间'
     }
+  }
+
+  // 添加内容过滤函数
+  const extractDisplayContent = (content: string): string => {
+    // 查找 "fabuwc directly streaming reply." 的起始位置
+    const startMarker = "fabuwc directly streaming reply."
+    const endMarker = '{"msg_type":"stream_plugin_finish"'
+    
+    const startIndex = content.indexOf(startMarker)
+    if (startIndex === -1) {
+      // 如果没有找到起始标记，返回原内容（向后兼容）
+      return content
+    }
+    
+    // 从起始标记之后开始提取
+    const contentStart = startIndex + startMarker.length
+    const endIndex = content.indexOf(endMarker, contentStart)
+    
+    let extractedContent = ''
+    if (endIndex === -1) {
+      // 如果没有找到结束标记，返回从起始标记后的所有内容
+      extractedContent = content.substring(contentStart).trim()
+    } else {
+      // 提取中间的内容
+      extractedContent = content.substring(contentStart, endIndex).trim()
+    }
+    
+    // 去重处理：检测并移除重复的内容段落
+    const lines = extractedContent.split('\n')
+    const deduplicatedLines: string[] = []
+    const seenParagraphs = new Set<string>()
+    
+    let currentParagraph: string[] = []
+    
+    for (const line of lines) {
+      if (line.trim() === '') {
+        // 空行表示段落结束
+        if (currentParagraph.length > 0) {
+          const paragraphText = currentParagraph.join('\n').trim()
+          if (paragraphText && !seenParagraphs.has(paragraphText)) {
+            seenParagraphs.add(paragraphText)
+            deduplicatedLines.push(...currentParagraph)
+            deduplicatedLines.push('') // 保持空行
+          }
+          currentParagraph = []
+        }
+      } else {
+        currentParagraph.push(line)
+      }
+    }
+    
+    // 处理最后一个段落
+    if (currentParagraph.length > 0) {
+      const paragraphText = currentParagraph.join('\n').trim()
+      if (paragraphText && !seenParagraphs.has(paragraphText)) {
+        seenParagraphs.add(paragraphText)
+        deduplicatedLines.push(...currentParagraph)
+      }
+    }
+    
+    // 移除末尾多余的空行
+    while (deduplicatedLines.length > 0 && deduplicatedLines[deduplicatedLines.length - 1] === '') {
+      deduplicatedLines.pop()
+    }
+    
+    return deduplicatedLines.join('\n')
   }
 
   if (!userInfo) {
@@ -2577,9 +2662,15 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                         {message.type === 'user' ? '您' : 'AI助手'}
                       </span>
                     </div>
-                    {message.type === 'bot' && message.content === '' && isTyping ? (
+                    {message.type === 'bot' && (
+                      message.content === '' || 
+                      (message.displayContent !== undefined && message.displayContent === '')
+                    ) && isTyping ? (
                       <TypingIndicator />
-                    ) : message.type === 'bot' && message.content === '' && !isTyping ? (
+                    ) : message.type === 'bot' && (
+                      message.content === '' || 
+                      (message.displayContent !== undefined && message.displayContent === '')
+                    ) && !isTyping ? (
                       <div className="text-gray-500 text-sm">
                         AI深度分析中，预计2分钟，道友稍后~
                         <span className="ml-1 inline-block">
@@ -2618,7 +2709,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                           ),
                         }}
                       >
-                        {message.content}
+                        {message.type === 'bot' && message.displayContent !== undefined ? message.displayContent : message.content}
                       </ReactMarkdown>
                     )}
                     <div className={`text-xs mt-2 ${message.type === 'user' ? 'text-blue-200' : 'text-gray-500'}`}>
