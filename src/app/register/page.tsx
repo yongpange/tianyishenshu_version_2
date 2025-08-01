@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { devLog } from '@/utils/dev-logger'
+import TianIcon from '@/components/icons/TianIcon'
 
 interface WechatQRModalProps {
   isOpen: boolean
@@ -433,9 +434,7 @@ export default function RegisterPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <Link href="/" className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center">
-                <span className="text-white text-sm font-bold">天</span>
-              </div>
+              <TianIcon width={32} height={32} className="text-black" />
               <span className="text-xl font-bold text-gray-900">天乙神算</span>
             </Link>
           </div>
@@ -446,12 +445,10 @@ export default function RegisterPage() {
         {/* Logo and Title */}
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
-            <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center">
-              <span className="text-white text-lg font-bold">天</span>
-            </div>
+            <TianIcon width={52} height={52} className="text-black" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">天乙神算</h1>
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">加入天乙神算</h2>
+          {/* <h2 className="text-xl font-semibold text-gray-800 mb-2">加入天乙神算</h2> */}
           <p className="text-gray-600 text-sm">开启您的命理探索之旅</p>
         </div>
 

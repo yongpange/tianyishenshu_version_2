@@ -24,6 +24,7 @@ import {
 import { CheckCircleFilled, LoadingOutlined, CalendarOutlined } from '@ant-design/icons'
 import { AuthGuard } from '@/components/AuthGuard'
 import { devLog } from '@/utils/dev-logger'
+import TianIcon from '@/components/icons/TianIcon'
 
 // 动态导入地区选择器，避免 SSR 问题
 const AreaSelector = dynamic(
@@ -298,7 +299,7 @@ function ProfilePageContent() {
   }
 
   // 验证农历日期有效性
-  const validateLunarDate = (year, month, day, isLeap) => {
+  const validateLunarDate = (year: number | undefined, month: number | undefined, day: number | undefined, isLeap: boolean) => {
     if (!year || !month || !day) return { valid: false, error: '请完整填写农历日期' }
 
     try {
@@ -510,18 +511,16 @@ function ProfilePageContent() {
         {/* 头部 */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-4">
-            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center mr-3">
-              <span className="text-white text-sm font-bold">天</span>
-            </div>
+            <TianIcon width={32} height={32} className="mr-3" />
             <h1 className="text-2xl font-bold text-gray-800 m-0">天乙神算</h1>
           </div>
           
           <h2 className="text-xl font-semibold text-gray-700 mb-2">
-            {isAddingNewUser ? '新增用户信息' : '完善您的个人信息'}
+            {isAddingNewUser ? '新增用户信息' : '请完善您的生辰信息'}
           </h2>
-          <p className="text-gray-500">
+          {/* <p className="text-gray-500">
             {isAddingNewUser ? '请填写新用户的详细信息' : '提高详细信息，获取精准生辰分析'}
-          </p>
+          </p> */}
           
           {isAddingNewUser && (
             <div className="mt-2 text-sm text-blue-600">
@@ -597,7 +596,7 @@ function ProfilePageContent() {
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm font-medium text-gray-700">
                 <span className="text-red-500 mr-1">*</span>
-                阳历出生日期时间
+                <span className="font-bold text-black">阳历</span>出生日期时间
               </label>
               <Button
                 type="link"

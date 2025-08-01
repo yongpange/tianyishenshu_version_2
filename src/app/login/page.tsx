@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
+import TianIcon from '@/components/icons/TianIcon'
 
 interface ModalProps {
   isOpen: boolean
@@ -357,9 +358,7 @@ export default function LoginPage() {
         {/* Logo and Title */}
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
-            <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center">
-              <span className="text-white text-lg font-bold">天</span>
-            </div>
+            <TianIcon width={52} height={52} className="text-black" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">天乙神算</h1>
           <h2 className="text-xl font-semibold text-gray-800 mb-2">欢迎回来</h2>

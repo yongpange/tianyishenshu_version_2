@@ -11,7 +11,7 @@
     "setup-env": "node scripts/setup-env.js",
     "setup-supabase": "node scripts/setup-supabase.js",
     "test-supabase": "node -e \"require('./src/lib/supabase-test.ts').testSupabaseConnection()\"",
-    "docker:build": "docker build  --network=host -t tianyishensuan:v0.3.9 .",
+    "docker:build": "docker build  --network=host -t tianyishensuan:v0.4.1 .",
     "setup-context7": "node scripts/setup-context7-mcp.js",
     "setup-context7:install": "node scripts/setup-context7-mcp.js --install",
     "context7:analyze": "npx @context7/mcp-server analyze",

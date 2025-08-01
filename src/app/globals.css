@@ -227,3 +227,26 @@ a {
 .white-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: rgba(255, 255, 255, 0.5);
 }
+
+/* 隐藏滚动条但保持滚动功能 */
+.scrollbar-hide {
+  /* Firefox */
+  scrollbar-width: none;
+  /* Chrome, Safari */
+  -ms-overflow-style: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* 问题按钮样式增强 */
+.question-button {
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.question-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15);
+}

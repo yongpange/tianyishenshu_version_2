@@ -2029,6 +2029,69 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
     return current
   }
 
+  // 解析最后一个AI消息中的问题
+  const parseQuestionsFromLastMessage = () => {
+    const currentConv = getCurrentConversation()
+    if (!currentConv?.messages?.length) return []
+    
+    // 找到最后一个AI消息
+    const lastBotMessage = [...currentConv.messages].reverse().find(msg => msg.type === 'bot')
+    if (!lastBotMessage?.content) return []
+    
+    const content = lastBotMessage.content
+    
+    // 方法1: 查找"from_module":null,"from_unit":null}后面的内容
+    let questionsText = ''
+    const pattern1 = /"from_module":null,"from_unit":null\}(.+?)$/
+    const match1 = content.match(pattern1)
+    
+    if (match1 && match1[1]) {
+      questionsText = match1[1].trim()
+    } else {
+      // 方法2: 查找消息末尾的问题（通常在最后几行）
+      const lines = content.split('\n')
+      const lastFewLines = lines.slice(-10).join('\n') // 取最后10行
+      
+      // 寻找包含问号的行
+      const questionLines = lines.filter(line => 
+        line.includes('？') && 
+        line.trim().length > 3 && 
+        !line.includes('"') && // 排除JSON格式
+        !line.includes('：') && // 排除标题行
+        !line.includes('###') // 排除markdown标题
+      )
+      
+      if (questionLines.length > 0) {
+        questionsText = questionLines.join('')
+      }
+    }
+    
+    if (questionsText) {
+      // 按问号分割问题
+      const questions = questionsText
+        .split(/？|？/)
+        .map(q => q.trim())
+        .filter(q => q.length > 3 && q.length < 50) // 过滤太短或太长的问题
+        .map(q => q + '？')
+        .slice(0, 5) // 最多显示5个问题
+      
+      devLog.log('🔍 解析到的问题:', questions)
+      return questions
+    }
+    
+    return []
+  }
+
+  // 获取建议问题列表
+  const getSuggestedQuestions = () => {
+    return parseQuestionsFromLastMessage()
+  }
+
+  // 点击问题按钮的处理函数
+  const handleQuestionClick = (question: string) => {
+    setCurrentMessage(question)
+  }
+
   // Typing动画组件
   const TypingIndicator = () => (
     <div className="flex items-center space-x-1 text-gray-500">
@@ -2074,7 +2137,10 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
   const extractDisplayContent = (content: string): string => {
     // 查找 "fabuwc directly streaming reply." 的起始位置
     const startMarker = "fabuwc directly streaming reply."
-    const endMarker = '{"msg_type":"stream_plugin_finish"'
+    const endMarkers = [
+      '{"msg_type":"stream_plugin_finish"',
+      '{"msg_type":"generate_answer_finish"'
+    ]
     
     const startIndex = content.indexOf(startMarker)
     if (startIndex === -1) {
@@ -2084,7 +2150,17 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
     
     // 从起始标记之后开始提取
     const contentStart = startIndex + startMarker.length
-    const endIndex = content.indexOf(endMarker, contentStart)
+    
+    // 查找最早出现的结束标记
+    let endIndex = -1
+    for (const endMarker of endMarkers) {
+      const currentEndIndex = content.indexOf(endMarker, contentStart)
+      if (currentEndIndex !== -1) {
+        if (endIndex === -1 || currentEndIndex < endIndex) {
+          endIndex = currentEndIndex
+        }
+      }
+    }
     
     let extractedContent = ''
     if (endIndex === -1) {
@@ -2095,11 +2171,12 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       extractedContent = content.substring(contentStart, endIndex).trim()
     }
     
-    // 去重处理：检测并移除重复的内容段落
+    // 改进的去重处理：检测并移除重复的内容块
     const lines = extractedContent.split('\n')
-    const deduplicatedLines: string[] = []
-    const seenParagraphs = new Set<string>()
     
+    // 第一步：基于段落的去重
+    const paragraphs: string[] = []
+    const seenParagraphs = new Set<string>()
     let currentParagraph: string[] = []
     
     for (const line of lines) {
@@ -2109,8 +2186,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
           const paragraphText = currentParagraph.join('\n').trim()
           if (paragraphText && !seenParagraphs.has(paragraphText)) {
             seenParagraphs.add(paragraphText)
-            deduplicatedLines.push(...currentParagraph)
-            deduplicatedLines.push('') // 保持空行
+            paragraphs.push(paragraphText)
           }
           currentParagraph = []
         }
@@ -2124,16 +2200,57 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       const paragraphText = currentParagraph.join('\n').trim()
       if (paragraphText && !seenParagraphs.has(paragraphText)) {
         seenParagraphs.add(paragraphText)
-        deduplicatedLines.push(...currentParagraph)
+        paragraphs.push(paragraphText)
       }
     }
     
-    // 移除末尾多余的空行
-    while (deduplicatedLines.length > 0 && deduplicatedLines[deduplicatedLines.length - 1] === '') {
-      deduplicatedLines.pop()
+    // 第二步：去除连续的重复段落
+    const deduplicatedParagraphs: string[] = []
+    let lastParagraph = ''
+    
+    for (const paragraph of paragraphs) {
+      if (paragraph !== lastParagraph) {
+        deduplicatedParagraphs.push(paragraph)
+        lastParagraph = paragraph
+      }
     }
     
-    return deduplicatedLines.join('\n')
+    // 第三步：高级去重 - 检测跨段落的重复句子和短语
+    const finalParagraphs: string[] = []
+    const seenSentences = new Set<string>()
+    
+    for (const paragraph of deduplicatedParagraphs) {
+      // 按标点符号分割句子
+      const sentences = paragraph.split(/[。；！？]/).map(s => s.trim()).filter(s => s.length > 0)
+      const keptSentences: string[] = []
+      
+      for (const sentence of sentences) {
+        // 只检查较长的句子（避免过度去重）
+        if (sentence.length > 10) {
+          if (!seenSentences.has(sentence)) {
+            seenSentences.add(sentence)
+            keptSentences.push(sentence)
+          }
+        } else {
+          // 短句子直接保留
+          keptSentences.push(sentence)
+        }
+      }
+      
+      if (keptSentences.length > 0) {
+        // 重新组合句子，恢复标点
+        let rebuiltParagraph = keptSentences.join('。')
+        if (rebuiltParagraph && !rebuiltParagraph.endsWith('。')) {
+          rebuiltParagraph += '。'
+        }
+        
+        if (rebuiltParagraph.trim()) {
+          finalParagraphs.push(rebuiltParagraph)
+        }
+      }
+    }
+    
+    return finalParagraphs.join('\n\n')
   }
 
   if (!userInfo) {
@@ -2600,31 +2717,27 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
             >
               {!activeConversationId || !getCurrentConversation()?.messages.length ? (
                 <div className="flex flex-col items-center justify-center h-full text-center">
-                  <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-6 ${
-                    chatAvailable 
-                      ? 'bg-gradient-to-r from-blue-500 to-purple-600' 
-                      : 'bg-gradient-to-r from-gray-400 to-gray-500'
-                  }`}>
-                    <span className="text-white text-2xl">
-                      {chatAvailable ? '🤖' : '⚠️'}
-                    </span>
-                  </div>
+                  <img 
+                    src="/images/yy2.png" 
+                    alt={chatAvailable ? '聊天可用' : '聊天不可用'} 
+                    className="w-32 h-32 mb-6"
+                  />
                   <h2 className="text-2xl font-bold text-gray-900 mb-4">
-                    您好 {(() => {
+                    福生无量天尊， {(() => {
                       const activeUser = getActiveUser()
                       return activeUser?.name || userInfo?.nickname || userInfo?.name || '用户'
-                    })()}，{chatAvailable ? '很高兴见到您！' : '欢迎来到天乙神算！'}
+                    })()}{chatAvailable ? '道友，你好~' : '道友，你好~'}
                   </h2>
                   {chatAvailable ? (
                     <>
                       <p className="text-gray-600 mb-8 max-w-md">
-                        我已了解您的基本信息，可以为您提供专业的{moduleConfig.title}分析和人生指导，请把您的问题交给我吧~
+                        我已了解您的八字信息，您可以咨询任何与“{moduleConfig.title}”相关的问题~
                       </p>
-                      <div className="bg-gray-100 rounded-lg p-4 max-w-md">
+                      {/* <div className="bg-gray-100 rounded-lg p-4 max-w-md">
                         <p className="text-sm text-gray-600">
                           💡 输入您的问题并发送，我会为您创建一个新的对话并开始回答
                         </p>
-                      </div>
+                      </div> */}
                     </>
                   ) : (
                     <>
@@ -2653,13 +2766,11 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                 <div key={message.id} className={`mb-6 ${message.type === 'user' ? 'flex justify-end' : 'flex justify-start'}`}>
                   <div className={`max-w-[80%] ${message.type === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-900'} rounded-lg p-4`}>
                     <div className={`flex items-center space-x-2 mb-2 ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      {message.type === 'user' ? (
+                      {message.type === 'user' && (
                         <UserOutlined className="text-blue-200" />
-                      ) : (
-                        <RobotOutlined className="text-gray-600" />
                       )}
                       <span className={`text-sm ${message.type === 'user' ? 'text-blue-200' : 'text-gray-600'}`}>
-                        {message.type === 'user' ? '您' : 'AI助手'}
+                        {message.type === 'user' ? '您' : <img src="/images/yy3.png" alt="AI助手" className="w-8 h-8 inline-block" />}
                       </span>
                     </div>
                     {message.type === 'bot' && (
@@ -2747,6 +2858,34 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
             {/* 输入框区域 */}
             <div className="px-4 py-2 bg-white">
               <div className="max-w-4xl mx-auto">
+                {/* 问题按钮区域 */}
+                {(() => {
+                  const suggestedQuestions = getSuggestedQuestions()
+                  return suggestedQuestions.length > 0 && chatAvailable && (
+                    <div className="mb-3">
+                      <div className="text-xs text-gray-500 mb-2 px-1">天乙为您推荐的问题：</div>
+                      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                        {suggestedQuestions.map((question, index) => (
+                          <button
+                            key={index}
+                            onClick={() => handleQuestionClick(question)}
+                            disabled={loading || isTyping}
+                            className={`
+                              question-button flex-shrink-0 px-3 py-2 text-sm rounded-full border
+                              ${loading || isTyping 
+                                ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed' 
+                                : 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100 hover:border-blue-300 cursor-pointer'
+                              }
+                            `}
+                            title={question}
+                          >
+                            {question.length > 15 ? question.substring(0, 15) + '...' : question}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })()}
                 <div className="relative">
                   <TextArea
                     value={currentMessage}

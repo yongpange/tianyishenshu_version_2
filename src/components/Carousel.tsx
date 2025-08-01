@@ -8,13 +8,15 @@ interface CarouselProps {
   autoPlay?: boolean
   autoPlayInterval?: number
   className?: string
+  useFullHeight?: boolean
 }
 
 export default function Carousel({ 
   images, 
   autoPlay = true, 
   autoPlayInterval = 5000,
-  className = '' 
+  className = '',
+  useFullHeight = false
 }: CarouselProps) {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isHovered, setIsHovered] = useState(false)
@@ -58,16 +60,19 @@ export default function Carousel({
   }, [nextSlide, prevSlide])
 
   if (!images || images.length === 0) {
+    const heightClass = useFullHeight ? 'h-full' : 'h-64 md:h-80 lg:h-[42.9vw]'
     return (
-      <div className={`relative w-full h-64 md:h-80 lg:h-[42.9vw] bg-gray-100 rounded-2xl lg:rounded-none flex items-center justify-center ${className}`}>
+      <div className={`relative w-full ${heightClass} bg-gray-100 rounded-2xl lg:rounded-none flex items-center justify-center ${className}`}>
         <p className="text-gray-500 text-lg">轮播图预留位置</p>
       </div>
     )
   }
 
+  const heightClass = useFullHeight ? 'h-full' : 'h-64 md:h-80 lg:h-[42.9vw]'
+  
   return (
     <div
-      className={`relative w-full h-64 md:h-80 lg:h-[42.9vw] overflow-hidden rounded-2xl lg:rounded-none group ${className}`}
+      className={`relative w-full ${heightClass} overflow-hidden rounded-2xl lg:rounded-none group ${className}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
