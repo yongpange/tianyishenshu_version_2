@@ -1,0 +1,26 @@
+# Selenium 自动化测试依赖包
+
+# 核心 Selenium 包
+selenium>=4.15.0
+
+# 测试框架
+pytest>=7.4.0
+pytest-html>=4.0.0
+
+# WebDriver 管理
+webdriver-manager>=4.0.0
+
+# 配置管理
+python-dotenv>=1.0.0
+
+# 日志
+loguru>=0.7.0
+
+# 截图和图像处理
+Pillow>=10.0.0
+
+# HTTP 请求（用于 API 测试）
+requests>=2.31.0
+
+# 随机数据生成
+Faker>=20.0.0

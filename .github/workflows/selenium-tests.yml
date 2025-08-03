@@ -1,0 +1,141 @@
+# GitHub Actions CI/CD 配置文件
+# 这个文件定义了自动化测试的触发条件和执行流程
+
+name: 天乙神算自动化测试
+
+# 触发条件：什么时候运行测试
+on:
+  # 1. 当有人推送代码到main分支时
+  push:
+    branches: [ main, mobile_change ]
+  
+  # 2. 当有人创建Pull Request时
+  pull_request:
+    branches: [ main ]
+  
+  # 3. 每天凌晨2点自动运行（定时任务）
+  schedule:
+    - cron: '0 2 * * *'
+  
+  # 4. 手动触发（可以在GitHub界面手动运行）
+  workflow_dispatch:
+
+# 定义任务
+jobs:
+  # 自动化测试任务
+  selenium-tests:
+    # 运行环境：使用GitHub提供的Ubuntu虚拟机
+    runs-on: ubuntu-latest
+    
+    # 任务步骤
+    steps:
+    # 步骤1: 检出代码
+    - name: 📥 检出代码
+      uses: actions/checkout@v4
+    
+    # 步骤2: 设置Node.js环境（运行你的Next.js项目）
+    - name: 🟢 设置Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    # 步骤3: 安装项目依赖
+    - name: 📦 安装项目依赖
+      run: npm ci
+    
+    # 步骤4: 构建项目
+    - name: 🔨 构建项目
+      run: npm run build
+      env:
+        SKIP_ENV_VALIDATION: true
+    
+    # 步骤5: 启动项目（后台运行）
+    - name: 🚀 启动项目
+      run: |
+        npm start &
+        sleep 15  # 等待项目启动
+      env:
+        NODE_ENV: test
+        PORT: 3000
+    
+    # 步骤6: 验证项目启动
+    - name: 🔍 验证项目启动
+      run: |
+        echo "等待项目完全启动..."
+        for i in {1..30}; do
+          if curl -f http://localhost:3000 > /dev/null 2>&1; then
+            echo "✅ 项目启动成功"
+            break
+          fi
+          echo "等待中... ($i/30)"
+          sleep 2
+        done
+        curl -f http://localhost:3000 || (echo "❌ 项目启动失败" && exit 1)
+    
+    # 步骤7: 设置Python环境
+    - name: 🐍 设置Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    # 步骤8: 安装Chrome浏览器
+    - name: 🌐 安装Chrome浏览器
+      uses: browser-actions/setup-chrome@latest
+      with:
+        chrome-version: stable
+    
+    # 步骤9: 安装Selenium依赖
+    - name: 📦 安装Selenium依赖
+      run: |
+        cd selenium_tests
+        pip install -r requirements.txt
+    
+    # 步骤10: 运行自动化测试
+    - name: 🧪 运行自动化测试
+      run: |
+        cd selenium_tests
+        python -m pytest tests/ -v --html=reports/test_report.html --self-contained-html --tb=short
+      env:
+        TEST_BASE_URL: http://localhost:3000
+        TEST_HEADLESS: true
+    
+    # 步骤11: 上传测试报告
+    - name: 📊 上传测试报告
+      uses: actions/upload-artifact@v4
+      if: always()  # 无论测试成功还是失败都上传报告
+      with:
+        name: selenium-test-reports
+        path: selenium_tests/reports/
+        retention-days: 30
+    
+    # 步骤12: 上传测试截图
+    - name: 📸 上传测试截图
+      uses: actions/upload-artifact@v4
+      if: always()  # 总是上传截图
+      with:
+        name: selenium-screenshots
+        path: selenium_tests/screenshots/
+        retention-days: 7
+    
+    # 步骤13: 创建测试摘要
+    - name: 📋 创建测试摘要
+      if: always()
+      run: |
+        cd selenium_tests
+        echo "## 🧪 天乙神算自动化测试结果" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ -f "reports/test_report.html" ]; then
+          echo "✅ 测试报告已生成" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ 测试报告生成失败" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**提交信息**: ${{ github.event.head_commit.message }}" >> $GITHUB_STEP_SUMMARY
+        echo "**提交者**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+        echo "**分支**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "**运行时间**: $(date)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "📊 [查看详细报告](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY

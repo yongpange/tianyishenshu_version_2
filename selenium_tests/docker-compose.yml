@@ -1,0 +1,82 @@
+# Docker Compose配置
+# 用于同时运行项目和自动化测试
+
+version: '3.8'
+
+services:
+  # 天乙神算项目服务
+  tianyishenshu-app:
+    build:
+      context: ../  # 项目根目录
+      dockerfile: Dockerfile  # 需要为项目创建Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=test
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Selenium自动化测试服务
+  selenium-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      tianyishenshu-app:
+        condition: service_healthy
+    environment:
+      - TEST_BASE_URL=http://tianyishenshu-app:3000
+      - TEST_HEADLESS=true
+    volumes:
+      - ./reports:/app/reports
+      - ./screenshots:/app/screenshots
+    networks:
+      - test-network
+
+  # Selenium Grid Hub（可选，用于并行测试）
+  selenium-hub:
+    image: selenium/hub:4.15.0
+    container_name: selenium-hub
+    ports:
+      - "4442:4442"
+      - "4443:4443"
+      - "4444:4444"
+    networks:
+      - test-network
+
+  # Chrome节点
+  selenium-chrome:
+    image: selenium/node-chrome:4.15.0
+    shm_size: 2gb
+    depends_on:
+      - selenium-hub
+    environment:
+      - HUB_HOST=selenium-hub
+      - HUB_PORT=4444
+    networks:
+      - test-network
+
+  # Firefox节点
+  selenium-firefox:
+    image: selenium/node-firefox:4.15.0
+    shm_size: 2gb
+    depends_on:
+      - selenium-hub
+    environment:
+      - HUB_HOST=selenium-hub
+      - HUB_PORT=4444
+    networks:
+      - test-network
+
+networks:
+  test-network:
+    driver: bridge
+
+volumes:
+  test-reports:
+  test-screenshots:

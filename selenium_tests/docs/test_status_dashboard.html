@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>天乙神算 - 自动化测试状态监控</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.8;
+            font-size: 1.1em;
+        }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            padding: 30px;
+        }
+        
+        .status-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            border-left: 5px solid;
+            transition: transform 0.3s ease;
+        }
+        
+        .status-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .status-card.success {
+            border-left-color: #27ae60;
+        }
+        
+        .status-card.running {
+            border-left-color: #f39c12;
+        }
+        
+        .status-card.failed {
+            border-left-color: #e74c3c;
+        }
+        
+        .status-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+        
+        .status-title {
+            font-size: 1.3em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .status-info {
+            color: #666;
+            margin-bottom: 15px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #ecf0f1;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3498db, #2ecc71);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        
+        .test-details {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        
+        .test-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .test-item:last-child {
+            border-bottom: none;
+        }
+        
+        .test-name {
+            font-weight: 500;
+        }
+        
+        .test-status {
+            font-size: 1.2em;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #2980b9;
+        }
+        
+        .btn-secondary {
+            background: #95a5a6;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #7f8c8d;
+        }
+        
+        .timeline {
+            padding: 30px;
+            background: #f8f9fa;
+        }
+        
+        .timeline-title {
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .timeline-item {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            margin-bottom: 10px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        .timeline-icon {
+            font-size: 1.5em;
+            margin-right: 15px;
+            width: 40px;
+            text-align: center;
+        }
+        
+        .timeline-content {
+            flex: 1;
+        }
+        
+        .timeline-time {
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .running .status-icon {
+            animation: pulse 2s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 天乙神算</h1>
+            <p>自动化测试状态监控中心</p>
+        </div>
+        
+        <div class="status-grid">
+            <!-- 当前测试状态 -->
+            <div class="status-card running">
+                <div class="status-icon">🟡</div>
+                <div class="status-title">正在运行测试</div>
+                <div class="status-info">
+                    提交: 修复登录页面样式问题<br>
+                    作者: 你的用户名<br>
+                    开始时间: 2分钟前
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 75%"></div>
+                </div>
+                <div class="test-details">
+                    <div class="test-item">
+                        <span class="test-name">基础测试</span>
+                        <span class="test-status">✅ 5/5</span>
+                    </div>
+                    <div class="test-item">
+                        <span class="test-name">功能测试</span>
+                        <span class="test-status">✅ 3/3</span>
+                    </div>
+                    <div class="test-item">
+                        <span class="test-name">表单测试</span>
+                        <span class="test-status">✅ 5/5</span>
+                    </div>
+                    <div class="test-item">
+                        <span class="test-name">用户流程测试</span>
+                        <span class="test-status">🟡 2/4</span>
+                    </div>
+                </div>
+                <div class="actions">
+                    <a href="#" class="btn btn-primary">查看日志</a>
+                    <a href="#" class="btn btn-secondary">取消测试</a>
+                </div>
+            </div>
+            
+            <!-- 最近成功的测试 -->
+            <div class="status-card success">
+                <div class="status-icon">✅</div>
+                <div class="status-title">测试通过</div>
+                <div class="status-info">
+                    提交: 添加新的表单验证<br>
+                    作者: 你的用户名<br>
+                    完成时间: 1小时前
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 100%"></div>
+                </div>
+                <div class="test-details">
+                    <div class="test-item">
+                        <span class="test-name">总测试数</span>
+                        <span class="test-status">17个</span>
+                    </div>
+                    <div class="test-item">
+                        <span class="test-name">通过率</span>
+                        <span class="test-status">100%</span>
+                    </div>
+                    <div class="test-item">
+                        <span class="test-name">执行时间</span>
+                        <span class="test-status">2分18秒</span>
+                    </div>
+                </div>
+                <div class="actions">
+                    <a href="#" class="btn btn-primary">查看报告</a>
+                    <a href="#" class="btn btn-secondary">下载截图</a>
+                </div>
+            </div>
+            
+            <!-- 失败的测试 -->
+            <div class="status-card failed">
+                <div class="status-icon">❌</div>
+                <div class="status-title">测试失败</div>
+                <div class="status-info">
+                    提交: 更新导航组件<br>
+                    作者: 同事用户名<br>
+                    失败时间: 3小时前
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 60%; background: #e74c3c;"></div>
+                </div>
+                <div class="test-details">
+                    <div class="test-item">
+                        <span class="test-name">失败测试</span>
+                        <span class="test-status">❌ 导航测试</span>
+                    </div>
+                    <div class="test-item">
+                        <span class="test-name">错误信息</span>
+                        <span class="test-status">元素未找到</span>
+                    </div>
+                    <div class="test-item">
+                        <span class="test-name">影响范围</span>
+                        <span class="test-status">用户导航</span>
+                    </div>
+                </div>
+                <div class="actions">
+                    <a href="#" class="btn btn-primary">查看错误</a>
+                    <a href="#" class="btn btn-secondary">重新运行</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="timeline">
+            <h2 class="timeline-title">📋 最近测试历史</h2>
+            
+            <div class="timeline-item">
+                <div class="timeline-icon">🟡</div>
+                <div class="timeline-content">
+                    <strong>正在运行测试</strong> - 修复登录页面样式问题
+                    <div class="timeline-time">2分钟前开始</div>
+                </div>
+            </div>
+            
+            <div class="timeline-item">
+                <div class="timeline-icon">✅</div>
+                <div class="timeline-content">
+                    <strong>测试通过</strong> - 添加新的表单验证
+                    <div class="timeline-time">1小时前完成 • 耗时2分18秒</div>
+                </div>
+            </div>
+            
+            <div class="timeline-item">
+                <div class="timeline-icon">❌</div>
+                <div class="timeline-content">
+                    <strong>测试失败</strong> - 更新导航组件
+                    <div class="timeline-time">3小时前失败 • 导航测试未通过</div>
+                </div>
+            </div>
+            
+            <div class="timeline-item">
+                <div class="timeline-icon">✅</div>
+                <div class="timeline-content">
+                    <strong>测试通过</strong> - 优化页面加载速度
+                    <div class="timeline-time">昨天完成 • 耗时1分58秒</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 模拟实时更新
+        function updateProgress() {
+            const progressBar = document.querySelector('.running .progress-fill');
+            const currentWidth = parseInt(progressBar.style.width);
+            
+            if (currentWidth < 100) {
+                progressBar.style.width = (currentWidth + 5) + '%';
+                
+                // 更新测试状态
+                if (currentWidth >= 80) {
+                    const userFlowTest = document.querySelector('.running .test-item:last-child .test-status');
+                    userFlowTest.textContent = '🟡 3/4';
+                }
+                
+                setTimeout(updateProgress, 2000);
+            } else {
+                // 测试完成
+                const card = document.querySelector('.running');
+                card.className = 'status-card success';
+                card.querySelector('.status-icon').textContent = '✅';
+                card.querySelector('.status-title').textContent = '测试通过';
+                card.querySelector('.status-info').innerHTML = 
+                    '提交: 修复登录页面样式问题<br>作者: 你的用户名<br>完成时间: 刚刚';
+            }
+        }
+        
+        // 开始模拟更新
+        setTimeout(updateProgress, 3000);
+        
+        // 添加实时时间更新
+        function updateTime() {
+            const timeElements = document.querySelectorAll('.timeline-time');
+            // 这里可以添加实时时间更新逻辑
+        }
+        
+        setInterval(updateTime, 60000); // 每分钟更新一次
+    </script>
+</body>
+</html>
