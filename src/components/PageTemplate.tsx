@@ -2289,7 +2289,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       `}</style>
       
       {/* 移动端顶部导航 */}
-      <div className="md:hidden fixed top-0 left-0 right-0 bg-white shadow-lg border-b border-gray-200 px-3 py-2 z-20">
+      <div className="hidden md:hidden fixed top-0 left-0 right-0 bg-white shadow-lg border-b border-gray-200 px-3 py-2 z-50">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center">
@@ -2311,9 +2311,11 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       </div>
 
       {/* 中间聊天记录区域 */}
-      <div className={`bg-white border-r border-gray-200 transition-all duration-300 h-full overflow-hidden ${
-        chatHistoryVisible ? 'w-80' : 'w-0'
-      }`}>
+      <div className={`bg-white border-r border-gray-200 transition-all duration-300 overflow-hidden
+        ${chatHistoryVisible
+          ? 'w-80 h-full md:relative fixed md:static left-0 top-0 md:top-auto z-[9999] md:z-auto'
+          : 'w-0 h-full'
+        }`}>
         {chatHistoryVisible && (
           <div className="flex flex-col h-full">
             {/* 标题区域 */}
@@ -2496,6 +2498,14 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         )}
       </div>
 
+      {/* 移动端遮罩层 */}
+      {chatHistoryVisible && (
+        <div
+          className="md:hidden fixed inset-0 bg-black bg-opacity-50 z-[9998]"
+          onClick={() => setChatHistoryVisible(false)}
+        />
+      )}
+
       {/* 展开按钮 */}
       {!chatHistoryVisible && (
         <div className="w-8 bg-white border-r border-gray-200 flex items-center justify-center h-full">
@@ -2510,7 +2520,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       )}
 
       {/* 右侧内容区域 */}
-      <div className="flex-1 pt-8 md:pt-0 h-full overflow-hidden bg-white">
+      <div className="flex-1 pt-8 md:pt-0 h-full overflow-hidden bg-white md:relative">
         {currentContent === 'report' ? (
           /* 报告展示区域 */
           <div className="h-full flex flex-col">
