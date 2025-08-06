@@ -854,11 +854,11 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
               {userInfo && (
                 <div className="bg-gray-50 rounded-lg p-4 mt-4">
                   <Paragraph className="text-gray-700 mb-0">
-                    您好，<span className="font-semibold text-gray-900">{(() => {
+                    <span className="font-semibold text-gray-900">{(() => {
                       const activeUser = getActiveUser()
                       return activeUser?.name || userInfo?.nickname || '用户'
                     })()}</span>！
-                    根据您提供的出生信息（{(() => {
+                    道友，你好根据您提供的出生信息（{(() => {
                       const activeUser = getActiveUser()
                       if (activeUser) {
                         const genderText = activeUser.gender === 'male' ? '男' : '女'

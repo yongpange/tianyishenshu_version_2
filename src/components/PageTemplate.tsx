@@ -283,7 +283,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
 
         switch (result.status) {
           case 'generating':
-            setGenerationStatus(`正在生成${moduleConfig.title}报告...`)
+            setGenerationStatus(`天乙深度分析中，道友稍后~`)
             setIsGenerating(true)
             break
 
@@ -453,7 +453,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         
         // 启动轮询机制监控生成状态
         setIsGenerating(true)
-        setGenerationStatus(`正在生成${moduleConfig.title}报告...`)
+        setGenerationStatus(`天乙深度分析中，道友稍后~`)
         setReportLoading(true)
         startPolling(reportUserId, result.taskId || 'auto-generated')
       } else if (result.status === 'failed') {
@@ -807,7 +807,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
     if (isGeneratingParam && urlTaskId) {
       setTaskId(urlTaskId)
       setIsGenerating(true)
-      setGenerationStatus(`正在生成${moduleConfig.title}报告...`)
+      setGenerationStatus(`天乙深度分析中，道友稍后~`)
       setReportLoading(true)
       startPolling(pollingUserId, urlTaskId)
     } else {
@@ -2537,22 +2537,23 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
               {userInfo && (
                 <div className="bg-gray-50 rounded-lg p-4 mt-4">
                   <Paragraph className="text-gray-700 mb-0">
-                    您好，<span className="font-semibold text-gray-900">{(() => {
+                    <span className="font-semibold text-gray-900">{(() => {
                       const activeUser = getActiveUser()
                       return activeUser?.name || userInfo?.nickname || '用户'
-                    })()}</span>！
-                    根据您提供的出生信息（{(() => {
+                    })()}</span>
+                    道友，你好~您的生辰信息（{(() => {
                       const activeUser = getActiveUser()
                       if (activeUser) {
                         const genderText = activeUser.gender === 'male' ? '男' : '女'
                         const areaText = activeUser.area_province && activeUser.area_city && activeUser.area_district 
                           ? `${activeUser.area_province} ${activeUser.area_city} ${activeUser.area_district}`
                           : '未知地区'
-                        return `${activeUser.year}年${activeUser.month}月${activeUser.day}日 ${activeUser.hour}:${String(activeUser.minute).padStart(2, '0')}, ${genderText}, ${areaText}`
+                        return `${activeUser.year}年${activeUser.month}月${activeUser.day}日 ${activeUser.hour}:${String(activeUser.minute).padStart(2, '0')}, ${genderText}`
                       }
                       return formatUserInfoDisplay(userInfo)
                     })()}），
-                    经过天乙神算系统的综合分析，为您生成以下{moduleConfig.title}报告。
+                      {/* 经过天乙的深度分析，为您生成以下{moduleConfig.title}报告。 */}
+                      经过天乙的深度分析，为您生成以下报告。
                   </Paragraph>
                 </div>
               )}
@@ -2565,10 +2566,13 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                   {isGenerating ? (
                     <div className="w-full max-w-md">
                       <div className="text-center mb-6">
-                        <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                          <Spin
-                            indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
-                          />
+                        <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 relative">
+                          <img src="/images/yy2.png" alt="天乙神算" className="w-full h-full object-cover rounded-full" />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <Spin
+                              indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
+                            />
+                          </div>
                         </div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-2">正在生成{moduleConfig.title}报告</h3>
                         <p className="text-gray-600">{generationStatus}</p>
@@ -2606,10 +2610,13 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                    <div className="flex flex-col items-center justify-center py-20">
                      <div className="w-full max-w-md">
                        <div className="text-center mb-6">
-                         <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                           <Spin
-                             indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
-                           />
+                         <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 relative">
+                           <img src="/images/yy2.png" alt="天乙神算" className="w-full h-full object-cover rounded-full" />
+                           <div className="absolute inset-0 flex items-center justify-center">
+                             <Spin
+                               indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
+                             />
+                           </div>
                          </div>
                          <h3 className="text-lg font-semibold text-gray-900 mb-2"></h3>
                          <p className="text-gray-600">{generationStatus}</p>
@@ -2669,11 +2676,14 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                 <div className="flex flex-col items-center justify-center py-20">
                   <div className="w-full max-w-md">
                     <div className="text-center mb-6">
-                      <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <Spin
-                          indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
-                        />
-                      </div>
+                                               <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 relative">
+                           <img src="/images/yy2.png" alt="天乙神算" className="w-full h-full object-cover rounded-full" />
+                           <div className="absolute inset-0 flex items-center justify-center">
+                             <Spin
+                               indicator={<LoadingOutlined style={{ fontSize: 24, color: 'white' }} spin />}
+                             />
+                           </div>
+                         </div>
                       <h3 className="text-lg font-semibold text-gray-900 mb-2"></h3>
                       <p className="text-gray-600">{generationStatus}</p>
                       <p className="text-sm text-gray-500 mt-2">您的{moduleConfig.title}报告正在生成中，预计等候三分钟。</p>
@@ -2731,7 +2741,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                   {chatAvailable ? (
                     <>
                       <p className="text-gray-600 mb-8 max-w-md">
-                        我已了解您的八字信息，您可以咨询任何与“{moduleConfig.title}”相关的问题~
+                        我已了解您的八字信息，您可以咨询与“{moduleConfig.title}”相关的问题。
                       </p>
                       {/* <div className="bg-gray-100 rounded-lg p-4 max-w-md">
                         <p className="text-sm text-gray-600">

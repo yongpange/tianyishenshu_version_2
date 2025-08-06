@@ -744,17 +744,18 @@ function ProfilePageContent() {
                 <div className="mb-4">
                   <LoadingOutlined style={{ fontSize: 48, color: '#1890ff' }} />
                 </div>
-                <h3 className="text-lg font-semibold mb-2">AI深度分析中，道友稍后~</h3>
+                <h3 className="text-lg font-semibold mb-2">天乙深度分析中，道友稍后~</h3>
                 <p className="text-gray-600 mb-4">{stepMessages[generationStep]}</p>
 
                 {/* 预计等候时间提示 */}
                 <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <p className="text-blue-800 font-medium text-sm">
-                    {progress < 90 ? '正在生成性格报告，预计等候1-2分钟' : '性格报告已完成，其他报告将在后台生成'}
+                    {/* {progress < 90 ? '多份报告正在生成预计等候5分钟。' : '性格报告已完成，其他报告将在后台生成'} */}
+                    多份报告正在生成预计等候5分钟。
                   </p>  
                 </div>
 
-                <Progress percent={progress} strokeColor="#1890ff" />
+                {/* <Progress percent={progress} strokeColor="#1890ff" /> */}
               </div>
             </Card>
           </div>
