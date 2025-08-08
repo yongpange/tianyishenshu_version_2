@@ -18,7 +18,8 @@ import {
   Skeleton,
   Modal,
   Row,
-  Col
+  Col,
+  Checkbox
 } from 'antd'
 import { CheckCircleFilled, LoadingOutlined, CalendarOutlined } from '@ant-design/icons'
 import { devLog } from '@/utils/dev-logger'
@@ -129,6 +130,17 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
     setInviteCode(verifiedCode)
   }, [onCancel])
 
+  // 实时验证农历日期
+  useEffect(() => {
+    if (lunarDate.year && lunarDate.month && lunarDate.day) {
+      const validation = validateLunarDate(lunarDate.year, lunarDate.month, lunarDate.day, lunarDate.isLeap)
+      if (!validation.valid && lunarDate.isLeap) {
+        // 如果闰月无效，自动取消闰月选择
+        setLunarDate(prev => ({ ...prev, isLeap: false }))
+      }
+    }
+  }, [lunarDate.year, lunarDate.month, lunarDate.day, lunarDate.isLeap])
+
   // 获取当前用户
   const getCurrentUser = (): { phoneNumber: string; userId?: string } | null => {
     try {
@@ -151,11 +163,54 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
     setValue('area', value, { shouldValidate: true })
   }
 
+  // 验证农历日期有效性
+  const validateLunarDate = (year: number | undefined, month: number | undefined, day: number | undefined, isLeap: boolean) => {
+    if (!year || !month || !day) return { valid: false, error: '请完整填写农历日期' }
+
+    try {
+      const { Lunar } = require('lunar-javascript')
+      const lunar = Lunar.fromYmd(year, month, day, isLeap)
+      return { valid: true, lunar }
+    } catch (error) {
+      return { valid: false, error: '农历日期无效' }
+    }
+  }
+
   // 农历转阳历
   const convertLunarToSolar = () => {
-    // 这里可以添加农历转阳历的逻辑
-    message.info('农历转换功能暂未实现')
-    setShowLunarModal(false)
+    // 验证农历日期
+    const validation = validateLunarDate(lunarDate.year, lunarDate.month, lunarDate.day, lunarDate.isLeap)
+    if (!validation.valid) {
+      message.error(validation.error)
+      return
+    }
+
+    try {
+      // 使用农历转换库，支持闰月
+      const { Lunar, Solar } = require('lunar-javascript')
+      const lunar = Lunar.fromYmd(lunarDate.year, lunarDate.month, lunarDate.day, lunarDate.isLeap)
+      const solar = lunar.getSolar()
+
+      // 更新表单值
+      setValue('year', solar.getYear(), { shouldValidate: true })
+      setValue('month', solar.getMonth(), { shouldValidate: true })
+      setValue('day', solar.getDay(), { shouldValidate: true })
+
+      const leapText = lunarDate.isLeap ? '闰' : ''
+      message.success(`农历${lunarDate.year}年${leapText}${lunarDate.month}月${lunarDate.day}日 转换为 阳历${solar.getYear()}年${solar.getMonth()}月${solar.getDay()}日`)
+      setShowLunarModal(false)
+
+      // 重置农历日期
+      setLunarDate({
+        year: undefined,
+        month: undefined,
+        day: undefined,
+        isLeap: false
+      })
+    } catch (error) {
+      devLog.error('农历转换失败:', error)
+      message.error('农历转换失败，请检查日期是否正确')
+    }
   }
 
   // 更新进度
@@ -424,7 +479,7 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-sm font-medium text-gray-700">
                   <span className="text-red-500 mr-1">*</span>
-                  阳历出生日期时间
+                  <span className="font-bold text-black">阳历</span>出生日期时间
                 </label>
                 <Button
                   type="link"
@@ -448,7 +503,7 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
                       showSearch
                       status={errors.year ? 'error' : ''}
                     >
-                      {Array.from({ length: 125 }, (_, i) => 2024 - i).map(year => (
+                      {Array.from({ length: 126 }, (_, i) => 2025 - i).map(year => (
                         <Option key={year} value={year}>{year}年</Option>
                       ))}
                     </Select>
@@ -632,7 +687,7 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
                     style={{ width: '100%' }}
                     showSearch
                   >
-                    {Array.from({ length: 125 }, (_, i) => 2024 - i).map(year => (
+                    {Array.from({ length: 126 }, (_, i) => 2025 - i).map(year => (
                       <Select.Option key={year} value={year}>{year}年</Select.Option>
                     ))}
                   </Select>
@@ -652,6 +707,14 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
                       <Select.Option key={month} value={month}>{month}月</Select.Option>
                     ))}
                   </Select>
+                  <div className="mt-2">
+                    <Checkbox
+                      checked={lunarDate.isLeap}
+                      onChange={(e) => setLunarDate(prev => ({ ...prev, isLeap: e.target.checked }))}
+                    >
+                      闰月
+                    </Checkbox>
+                  </div>
                 </Col>
 
                 <Col span={8}>

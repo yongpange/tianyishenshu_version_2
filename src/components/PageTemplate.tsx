@@ -97,6 +97,9 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
   const [currentDbConversationId, setCurrentDbConversationId] = useState<string | null>(null)
 
   const [drawerVisible, setDrawerVisible] = useState(false)
+
+  // 检测是否在dashboard环境中
+  const [isInDashboard, setIsInDashboard] = useState(false)
   const [reportContent, setReportContent] = useState<string | null>(null)
   const [reportLoading, setReportLoading] = useState(true)
   const [reportError, setReportError] = useState<string | null>(null)
@@ -762,6 +765,41 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       setConversationsLoading(false)
     }
   }
+
+  // 检测是否在dashboard环境中
+  useEffect(() => {
+    const checkDashboardEnvironment = () => {
+      const currentPath = window.location.pathname
+      const isDashboardPath = currentPath === '/dashboard'
+
+      // 也可以通过检查DOM结构来判断是否有dashboard的底部按钮
+      const hasDashboardButton = document.querySelector('[class*="md:hidden"][class*="fixed"][class*="bottom-0"]') !== null
+
+      const inDashboard = isDashboardPath || hasDashboardButton
+      setIsInDashboard(inDashboard)
+
+      devLog.log('🔍 Dashboard环境检测:', { currentPath, isDashboardPath, hasDashboardButton, inDashboard })
+    }
+
+    // 初始检测
+    checkDashboardEnvironment()
+
+    // 监听路径变化和DOM变化
+    const handleChange = () => {
+      setTimeout(checkDashboardEnvironment, 100) // 延迟检测，确保DOM更新
+    }
+
+    window.addEventListener('popstate', handleChange)
+
+    // 使用MutationObserver监听DOM变化
+    const observer = new MutationObserver(handleChange)
+    observer.observe(document.body, { childList: true, subtree: true })
+
+    return () => {
+      window.removeEventListener('popstate', handleChange)
+      observer.disconnect()
+    }
+  }, [])
 
   // 初始化用户信息和数据
   useEffect(() => {
@@ -2866,7 +2904,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
             </div>
 
             {/* 输入框区域 */}
-            <div className="px-4 py-2 bg-white">
+            <div className={`px-4 py-2 bg-white ${isInDashboard ? 'md:pb-2 pb-20' : ''}`}>
               <div className="max-w-4xl mx-auto">
                 {/* 问题按钮区域 */}
                 {(() => {
