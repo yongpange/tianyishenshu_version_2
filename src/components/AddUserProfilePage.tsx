@@ -38,7 +38,7 @@ const { Option } = Select
 const profileSchema = z.object({
   nickname: z.string().min(1, '请输入昵称').max(20, '昵称不能超过20个字符'),
   gender: z.enum(['男', '女'], { errorMap: () => ({ message: '请选择性别' }) }),
-  year: z.number().min(1900, '年份不能早于1900年').max(2024, '年份不能晚于2024年'),
+  year: z.number().min(1900, '年份不能早于1900年').max(2025, '年份不能晚于2025年'),
   month: z.number().min(1, '月份必须在1-12之间').max(12, '月份必须在1-12之间'),
   day: z.number().min(1, '日期必须在1-31之间').max(31, '日期必须在1-31之间'),
   hour: z.number().min(0, '小时必须在0-23之间').max(23, '小时必须在0-23之间'),
