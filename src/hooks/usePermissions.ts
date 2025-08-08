@@ -67,6 +67,23 @@ export function usePermissions(): UsePermissionsReturn {
           window.location.href = '/login'
           return
         }
+      } else {
+        // API调用失败，但不清除登录状态
+        devLog.warn('用户验证API调用失败，状态码:', verifyResponse.status)
+        if (verifyResponse.status >= 500) {
+          // 服务器错误：保持当前状态，继续加载权限
+          devLog.warn('服务器错误，跳过用户验证，继续加载权限')
+        } else if (verifyResponse.status === 401 || verifyResponse.status === 403) {
+          // 明确的认证错误：清除登录状态
+          devLog.warn('认证失败，清除登录状态')
+          localStorage.removeItem('loginData')
+          localStorage.removeItem('userData')
+          localStorage.removeItem('activeUser')
+          sessionStorage.clear()
+          window.location.href = '/login'
+          return
+        }
+        // 其他错误：继续执行，但可能权限功能受限
       }
 
       // 调用API获取用户角色和权限

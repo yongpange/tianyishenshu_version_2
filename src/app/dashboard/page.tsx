@@ -76,8 +76,30 @@ export default function DashboardPage() {
           body: JSON.stringify({ phone })
         })
 
+        if (!response.ok) {
+          // API调用失败，但不清除登录状态
+          devLog.warn('用户验证API调用失败，状态码:', response.status)
+          if (response.status >= 500) {
+            // 服务器错误：保持登录状态
+            devLog.warn('服务器错误，保持当前登录状态')
+            return true
+          }
+          if (response.status === 401 || response.status === 403) {
+            // 明确的认证错误：清除登录状态
+            devLog.log('认证失败，清除登录状态')
+            localStorage.removeItem('loginData')
+            localStorage.removeItem('userData')
+            localStorage.removeItem('activeUser')
+            sessionStorage.clear()
+            router.push('/login')
+            return false
+          }
+          // 其他错误：保持登录状态
+          return true
+        }
+
         const result = await response.json()
-        
+
         if (!result.success || !result.exists) {
           devLog.log('用户验证失败，清除登录状态', result.message)
           // 清除所有本地存储的登录信息
@@ -85,7 +107,7 @@ export default function DashboardPage() {
           localStorage.removeItem('userData')
           localStorage.removeItem('activeUser')
           sessionStorage.clear()
-          
+
           // 跳转到登录页
           router.push('/login')
           return false
@@ -95,13 +117,17 @@ export default function DashboardPage() {
         return true
       } catch (error) {
         devLog.error('用户验证过程出错:', error)
-        // 验证出错也清除登录状态
-        localStorage.removeItem('loginData')
-        localStorage.removeItem('userData')
-        localStorage.removeItem('activeUser')
-        sessionStorage.clear()
-        router.push('/login')
-        return false
+
+        // 区分错误类型，只有明确的认证错误才清除登录状态
+        if (error instanceof TypeError && error.message.includes('fetch')) {
+          // 网络错误：保持登录状态，显示提示
+          devLog.warn('网络连接问题，保持当前登录状态')
+          return true // 允许继续使用，但可能功能受限
+        }
+
+        // 其他未知错误：记录但不清除状态，允许用户继续使用
+        devLog.warn('验证请求失败，保持当前状态，用户可继续使用')
+        return true
       }
     }
 
