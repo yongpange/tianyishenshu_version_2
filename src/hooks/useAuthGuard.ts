@@ -64,10 +64,26 @@ export function useAuthGuard(options: UseAuthGuardOptions = {}): UseAuthGuardRet
       })
 
       if (!response.ok) {
-        devLog.log('🔒 用户验证API调用失败')
-        clearAuthState()
-        setIsAuthenticated(false)
-        return false
+        devLog.log('🔒 用户验证API调用失败，状态码:', response.status)
+
+        // 区分错误类型
+        if (response.status >= 500) {
+          // 服务器错误：保持当前状态
+          devLog.warn('服务器错误，保持当前认证状态')
+          return true
+        }
+
+        if (response.status === 401 || response.status === 403) {
+          // 明确的认证错误：清除状态
+          devLog.log('认证失败，清除登录状态')
+          clearAuthState()
+          setIsAuthenticated(false)
+          return false
+        }
+
+        // 其他错误：保持当前状态
+        devLog.warn('API调用失败，但保持当前认证状态')
+        return true
       }
 
       const result = await response.json()
@@ -98,6 +114,11 @@ export function useAuthGuard(options: UseAuthGuardOptions = {}): UseAuthGuardRet
                 setIsAuthenticated(false)
                 return false
               }
+            } else {
+              // activeUser验证API失败，但不影响主用户登录状态
+              devLog.warn('激活用户验证失败，但保持主用户登录状态')
+              // 只清除activeUser，不清除主登录状态
+              localStorage.removeItem('activeUser')
             }
           }
         } catch (error) {
@@ -113,9 +134,17 @@ export function useAuthGuard(options: UseAuthGuardOptions = {}): UseAuthGuardRet
 
     } catch (error) {
       devLog.error('❌ 用户状态检查失败:', error)
-      clearAuthState()
-      setIsAuthenticated(false)
-      return false
+
+      // 区分错误类型
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        // 网络错误：保持当前状态
+        devLog.warn('网络连接问题，保持当前认证状态')
+        return true
+      }
+
+      // 其他未知错误：记录但不清除状态
+      devLog.warn('验证过程出现未知错误，保持当前状态')
+      return true
     }
   }
 

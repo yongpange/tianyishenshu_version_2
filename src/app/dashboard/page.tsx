@@ -14,7 +14,8 @@ import {
   RightOutlined,
   CrownOutlined,
   SecurityScanOutlined,
-  LockOutlined
+  LockOutlined,
+  ArrowLeftOutlined
 } from '@ant-design/icons'
 import { PermissionGuard, usePermissionCheck } from '@/components/PermissionGuard'
 import { useGlobalSessionManager } from '@/hooks/useGlobalSessionManager'
@@ -41,6 +42,7 @@ import JiIcon from '@/components/icons/JiIcon'
 import XinIcon from '@/components/icons/XinIcon'
 import RenIcon from '@/components/icons/RenIcon'
 import KuiIcon from '@/components/icons/kuiIcon'
+import Breadcrumb, { BREADCRUMB_CONFIGS } from '@/components/Breadcrumb'
 
 export default function DashboardPage() {
   const [userInfo, setUserInfo] = useState<any>(null)
@@ -160,8 +162,30 @@ export default function DashboardPage() {
           body: JSON.stringify({ phone })
         })
 
+        if (!response.ok) {
+          // API调用失败，但不清除登录状态
+          devLog.warn('用户验证API调用失败，状态码:', response.status)
+          if (response.status >= 500) {
+            // 服务器错误：保持登录状态
+            devLog.warn('服务器错误，保持当前登录状态')
+            return true
+          }
+          if (response.status === 401 || response.status === 403) {
+            // 明确的认证错误：清除登录状态
+            devLog.log('认证失败，清除登录状态')
+            localStorage.removeItem('loginData')
+            localStorage.removeItem('userData')
+            localStorage.removeItem('activeUser')
+            sessionStorage.clear()
+            router.push('/login')
+            return false
+          }
+          // 其他错误：保持登录状态
+          return true
+        }
+
         const result = await response.json()
-        
+
         if (!result.success || !result.exists) {
           devLog.log('用户验证失败，清除登录状态', result.message)
           // 清除所有本地存储的登录信息
@@ -169,7 +193,7 @@ export default function DashboardPage() {
           localStorage.removeItem('userData')
           localStorage.removeItem('activeUser')
           sessionStorage.clear()
-          
+
           // 跳转到登录页
           router.push('/login')
           return false
@@ -179,13 +203,17 @@ export default function DashboardPage() {
         return true
       } catch (error) {
         devLog.error('用户验证过程出错:', error)
-        // 验证出错也清除登录状态
-        localStorage.removeItem('loginData')
-        localStorage.removeItem('userData')
-        localStorage.removeItem('activeUser')
-        sessionStorage.clear()
-        router.push('/login')
-        return false
+
+        // 区分错误类型，只有明确的认证错误才清除登录状态
+        if (error instanceof TypeError && error.message.includes('fetch')) {
+          // 网络错误：保持登录状态，显示提示
+          devLog.warn('网络连接问题，保持当前登录状态')
+          return true // 允许继续使用，但可能功能受限
+        }
+
+        // 其他未知错误：记录但不清除状态，允许用户继续使用
+        devLog.warn('验证请求失败，保持当前状态，用户可继续使用')
+        return true
       }
     }
 
@@ -1814,7 +1842,17 @@ export default function DashboardPage() {
       <div className="md:hidden bg-white shadow-sm border-b border-gray-200 p-4 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-                          <TianIcon width={22} height={22} />
+            {/* 返回命书按钮 - 只在非dashboard主页时显示 */}
+            {currentView !== 'dashboard' && (
+              <Button
+                type="text"
+                icon={<ArrowLeftOutlined />}
+                onClick={() => setCurrentView('dashboard')}
+                className="p-0 mr-2"
+                title="返回「命书」"
+              />
+            )}
+            <TianIcon width={22} height={22} />
             <div className="text-sm font-bold text-gray-900">
               <div>天乙神算</div>
             </div>
@@ -2108,6 +2146,21 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* PC端返回命书按钮 - 只在非dashboard主页时显示 */}
+        {currentView !== 'dashboard' && (
+          <div className="p-3 border-t border-gray-100">
+            <Button
+              block
+              size="large"
+              icon={<ArrowLeftOutlined />}
+              onClick={() => setCurrentView('dashboard')}
+              className="border-gray-300 text-gray-700 hover:border-gray-400 hover:text-gray-800 shadow-sm hover:shadow-md transition-all duration-300"
+            >
+              <span className="font-medium tracking-wide">返回「命书」</span>
+            </Button>
+          </div>
+        )}
+
         {/* 底部问道1v1按钮 */}
         <div className="p-3 border-t border-gray-100 flex-shrink-0">
           <div className="relative">
@@ -2126,8 +2179,8 @@ export default function DashboardPage() {
               size="large"
               onClick={handleConsultation}
               className={`border-none shadow-lg hover:shadow-xl transition-all duration-300 relative z-20 ${
-                currentView === 'consultation' 
-                  ? 'bg-blue-600 hover:bg-blue-700' 
+                currentView === 'consultation'
+                  ? 'bg-blue-600 hover:bg-blue-700'
                   : 'bg-black hover:bg-gray-800'
               }`}
             >
@@ -2138,7 +2191,14 @@ export default function DashboardPage() {
       </div>
 
       {/* 主内容区*/}
-      <div className="flex-1 p-0.5 md:p-1 overflow-y-auto h-full min-h-0">
+      <div className="flex-1 p-1.5 md:p-3 overflow-y-auto h-full min-h-0">
+        {/* PC端面包屑导航 - 只在非dashboard主页时显示 */}
+        {currentView !== 'dashboard' && (
+          <div className="hidden md:block mb-4 px-2">
+            <Breadcrumb items={BREADCRUMB_CONFIGS[currentView as keyof typeof BREADCRUMB_CONFIGS] || []} />
+          </div>
+        )}
+
         <Suspense fallback={
           <div className="flex items-center justify-center h-64">
             <Spin size="large" />

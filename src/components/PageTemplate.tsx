@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { devLog } from '@/utils/dev-logger'
 import { useRouter } from 'next/navigation'
+import Breadcrumb, { BREADCRUMB_CONFIGS } from '@/components/Breadcrumb'
 import {
   Button,
   Input,
@@ -103,6 +104,9 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
   const [currentDbConversationId, setCurrentDbConversationId] = useState<string | null>(null)
 
   const [drawerVisible, setDrawerVisible] = useState(false)
+
+  // 检测是否在dashboard环境中
+  const [isInDashboard, setIsInDashboard] = useState(false)
   const [reportContent, setReportContent] = useState<string | null>(null)
   const [reportLoading, setReportLoading] = useState(true)
   const [reportError, setReportError] = useState<string | null>(null)
@@ -776,6 +780,41 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       setConversationsLoading(false)
     }
   }
+
+  // 检测是否在dashboard环境中
+  useEffect(() => {
+    const checkDashboardEnvironment = () => {
+      const currentPath = window.location.pathname
+      const isDashboardPath = currentPath === '/dashboard'
+
+      // 也可以通过检查DOM结构来判断是否有dashboard的底部按钮
+      const hasDashboardButton = document.querySelector('[class*="md:hidden"][class*="fixed"][class*="bottom-0"]') !== null
+
+      const inDashboard = isDashboardPath || hasDashboardButton
+      setIsInDashboard(inDashboard)
+
+      devLog.log('🔍 Dashboard环境检测:', { currentPath, isDashboardPath, hasDashboardButton, inDashboard })
+    }
+
+    // 初始检测
+    checkDashboardEnvironment()
+
+    // 监听路径变化和DOM变化
+    const handleChange = () => {
+      setTimeout(checkDashboardEnvironment, 100) // 延迟检测，确保DOM更新
+    }
+
+    window.addEventListener('popstate', handleChange)
+
+    // 使用MutationObserver监听DOM变化
+    const observer = new MutationObserver(handleChange)
+    observer.observe(document.body, { childList: true, subtree: true })
+
+    return () => {
+      window.removeEventListener('popstate', handleChange)
+      observer.disconnect()
+    }
+  }, [])
 
   // 初始化用户信息和数据
   useEffect(() => {
@@ -2389,9 +2428,21 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       `}</style>
       
       {/* 移动端顶部导航 */}
-      <div className="md:hidden fixed top-0 left-0 right-0 bg-white shadow-lg border-b border-gray-200 px-3 py-2 z-20">
+      <div className="md:hidden fixed top-0 left-0 right-0 bg-white shadow-lg border-b border-gray-200 px-3 py-2 z-50">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
+            {/* 返回命书按钮 */}
+            <Button
+              type="text"
+              icon={<ArrowLeftOutlined />}
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                window.location.href = '/dashboard'
+              }}
+              className="p-0 mr-2"
+              title="返回「命书」"
+            />
             <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center">
               <span className="text-white font-bold text-sm">乙</span>
             </div>
@@ -2411,9 +2462,11 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       </div>
 
       {/* 中间聊天记录区域 */}
-      <div className={`bg-white border-r border-gray-200 transition-all duration-300 h-full overflow-hidden ${
-        chatHistoryVisible ? 'w-80' : 'w-0'
-      }`}>
+      <div className={`bg-white border-r border-gray-200 transition-all duration-300 overflow-hidden
+        ${chatHistoryVisible
+          ? 'w-80 h-full md:relative fixed md:static left-0 top-0 md:top-auto z-[9999] md:z-auto'
+          : 'w-0 h-full'
+        }`}>
         {chatHistoryVisible && (
           <div className="flex flex-col h-full">
             {/* 标题区域 */}
@@ -2600,6 +2653,14 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         )}
       </div>
 
+      {/* 移动端遮罩层 */}
+      {chatHistoryVisible && (
+        <div
+          className="md:hidden fixed inset-0 bg-black bg-opacity-50 z-[9998]"
+          onClick={() => setChatHistoryVisible(false)}
+        />
+      )}
+
       {/* 展开按钮 */}
       {!chatHistoryVisible && (
         <div className="w-8 bg-white border-r border-gray-200 flex items-center justify-center h-full">
@@ -2614,7 +2675,12 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       )}
 
       {/* 右侧内容区域 */}
-      <div className="flex-1 pt-8 md:pt-0 h-full overflow-hidden bg-white">
+      <div className="flex-1 pt-8 md:pt-0 h-full overflow-hidden bg-white md:relative">
+        {/* PC端面包屑导航 */}
+        <div className="hidden md:block p-4 pb-0">
+          <Breadcrumb items={BREADCRUMB_CONFIGS[moduleConfig.moduleId as keyof typeof BREADCRUMB_CONFIGS] || []} />
+        </div>
+
         {currentContent === 'report' ? (
           /* 报告展示区域 */
           <div className="h-full flex flex-col">
@@ -2970,7 +3036,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
             </div>
 
             {/* 输入框区域 */}
-            <div className="px-4 py-2 bg-white">
+            <div className={`px-4 py-2 bg-white ${isInDashboard ? 'md:pb-2 pb-20' : ''}`}>
               <div className="max-w-4xl mx-auto">
                 {/* 问题按钮区域 */}
                 {(() => {
