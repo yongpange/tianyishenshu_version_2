@@ -14,7 +14,8 @@ import {
   RightOutlined,
   CrownOutlined,
   SecurityScanOutlined,
-  LockOutlined
+  LockOutlined,
+  ArrowLeftOutlined
 } from '@ant-design/icons'
 import { PermissionGuard, usePermissionCheck } from '@/components/PermissionGuard'
 import { useGlobalSessionManager } from '@/hooks/useGlobalSessionManager'
@@ -29,6 +30,7 @@ import AddUserPage from '@/components/AddUserPage'
 import AddUserProfilePage from '@/components/AddUserProfilePage'
 import { devLog } from '@/utils/dev-logger'
 import TianIcon from '@/components/icons/TianIcon'
+import Breadcrumb, { BREADCRUMB_CONFIGS } from '@/components/Breadcrumb'
 
 export default function DashboardPage() {
   const [userInfo, setUserInfo] = useState<any>(null)
@@ -1772,7 +1774,17 @@ export default function DashboardPage() {
       <div className="md:hidden bg-white shadow-sm border-b border-gray-200 p-4 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-                          <TianIcon width={22} height={22} />
+            {/* 返回命书按钮 - 只在非dashboard主页时显示 */}
+            {currentView !== 'dashboard' && (
+              <Button
+                type="text"
+                icon={<ArrowLeftOutlined />}
+                onClick={() => setCurrentView('dashboard')}
+                className="p-0 mr-2"
+                title="返回「命书」"
+              />
+            )}
+            <TianIcon width={22} height={22} />
             <div className="text-sm font-bold text-gray-900">
               <div>天乙神算</div>
             </div>
@@ -2054,6 +2066,21 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* PC端返回命书按钮 - 只在非dashboard主页时显示 */}
+        {currentView !== 'dashboard' && (
+          <div className="p-3 border-t border-gray-100">
+            <Button
+              block
+              size="large"
+              icon={<ArrowLeftOutlined />}
+              onClick={() => setCurrentView('dashboard')}
+              className="border-gray-300 text-gray-700 hover:border-gray-400 hover:text-gray-800 shadow-sm hover:shadow-md transition-all duration-300"
+            >
+              <span className="font-medium tracking-wide">返回「命书」</span>
+            </Button>
+          </div>
+        )}
+
         {/* 底部问道1v1按钮 */}
         <div className="p-3 border-t border-gray-100 flex-shrink-0">
           <Button
@@ -2062,8 +2089,8 @@ export default function DashboardPage() {
             size="large"
             onClick={handleConsultation}
             className={`border-none shadow-lg hover:shadow-xl transition-all duration-300 ${
-              currentView === 'consultation' 
-                ? 'bg-blue-600 hover:bg-blue-700' 
+              currentView === 'consultation'
+                ? 'bg-blue-600 hover:bg-blue-700'
                 : 'bg-black hover:bg-gray-800'
             }`}
           >
@@ -2074,6 +2101,13 @@ export default function DashboardPage() {
 
       {/* 主内容区*/}
       <div className="flex-1 p-1.5 md:p-3 overflow-y-auto h-full min-h-0">
+        {/* PC端面包屑导航 - 只在非dashboard主页时显示 */}
+        {currentView !== 'dashboard' && (
+          <div className="hidden md:block mb-4 px-2">
+            <Breadcrumb items={BREADCRUMB_CONFIGS[currentView as keyof typeof BREADCRUMB_CONFIGS] || []} />
+          </div>
+        )}
+
         <Suspense fallback={
           <div className="flex items-center justify-center h-64">
             <Spin size="large" />

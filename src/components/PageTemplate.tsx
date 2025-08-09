@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { devLog } from '@/utils/dev-logger'
 import { useRouter } from 'next/navigation'
+import Breadcrumb, { BREADCRUMB_CONFIGS } from '@/components/Breadcrumb'
 import {
   Button,
   Input,
@@ -2327,9 +2328,21 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       `}</style>
       
       {/* 移动端顶部导航 */}
-      <div className="hidden md:hidden fixed top-0 left-0 right-0 bg-white shadow-lg border-b border-gray-200 px-3 py-2 z-50">
+      <div className="md:hidden fixed top-0 left-0 right-0 bg-white shadow-lg border-b border-gray-200 px-3 py-2 z-50">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
+            {/* 返回命书按钮 */}
+            <Button
+              type="text"
+              icon={<ArrowLeftOutlined />}
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                window.location.href = '/dashboard'
+              }}
+              className="p-0 mr-2"
+              title="返回「命书」"
+            />
             <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center">
               <span className="text-white font-bold text-sm">乙</span>
             </div>
@@ -2559,6 +2572,11 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
 
       {/* 右侧内容区域 */}
       <div className="flex-1 pt-8 md:pt-0 h-full overflow-hidden bg-white md:relative">
+        {/* PC端面包屑导航 */}
+        <div className="hidden md:block p-4 pb-0">
+          <Breadcrumb items={BREADCRUMB_CONFIGS[moduleConfig.moduleId as keyof typeof BREADCRUMB_CONFIGS] || []} />
+        </div>
+
         {currentContent === 'report' ? (
           /* 报告展示区域 */
           <div className="h-full flex flex-col">

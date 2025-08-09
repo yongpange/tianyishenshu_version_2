@@ -734,7 +734,11 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
                 </Col>
               </Row>
 
-
+              <div className="text-xs text-gray-500 mt-4">
+                <p>• 农历转阳历功能基于中国传统历法计算</p>
+                <p>• 转换结果将自动填入上方的出生日期字段</p>
+                <p>• 如遇闰月等特殊情况，请咨询客服处理</p>
+              </div>
             </div>
           </Modal>
         </Card>

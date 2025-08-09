@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from 'antd'
 import { ArrowLeftOutlined } from '@ant-design/icons'
 import Image from 'next/image'
+import Breadcrumb, { BREADCRUMB_CONFIGS } from '@/components/Breadcrumb'
 
 export default function ConsultationPage() {
   const router = useRouter()
@@ -18,8 +19,12 @@ export default function ConsultationPage() {
     }
   }, [])
 
-  const handleBack = () => {
-    router.back()
+  const handleBack = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    window.location.href = '/dashboard'
   }
 
   return (
@@ -115,10 +120,16 @@ export default function ConsultationPage() {
         </div>
 
         {/* 主内容区域 */}
-        <div className="flex-1 flex items-center justify-center p-4 md:p-8">
-          <div className="max-w-2xl w-full">
-            {/* 白色卡片容器 */}
-            <div className="bg-white rounded-2xl shadow-lg p-8 md:p-12">
+        <div className="flex-1 p-4 md:p-8">
+          {/* PC端面包屑导航 */}
+          <div className="hidden md:block mb-6">
+            <Breadcrumb items={BREADCRUMB_CONFIGS.consultation} />
+          </div>
+
+          <div className="flex items-center justify-center">
+            <div className="max-w-2xl w-full">
+              {/* 白色卡片容器 */}
+              <div className="bg-white rounded-2xl shadow-lg p-8 md:p-12">
               {/* 标题 */}
               <div className="text-center mb-12">
                 <h1 className="text-3xl md:text-4xl font-bold text-gray-900 tracking-wider">
@@ -163,6 +174,7 @@ export default function ConsultationPage() {
                     丁火师妹
                   </h3>
                 </div>
+              </div>
               </div>
             </div>
           </div>
