@@ -2572,10 +2572,12 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
 
       {/* 右侧内容区域 */}
       <div className="flex-1 pt-8 md:pt-0 h-full overflow-hidden bg-white md:relative">
-        {/* PC端面包屑导航 */}
-        <div className="hidden md:block p-4 pb-0">
-          <Breadcrumb items={BREADCRUMB_CONFIGS[moduleConfig.moduleId as keyof typeof BREADCRUMB_CONFIGS] || []} />
-        </div>
+        {/* PC端面包屑导航 - 只在非Dashboard环境中显示 */}
+        {!isInDashboard && (
+          <div className="hidden md:block p-4 pb-0">
+            <Breadcrumb items={BREADCRUMB_CONFIGS[moduleConfig.moduleId as keyof typeof BREADCRUMB_CONFIGS] || []} />
+          </div>
+        )}
 
         {currentContent === 'report' ? (
           /* 报告展示区域 */

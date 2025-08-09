@@ -83,6 +83,9 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
   const [renamingConversationId, setRenamingConversationId] = useState<string | null>(null)
   const [newTitle, setNewTitle] = useState('')
 
+  // Dashboard环境检测状态
+  const [isInDashboard, setIsInDashboard] = useState(false)
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatContainerRef = useRef<HTMLDivElement>(null)
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -139,7 +142,38 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
     
     return () => clearTimeout(timeoutId)
   }, [moduleConfig.moduleId, globalSessionManager, conversationHistory])
-  
+
+  // 检测是否在dashboard环境中
+  useEffect(() => {
+    const checkDashboardEnvironment = () => {
+      const currentPath = window.location.pathname
+      const isDashboardPath = currentPath === '/dashboard'
+
+      // 也可以通过检查DOM结构来判断是否有dashboard的底部按钮
+      const hasDashboardButton = document.querySelector('[class*="md:hidden"][class*="fixed"][class*="bottom-0"]') !== null
+
+      const inDashboard = isDashboardPath || hasDashboardButton
+      setIsInDashboard(inDashboard)
+    }
+
+    // 初始检测
+    checkDashboardEnvironment()
+
+    // 监听路径变化和DOM变化
+    const handleChange = () => {
+      setTimeout(checkDashboardEnvironment, 100) // 延迟检测，确保DOM更新
+    }
+
+    window.addEventListener('popstate', handleChange)
+    const observer = new MutationObserver(handleChange)
+    observer.observe(document.body, { childList: true, subtree: true })
+
+    return () => {
+      window.removeEventListener('popstate', handleChange)
+      observer.disconnect()
+    }
+  }, [])
+
   // 生成会话ID（基于模块和用户）
   const generateSessionId = useCallback(() => {
     const activeUser = getActiveUser()
@@ -841,10 +875,12 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
 
       {/* 右侧内容区域 */}
       <div className="flex-1 pt-16 md:pt-0 h-screen overflow-hidden bg-white">
-        {/* PC端面包屑导航 */}
-        <div className="hidden md:block p-3 md:p-6 pb-0">
-          <Breadcrumb items={BREADCRUMB_CONFIGS[moduleConfig.moduleId as keyof typeof BREADCRUMB_CONFIGS] || []} />
-        </div>
+        {/* PC端面包屑导航 - 只在非Dashboard环境中显示 */}
+        {!isInDashboard && (
+          <div className="hidden md:block p-3 md:p-6 pb-0">
+            <Breadcrumb items={BREADCRUMB_CONFIGS[moduleConfig.moduleId as keyof typeof BREADCRUMB_CONFIGS] || []} />
+          </div>
+        )}
 
         {currentContent === 'report' ? (
           /* 报告展示区域 */
