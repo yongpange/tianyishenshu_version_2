@@ -152,7 +152,7 @@ class GlobalSessionManager {
           const errorMessage = error instanceof Error ? error.message : String(error)
           
           // 对于常见的错误类型，给出更友好的提示
-          if (errorMessage.includes('Releasing Default reader') || 
+          if (errorMessage.includes('R111111eleasing Default reader') || 
               errorMessage.includes('Default reader') ||
               errorMessage.includes('already been released') ||
               errorMessage.includes('InvalidStateError')) {

@@ -46,6 +46,12 @@ import {
 import { ReportModuleConfig } from '@/config/reportModules'
 // 移除全局会话管理器，改用本地状态管理
 import { SessionStatusIndicator } from '@/components/SessionStatusIndicator'
+import FudeIcon from '@/components/icons/FudeIcon'
+import MingjuIcon from '@/components/icons/MingjuIcon'
+import CailuIcon from '@/components/icons/CailuIcon' 
+import YuanxiIcon from '@/components/icons/YuanxiIcon'
+import ShouluIcon from '@/components/icons/ShouluIcon'
+import YundaoIcon from '@/components/icons/YundaoIcon'
 
 const { TextArea } = Input
 const { Title, Text, Paragraph } = Typography
@@ -129,8 +135,16 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
           currentReader.releaseLock()
           devLog.log('🧹 组件卸载时安全释放reader')
         } catch (error) {
-          // 忽略释放错误
-          devLog.log('🧹 组件卸载时reader已释放，跳过')
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          // 对于常见的错误类型，静默处理
+          if (errorMessage.includes('Releasing Default reader') || 
+              errorMessage.includes('Default reader') ||
+              errorMessage.includes('already been released') ||
+              errorMessage.includes('InvalidStateError')) {
+            devLog.log('🧹 组件卸载时reader已释放，跳过')
+          } else {
+            devLog.log('🧹 组件卸载时释放reader出错（已忽略）:', errorMessage)
+          }
         }
       }
     }
@@ -1511,13 +1525,19 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
               try {
                 readResult = await reader.read()
               } catch (readError: any) {
-                devLog.error('❌ 读取流时出错:', readError)
-                // 如果是 "stream reader has been released" 错误，直接退出
                 const errorMessage = readError instanceof Error ? readError.message : String(readError)
-                if (errorMessage.includes('released')) {
-                  devLog.log('🔚 检测到流读取器已释放，停止读取')
+                
+                // 对于常见的流读取器错误，静默处理
+                if (errorMessage.includes('Releasing Default reader') || 
+                    errorMessage.includes('Default reader') ||
+                    errorMessage.includes('already been released') ||
+                    errorMessage.includes('released') ||
+                    errorMessage.includes('InvalidStateError')) {
+                  devLog.log('🔚 检测到流读取器已释放或无效，停止读取')
                   break
                 }
+                
+                devLog.error('❌ 读取流时出错:', readError)
                 throw readError
               }
               
@@ -1669,7 +1689,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
               const errorMessage = error instanceof Error ? error.message : String(error)
               
               // 对于常见的错误类型，给出更友好的提示
-              if (errorMessage.includes('Releasing Default reader') || 
+              if (errorMessage.includes('Re2222222leasing Default reader') || 
                   errorMessage.includes('Default reader') ||
                   errorMessage.includes('already been released') ||
                   errorMessage.includes('InvalidStateError')) {
@@ -1747,7 +1767,18 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       if (error.name === 'AbortError') {
         message.info('对话已中断')
       } else {
-        message.error(error.message || 'AI回复失败，请重试')
+        const errorMessage = error.message || String(error)
+        
+        // 对于流读取器相关的错误，静默处理或显示友好提示
+        if (errorMessage.includes('Releasing Default reader') || 
+            errorMessage.includes('Default reader') ||
+            errorMessage.includes('already been released') ||
+            errorMessage.includes('InvalidStateError')) {
+          devLog.log('🔚 流读取器错误已静默处理，不显示弹窗')
+          // 不显示任何弹窗，静默处理
+        } else {
+          message.error(errorMessage || 'AI回复失败，请重试')
+        }
       }
     } finally {
       setLoading(false)
@@ -2134,6 +2165,24 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
   }
 
   // 添加内容过滤函数
+  // 报告内容格式处理函数
+  const formatReportContent = (content: string): string => {
+    if (!content) return content
+    
+    let processedContent = content
+    
+    // 修正二：修复列表项格式，将换行的数字列表项合并
+    processedContent = processedContent.replace(/(\d+\.)\s*\n+\s*([^\n]+)/g, '$1 $2')
+    
+    // 修正三：在破折号列表前添加换行
+    processedContent = processedContent.replace(/([^\s\n])\s*-\s+([^-\n])/g, '$1\n- $2')
+    
+    // 清理多余的空行
+    processedContent = processedContent.replace(/\n\s*\n\s*\n/g, '\n\n')
+    
+    return processedContent.trim()
+  }
+
   const extractDisplayContent = (content: string): string => {
     // 查找 "fabuwc directly streaming reply." 的起始位置
     const startMarker = "fabuwc directly streaming reply."
@@ -2170,7 +2219,6 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       // 提取中间的内容
       extractedContent = content.substring(contentStart, endIndex).trim()
     }
-    
     // 改进的去重处理：检测并移除重复的内容块
     const lines = extractedContent.split('\n')
     
@@ -2220,8 +2268,20 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
     const seenSentences = new Set<string>()
     
     for (const paragraph of deduplicatedParagraphs) {
+      // 特殊处理和格式修正
+      let processedParagraph = paragraph
+      
+      // 修正一：移除 。---。 模式
+      processedParagraph = processedParagraph.replace(/。\s*---\s*。/g, '')
+      
+      // 修正二：确保列表项格式正确，避免 "1.\n**xxx**" 的错误换行
+      processedParagraph = processedParagraph.replace(/(\d+\.)\s*\n+\s*(\*\*[^*]+\*\*)/g, '$1 $2')
+      
+      // 修正三：在破折号前添加换行 "xxx- yyy" -> "xxx\n- yyy"
+      processedParagraph = processedParagraph.replace(/([^\s\n])-\s+([^-])/g, '$1\n- $2')
+      
       // 按标点符号分割句子
-      const sentences = paragraph.split(/[。；！？]/).map(s => s.trim()).filter(s => s.length > 0)
+      const sentences = processedParagraph.split(/[。；！？]/).map(s => s.trim()).filter(s => s.length > 0)
       const keptSentences: string[] = []
       
       for (const sentence of sentences) {
@@ -2238,11 +2298,15 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       }
       
       if (keptSentences.length > 0) {
-        // 重新组合句子，恢复标点
+        // 重新组合句子，恢复标点，但保持原有的换行格式
         let rebuiltParagraph = keptSentences.join('。')
         if (rebuiltParagraph && !rebuiltParagraph.endsWith('。')) {
           rebuiltParagraph += '。'
         }
+        
+        // 再次应用格式修正，确保在重组后仍然正确
+        rebuiltParagraph = rebuiltParagraph.replace(/(\d+\.)\s*\n+\s*(\*\*[^*]+\*\*)/g, '$1 $2')
+        rebuiltParagraph = rebuiltParagraph.replace(/([^\s\n])-\s+([^-])/g, '$1\n- $2')
         
         if (rebuiltParagraph.trim()) {
           finalParagraphs.push(rebuiltParagraph)
@@ -2250,7 +2314,43 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       }
     }
     
-    return finalParagraphs.join('\n\n')
+    // 最终格式清理处理
+    let finalResult = finalParagraphs.join('\n\n')
+    
+    // 修正一：移除所有 ---。 或 。--- 或单独的 --- 行
+    finalResult = finalResult.replace(/。?\s*---\s*。?/g, '')
+    finalResult = finalResult.replace(/^\s*---\s*$/gm, '')
+    
+    // 修正二：修复列表项格式，将换行的数字列表项合并
+    finalResult = finalResult.replace(/(\d+\.)\s*\n+\s*([^\n]+)/g, '$1 $2')
+    
+    // 修正三：在破折号列表前添加换行
+    finalResult = finalResult.replace(/([^\s\n])\s*-\s+([^-\n])/g, '$1\n- $2')
+    
+    // 清理多余的空行
+    finalResult = finalResult.replace(/\n\s*\n\s*\n/g, '\n\n')
+    
+    return finalResult.trim()
+  }
+
+  // 动态选择图标的函数
+  const getDynamicIcon = (title: string, props = { width: 40, height: 40, className: "text-red-600" }) => {
+    switch (title) {
+      case '八字排盘':
+        return <MingjuIcon {...props} />
+      case '性格内观': 
+        return <FudeIcon {...props} />
+      case '事业财富':
+        return <CailuIcon {...props} />
+      case '婚恋感情':
+        return <YuanxiIcon {...props} />
+      case '身体健康':
+        return <ShouluIcon {...props} />
+      case '2026年运':
+        return <YundaoIcon {...props} />
+      default:
+        return <FudeIcon {...props} />
+    }
   }
 
   if (!userInfo) {
@@ -2318,7 +2418,11 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
           <div className="flex flex-col h-full">
             {/* 标题区域 */}
             <div className="p-3 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="text-lg font-medium text-gray-900">{moduleConfig.title}</h2>
+                <div className="flex items-center space-x-2">
+                {/* <CailuIcon width={40} height={40} className="text-red-600" /> */}
+                {getDynamicIcon(moduleConfig.title)}
+                <h2 className="text-lg font-medium text-gray-900">{moduleConfig.title}</h2>
+              </div>
               <Button
                 type="text"
                 icon={<ArrowLeftOutlined />}
@@ -2668,7 +2772,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                       ),
                     }}
                   >
-                    {reportContent}
+                    {formatReportContent(reportContent)}
                   </ReactMarkdown>
                 </div>
               ) : isGenerating ? (
@@ -2741,7 +2845,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                   {chatAvailable ? (
                     <>
                       <p className="text-gray-600 mb-8 max-w-md">
-                        我已了解您的八字信息，您可以咨询与“{moduleConfig.title}”相关的问题。
+                        我已了解您的八字信息，您可以咨询与&quot;{moduleConfig.title}&quot;相关的问题。
                       </p>
                       {/* <div className="bg-gray-100 rounded-lg p-4 max-w-md">
                         <p className="text-sm text-gray-600">
@@ -2873,7 +2977,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                   const suggestedQuestions = getSuggestedQuestions()
                   return suggestedQuestions.length > 0 && chatAvailable && (
                     <div className="mb-3">
-                      <div className="text-xs text-gray-500 mb-2 px-1">天乙为您推荐的问题：</div>
+                      <div className="text-xs text-gray-500 mb-2 px-1">天乙为您推荐：</div>
                       <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                         {suggestedQuestions.map((question, index) => (
                           <button
@@ -2884,7 +2988,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                               question-button flex-shrink-0 px-3 py-2 text-sm rounded-full border
                               ${loading || isTyping 
                                 ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed' 
-                                : 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100 hover:border-blue-300 cursor-pointer'
+                                : 'bg-gray-50 border-gray-300 text-gray-700 hover:bg-gray-100 hover:border-gray-400 cursor-pointer'
                               }
                             `}
                             title={question}

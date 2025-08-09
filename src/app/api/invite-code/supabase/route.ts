@@ -77,7 +77,7 @@ export async function GET() {
       user_phone: item.user_profiles?.phone_number || item.user_profiles?.users?.phone_number || null,
       user_name: item.user_profiles?.name || null, 
       remaining_tokens: item.user_profiles?.chat_remaining_count || null,
-      user_role: item.user_profiles?.user_role || null
+      user_role: item.user_profiles?.user_role || item.user_role || null // 已激活用户从user_profiles取，未激活从invite_codes取
     })) || []
 
     console.log('✅ 成功获取兑换码数据:', processedData?.length || 0, '条')
@@ -171,24 +171,37 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    // 更新兑换码备注
-    const { data: inviteCodeData, error: inviteCodeError } = await supabaseAdmin
+    // 首先获取当前兑换码数据以检查激活状态
+    const { data: currentCodeData, error: fetchError } = await supabaseAdmin
       .from('invite_codes')
-      .update({
-        remarks: remarks || null,
-        updated_at: new Date().toISOString()
-      })
+      .select('used_by')
       .eq('id', id)
-      .select()
+      .single()
 
-    if (inviteCodeError) {
-      throw inviteCodeError
+    if (fetchError) {
+      throw fetchError
     }
 
-    // 如果有用户数据，则更新用户信息
-    if (hasUserData && inviteCodeData && inviteCodeData[0]?.used_by) {
-      const userProfileId = inviteCodeData[0].used_by
-      
+    const isActivated = !!currentCodeData?.used_by
+
+    // 根据激活状态更新不同的字段
+    if (isActivated) {
+      // 已激活用户：更新兑换码备注和用户资料信息
+      const { data: inviteCodeData, error: inviteCodeError } = await supabaseAdmin
+        .from('invite_codes')
+        .update({
+          remarks: remarks || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+
+      if (inviteCodeError) {
+        throw inviteCodeError
+      }
+
+      // 更新用户资料中的信息
+      const userProfileId = currentCodeData.used_by
       const { data: userUpdateData, error: userUpdateError } = await supabaseAdmin
         .from('user_profiles')
         .update({
@@ -196,7 +209,7 @@ export async function PUT(request: NextRequest) {
           user_role: userRole,
           updated_at: new Date().toISOString()
         })
-        .eq('id', userProfileId) // 直接使用 user_profiles.id
+        .eq('id', userProfileId)
         .select()
 
       if (userUpdateError) {
@@ -205,6 +218,23 @@ export async function PUT(request: NextRequest) {
       } else {
         console.log('✅ 用户信息更新成功:', userProfileId, userUpdateData)
       }
+    } else {
+      // 未激活用户：只更新兑换码的备注和预设角色
+      const { data: inviteCodeData, error: inviteCodeError } = await supabaseAdmin
+        .from('invite_codes')
+        .update({
+          remarks: remarks || null,
+          user_role: userRole, // 更新预设的用户角色
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+
+      if (inviteCodeError) {
+        throw inviteCodeError
+      }
+
+      console.log('✅ 未激活兑换码更新成功，预设角色:', userRole)
     }
 
     // 重新查询更新后的完整数据，确保关联查询获取最新信息
@@ -231,11 +261,10 @@ export async function PUT(request: NextRequest) {
 
     if (refetchError) {
       console.error('重新查询数据失败:', refetchError)
-      // 如果重新查询失败，返回原始数据
+      // 如果重新查询失败，返回成功但要求前端刷新
       return NextResponse.json({
         success: true,
-        message: '兑换码更新成功',
-        data: inviteCodeData,
+        message: '兑换码更新成功，请刷新页面查看最新数据',
         needRefresh: true // 告诉前端需要手动刷新
       })
     }
@@ -257,7 +286,7 @@ export async function PUT(request: NextRequest) {
       user_phone: updatedData.user_profiles?.phone_number || updatedData.user_profiles?.users?.phone_number || null,
       user_name: updatedData.user_profiles?.name || null,
       remaining_tokens: updatedData.user_profiles?.chat_remaining_count || null,
-      user_role: updatedData.user_profiles?.user_role || null
+      user_role: updatedData.user_profiles?.user_role || updatedData.user_role || null // 已激活用户从user_profiles取，未激活从invite_codes取
     }
 
     return NextResponse.json({

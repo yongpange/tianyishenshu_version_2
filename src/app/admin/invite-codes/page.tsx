@@ -301,7 +301,7 @@ export default function InviteCodesManagement() {
           remarks: editRemarks,
           remainingTokens: editRemainingTokens,
           userRole: editUserRole,
-          hasUserData: !!editingCode.user_phone // 是否有用户数据
+          hasUserData: !!editingCode.user_phone // 是否有用户数据（已激活）
         })
       })
 
@@ -315,7 +315,13 @@ export default function InviteCodesManagement() {
           setEditRemarks('')
           setEditRemainingTokens(0)
           setEditUserRole('')
-          message.success('兑换码修改成功')
+          
+          // 显示相应的成功消息
+          if (result.needRefresh) {
+            message.success(result.message || '兑换码修改成功，已刷新数据')
+          } else {
+            message.success(editingCode.user_phone ? '已激活用户信息修改成功' : '未激活用户预设角色修改成功')
+          }
           return
         }
       }
@@ -903,7 +909,23 @@ export default function InviteCodesManagement() {
                   </label>
                   <p className="text-gray-600">{new Date(editingCode.created_at || editingCode.createdAt).toLocaleString('zh-CN')}</p>
                 </div>
-                                 {editingCode.user_phone && (
+                 {/* 用户激活状态说明 */}
+                 <div className="mb-4 p-3 rounded-md bg-gray-50">
+                   <p className="text-sm text-gray-600">
+                     {editingCode.user_phone ? (
+                       <>
+                         <span className="text-green-600 font-medium">✓ 已激活用户</span> - 可修改用户的所有信息
+                       </>
+                     ) : (
+                       <>
+                         <span className="text-orange-600 font-medium">⚠ 未激活用户</span> - 只能预设用户角色权限
+                       </>
+                     )}
+                   </p>
+                 </div>
+                 
+                 {/* 已激活用户信息 */}
+                 {editingCode.user_phone && (
                    <>
                      <div>
                        <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -926,26 +948,34 @@ export default function InviteCodesManagement() {
                          placeholder="输入剩余对话次数"
                        />
                      </div>
-                     <div>
-                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                         用户角色
-                       </label>
-                       <Select
-                         value={editUserRole}
-                         onChange={setEditUserRole}
-                         className="w-full"
-                         placeholder="选择用户角色"
-                         loading={roleOptions.length === 0}
-                       >
-                         {roleOptions.map(role => (
-                           <Select.Option key={role.role_name} value={role.role_name}>
-                             {role.role_display_name}
-                           </Select.Option>
-                         ))}
-                       </Select>
-                     </div>
                    </>
                  )}
+                 
+                 {/* 用户角色 - 所有状态都可修改 */}
+                 <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-2">
+                     用户角色 {editingCode.user_phone ? '(已激活用户角色)' : '(预设角色权限)'}
+                   </label>
+                   <Select
+                     value={editUserRole}
+                     onChange={setEditUserRole}
+                     className="w-full"
+                     placeholder="选择用户角色"
+                     loading={roleOptions.length === 0}
+                   >
+                     {roleOptions.map(role => (
+                       <Select.Option key={role.role_name} value={role.role_name}>
+                         {role.role_display_name}
+                       </Select.Option>
+                     ))}
+                   </Select>
+                   <p className="text-xs text-gray-500 mt-1">
+                     {editingCode.user_phone ? 
+                       '修改后将更新用户资料中的角色信息' : 
+                       '设置兑换码激活后的默认角色权限'
+                     }
+                   </p>
+                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     备注

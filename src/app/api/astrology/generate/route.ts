@@ -54,11 +54,13 @@ function extractCityName(fullLocationName: string): string {
       return countyMatch[1]
     }
     
-    // 检查是否包含"市"
-    const cityMatch = cleanName.match(/([^省]*市)/)
-    if (cityMatch) {
-      console.log(`🏙️ 检测到市级单位: ${cityMatch[1]}`)
-      return cityMatch[1]
+    // 检查是否包含"市"，找到所有的市，取最后一个
+    // 这样可以处理"黑龙江省佳木斯市同江市"这种情况，取"同江市"而不是"佳木斯市"
+    const cityMatches = cleanName.match(/[^省市]*市/g)
+    if (cityMatches && cityMatches.length > 0) {
+      const lastCity = cityMatches[cityMatches.length - 1]
+      console.log(`🏙️ 检测到市级单位（取最后一个）: ${lastCity}，共找到${cityMatches.length}个市级单位: [${cityMatches.join(', ')}]`)
+      return lastCity
     }
     
     // 如果都没有匹配到，返回处理后的原名称

@@ -236,17 +236,44 @@ create index IF not exists idx_messages_created_at on public.messages using btre
 create trigger update_messages_updated_at BEFORE
 update on messages for EACH row execute FUNCTION update_updated_at_column ();
 -- 创建兑换码表
-CREATE TABLE invite_codes (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  code VARCHAR(50) UNIQUE NOT NULL,
-  status VARCHAR(20) CHECK (status IN ('active', 'used', 'expired')) DEFAULT 'active',
-  remarks TEXT,
+create table public.invite_codes (
+  id uuid not null default gen_random_uuid (),
+  code character varying(50) not null,
+  status character varying(20) null default 'active'::character varying,
+  remarks text null,
   -- used_by 为user_profiles表的id
-  used_by UUID REFERENCES user_profiles(id),
-  used_at TIMESTAMP WITH TIME ZONE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+  used_by uuid null,
+  used_at timestamp with time zone null,
+  created_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null default now(),
+  user_role character varying(50) null default 'basic_user'::character varying,
+  constraint invite_codes_pkey primary key (id),
+  constraint invite_codes_code_key unique (code),
+  constraint invite_codes_used_by_fkey foreign KEY (used_by) references user_profiles (id) on delete set null,
+  constraint invite_codes_user_role_fkey foreign KEY (user_role) references user_roles_permissions (role_name) on update CASCADE,
+  constraint invite_codes_status_check check (
+    (
+      (status)::text = any (
+        (
+          array[
+            'active'::character varying,
+            'used'::character varying,
+            'expired'::character varying
+          ]
+        )::text[]
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+create index IF not exists idx_invite_codes_code on public.invite_codes using btree (code) TABLESPACE pg_default;
+
+create index IF not exists idx_invite_codes_status on public.invite_codes using btree (status) TABLESPACE pg_default;
+
+create trigger update_invite_codes_updated_at BEFORE
+update on invite_codes for EACH row
+execute FUNCTION update_updated_at_column ();
+
 -- 创建索引
 CREATE INDEX idx_users_phone ON users(phone_number);
 CREATE INDEX idx_user_profiles_user_id ON user_profiles(user_id);

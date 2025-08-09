@@ -145,6 +145,30 @@ export async function saveUserProfile(phoneNumber: string, userInfo: UserInfo): 
 
     const inviteCodeUsed = userWithInviteCode?.invite_code_used
 
+    // 获取兑换码的预设用户角色权限
+    let userRole = 'basic_user' // 默认角色
+    if (inviteCodeUsed) {
+      try {
+        const { data: inviteCodeData, error: inviteCodeError } = await supabaseAdmin
+          .from('invite_codes')
+          .select('user_role')
+          .eq('code', inviteCodeUsed)
+          .single()
+
+        if (!inviteCodeError && inviteCodeData?.user_role) {
+          userRole = inviteCodeData.user_role
+          console.log('✅ 从兑换码获取到预设用户角色:', userRole)
+        } else {
+          console.log('⚠️ 未找到兑换码预设角色，使用默认角色:', userRole)
+        }
+      } catch (error) {
+        console.error('❌ 查询兑换码角色权限失败:', error)
+        console.log('⚠️ 使用默认角色:', userRole)
+      }
+    } else {
+      console.log('ℹ️ 用户没有使用兑换码，使用默认角色:', userRole)
+    }
+
     const profileData = {
       user_id: user.id,
       name: userInfo.name,
@@ -159,6 +183,7 @@ export async function saveUserProfile(phoneNumber: string, userInfo: UserInfo): 
       area_district: userInfo.area.district,
       phone_number: phoneNumber, // 保留 phone_number 字段，因为它是 NOT NULL
       invite_code_used: inviteCodeUsed, // 保存invite_code到user_profiles表
+      user_role: userRole, // 设置用户角色权限
       parent_id: parentId // 设置父级ID
     }
 
@@ -513,6 +538,30 @@ export async function saveUserProfileToUser(userId: string, userInfo: UserInfo, 
       }
     }
 
+    // 获取兑换码的预设用户角色权限
+    let userRole = 'basic_user' // 默认角色
+    if (inviteCode) {
+      try {
+        const { data: inviteCodeData, error: inviteCodeError } = await supabaseAdmin
+          .from('invite_codes')
+          .select('user_role')
+          .eq('code', inviteCode)
+          .single()
+
+        if (!inviteCodeError && inviteCodeData?.user_role) {
+          userRole = inviteCodeData.user_role
+          console.log('✅ 从兑换码获取到预设用户角色:', userRole)
+        } else {
+          console.log('⚠️ 未找到兑换码预设角色，使用默认角色:', userRole)
+        }
+      } catch (error) {
+        console.error('❌ 查询兑换码角色权限失败:', error)
+        console.log('⚠️ 使用默认角色:', userRole)
+      }
+    } else {
+      console.log('ℹ️ 用户没有使用兑换码，使用默认角色:', userRole)
+    }
+
     const profileData = {
       user_id: userId,
       name: userInfo.name,
@@ -527,6 +576,7 @@ export async function saveUserProfileToUser(userId: string, userInfo: UserInfo, 
       area_district: userInfo.area.district,
       phone_number: user.phone_number, // 使用查询到的手机号
       invite_code_used: inviteCode, // 在用户资料中记录使用的兑换码
+      user_role: userRole, // 设置用户角色权限
       parent_id: parentId // 设置父级ID（指向主用户的user_profiles.id）
     }
 

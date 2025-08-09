@@ -29,6 +29,18 @@ import AddUserPage from '@/components/AddUserPage'
 import AddUserProfilePage from '@/components/AddUserProfilePage'
 import { devLog } from '@/utils/dev-logger'
 import TianIcon from '@/components/icons/TianIcon'
+import GenIcon from '@/components/icons/GenIcon'
+import ZhexianIcon from '@/components/icons/ZhexianIcon'
+// 导入所有天干图标
+import JiaIcon from '@/components/icons/JiaIcon'
+import YiIcon from '@/components/icons/YiIcon'
+import BingIcon from '@/components/icons/BingIcon'
+import DingIcon from '@/components/icons/DingIcon'
+import WuIcon from '@/components/icons/WuIcon'
+import JiIcon from '@/components/icons/JiIcon'
+import XinIcon from '@/components/icons/XinIcon'
+import RenIcon from '@/components/icons/RenIcon'
+import KuiIcon from '@/components/icons/kuiIcon'
 
 export default function DashboardPage() {
   const [userInfo, setUserInfo] = useState<any>(null)
@@ -37,6 +49,8 @@ export default function DashboardPage() {
   const [activeUser, setActiveUser] = useState<any>(null)
   const [currentView, setCurrentView] = useState<string>('dashboard') // 'dashboard', 'astrology', 'personality', etc.
   const [userListCollapsed, setUserListCollapsed] = useState<boolean>(true) // 用户列表折叠状态
+  const [baziData, setBaziData] = useState<any>(null) // 当前用户八字数据
+  const [allUsersBaziData, setAllUsersBaziData] = useState<{[key: string]: any}>({}) // 所有用户八字数据
   const router = useRouter()
   
   // 使用权限检查Hook
@@ -54,6 +68,76 @@ export default function DashboardPage() {
   
   // 全局会话管理
   const globalSessionManager = useGlobalSessionManager()
+
+  // 天干图标映射函数
+  const getTianganIcon = (tiangan: string, iconProps?: any) => {
+    const defaultProps = { width: 50, height: 50, className: "text-green-600 transform translate-y-2 translate-x-1" }
+    const finalProps = { ...defaultProps, ...iconProps }
+    
+    switch (tiangan) {
+      case '甲': return <JiaIcon {...finalProps} />
+      case '乙': return <YiIcon {...finalProps} />
+      case '丙': return <BingIcon {...finalProps} />
+      case '丁': return <DingIcon {...finalProps} />
+      case '戊': return <WuIcon {...finalProps} />
+      case '己': return <JiIcon {...finalProps} />
+      case '庚': return <GenIcon {...finalProps} />
+      case '辛': return <XinIcon {...finalProps} />
+      case '壬': return <RenIcon {...finalProps} />
+      case '癸': return <KuiIcon {...finalProps} />
+      default: return <GenIcon {...finalProps} /> // 默认图标
+    }
+  }
+
+  // 获取用户八字数据
+  const fetchUserBaziData = async (userId: string, setAsActive: boolean = true) => {
+    try {
+      const response = await fetch('/api/bazi/get', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: userId,
+          isUserProfileId: true
+        })
+      })
+
+      const data = await response.json()
+      if (data.success && data.report) {
+        // 更新所有用户的八字数据
+        setAllUsersBaziData(prev => ({
+          ...prev,
+          [userId]: data.report
+        }))
+        
+        // 如果是当前激活用户，也更新单独的baziData状态
+        if (setAsActive) {
+          setBaziData(data.report)
+        }
+        
+        devLog.log('✅ 获取八字数据成功:', data.report)
+      } else {
+        devLog.warn('⚠️ 未能获取八字数据:', data.message)
+        if (setAsActive) {
+          setBaziData(null)
+        }
+      }
+    } catch (error) {
+      devLog.error('❌ 获取八字数据失败:', error)
+      if (setAsActive) {
+        setBaziData(null)
+      }
+    }
+  }
+
+  // 批量获取所有用户的八字数据
+  const fetchAllUsersBaziData = async (users: any[]) => {
+    const fetchPromises = users.map(user => 
+      fetchUserBaziData(user.id, false)
+    )
+    await Promise.allSettled(fetchPromises)
+  }
 
   useEffect(() => {
     // 检查登录状态并获取用户信息
@@ -322,6 +406,12 @@ export default function DashboardPage() {
             // 如果没有保存的用户，使用主账户并生成token
             await setActiveUserWithToken(mainProfile)
           }
+          
+          // 批量获取所有用户的八字数据
+          const allUsers = [mainProfile, ...childProfiles].filter(Boolean)
+          if (allUsers.length > 0) {
+            await fetchAllUsersBaziData(allUsers)
+          }
         }
       }
     } catch (error) {
@@ -359,6 +449,9 @@ export default function DashboardPage() {
     
     // 触发用户切换事件，通知权限系统重新获取权限
     window.dispatchEvent(new Event('userSwitched'))
+    
+    // 获取用户八字数据
+    await fetchUserBaziData(user.id)
   }
 
   // 处理用户切换
@@ -1303,7 +1396,7 @@ export default function DashboardPage() {
         setCurrentView('health')
         break
       case 'fortune':
-        message.info('功能开发中...')
+        message.info('功能开发中，敬请期待...')
         break
       default:
         message.info(`即将为您生成${reportTitle}...`)
@@ -1575,7 +1668,7 @@ export default function DashboardPage() {
                 <div className="max-w-4xl mx-auto">
                   <div className="flex justify-center items-center space-x-3 mb-3">
                     <h2 className="text-lg md:text-2xl font-medium text-gray-700">
-                      欢迎回来，{activeUser?.name || '用户'}
+                      欢迎回来，{activeUser?.name || '用户'}道友
                     </h2>
                     {/* 角色标签 */}
                     {userRole && (
@@ -1754,10 +1847,12 @@ export default function DashboardPage() {
           {/* 当前激活用户*/}
           {activeUser && (
             <div className="flex items-center space-x-3 mb-3">
-              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                <span className="text-green-600 text-xs">{activeUser.name ? activeUser.name.charAt(0) : ''}</span>
-              </div>
-              <div className="flex-1">
+              {/* 根据用户八字日干显示对应图标 */}
+              {baziData?.paipan?.dayPillar?.heavenly 
+                ? getTianganIcon(baziData.paipan.dayPillar.heavenly)
+                : <GenIcon width={50} height={50} className="text-green-600 transform translate-y-2 translate-x-1" />
+              }
+              <div className="flex-1 transform -translate-x-4">
                 <div className="flex items-center space-x-2">
                   <div className="text-lg font-bold text-gray-900">{activeUser.name}</div>
                   {/* 角色标签 */}
@@ -1788,7 +1883,7 @@ export default function DashboardPage() {
           {/* 其他用户列表 - 折叠面板 */}
           {getUserDisplayList().length > 0 && (
             <>
-              <Divider className="my-2" />
+
               <div className="mb-3">
                 {/* 折叠面板头部 */}
                 <div
@@ -1807,7 +1902,7 @@ export default function DashboardPage() {
                 
                 {/* 折叠面板内容 */}
                 {!userListCollapsed && (
-                  <div className="space-y-1 mt-2 ml-2 max-h-40 overflow-y-auto white-scrollbar">
+                  <div className="space-y-0.0 mt-2 ml-2 max-h-40 overflow-y-auto white-scrollbar ">
                     {getUserDisplayList().map((user: any, index: number) => {
                       const isMainUser = user.parent_id === null
                       const isActive = activeUser?.id === user.id
@@ -1815,18 +1910,30 @@ export default function DashboardPage() {
                       return (
                         <div 
                           key={user.id} 
-                          className="flex items-center text-xs p-2 rounded-lg cursor-pointer transition-colors hover:bg-gray-50"
+                          className="flex items-center text-xs p-0 rounded-lg cursor-pointer transition-colors hover:bg-gray-50 translate-x-2"
                           onClick={() => handleUserSwitch(user)}
                         >
+                          <ZhexianIcon width={20} height={20} className="text-green-600 transform -translate-y-2" />
                           <div className="flex items-center space-x-2 flex-1 min-w-0">
-                            <span className={`text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+                            {/* <span className={`text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 ${
                               isMainUser 
                                 ? 'bg-green-100 text-green-600' 
                                 : 'bg-orange-100 text-orange-600'
                             }`}>
                               {isMainUser ? '主用户' : '子用户'}
-                            </span>
-                            <span className="truncate text-sm text-gray-600">
+                            </span> */}
+                            
+                                                          {/* 根据用户八字日干显示对应图标 */}
+                              {allUsersBaziData[user.id]?.paipan?.dayPillar?.heavenly 
+                                ? getTianganIcon(allUsersBaziData[user.id].paipan.dayPillar.heavenly, { 
+                                   width: 40, 
+                                   height: 40, 
+                                   className: "text-green-600 flex-shrink-0 transform translate-y-1.5 translate-x-2" 
+                                 })
+                                : <GenIcon width={40} height={40} className="text-green-600 flex-shrink-0 transform translate-y-1 " />
+                              }
+                            
+                            <span className="truncate text-base text-gray-600 translate-x+0.5">
                               {user.name}
                             </span>
                           </div>
@@ -1867,14 +1974,25 @@ export default function DashboardPage() {
         <div className="flex-1 p-3">
           <div className="space-y-3">
             <div
-              className={`px-4 py-4 rounded-lg text-center shadow-sm cursor-pointer transition-all duration-300 ${
+              className={`px-4 py-4 rounded-lg text-center shadow-sm cursor-pointer transition-all duration-300 relative ${
                 currentView === 'dashboard'
-                  ? 'bg-white text-gray-900 border border-gray-300'
+                  ? 'bg-white text-gray-900'
                   : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm'
               }`}
               onClick={() => setCurrentView('dashboard')}
             >
-              <div className="flex items-center justify-center space-x-2">
+              {/* 选中状态下显示ons.png图片 */}
+              {currentView === 'dashboard' && (
+                <div className="absolute inset-0 bg-cover bg-center bg-no-repeat rounded-lg opacity-100"
+                     style={{ 
+                       backgroundImage: 'url(/images/ons.png)',
+                        backgroundSize: '95%',
+                        backgroundPosition: 'center',
+                       filter: 'brightness(1.2) contrast(1.3) saturate(1.5) hue-rotate(-10deg)'
+                     }}>
+                </div>
+              )}
+              <div className="flex items-center justify-center space-x-2 relative z-10">
                 <svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlnsXlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
                   viewBox="0 0 200 200" xmlSpace="preserve" width="27" height="27">
                   <style type="text/css">
@@ -1890,7 +2008,11 @@ export default function DashboardPage() {
             
             {/* VIP功能：召灵*/}
             <div
-              className="px-4 py-4 rounded-lg cursor-pointer transition-all duration-300 text-center text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm"
+              className={`px-4 py-4 rounded-lg cursor-pointer transition-all duration-300 text-center relative ${
+                currentView === 'divination'
+                  ? 'bg-white text-gray-900'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm'
+              }`}
               onClick={() => {
                 if (isVip) {
                   message.info('功能开发中，敬请期待...')
@@ -1899,7 +2021,16 @@ export default function DashboardPage() {
                 }
               }}
             >
-              <div className="flex items-center justify-center space-x-2">
+              {/* 选中状态下显示ons.png图片 */}
+              {currentView === 'divination' && (
+                <div className="absolute inset-0 bg-cover bg-center bg-no-repeat rounded-lg opacity-60"
+                     style={{ 
+                       backgroundImage: 'url(/images/ons.png)',
+                       filter: 'brightness(1.2) contrast(1.3) saturate(1.5) hue-rotate(-10deg)'
+                     }}>
+                </div>
+              )}
+              <div className="flex items-center justify-center space-x-2 relative z-10">
                 <svg viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="27" height="27">
                   <path d="M874.038 149.962C777.334 53.256 648.76 0 512 0S246.666 53.256 149.962 149.962C53.256 246.666 0 375.24 0 512s53.256 265.334 149.962 362.038C246.666 970.744 375.24 1024 512 1024s265.334-53.256 362.038-149.962C970.744 777.334 1024 648.76 1024 512s-53.258-265.334-149.962-362.038zM192.39 831.61C107.02 746.238 60.002 632.734 60.002 512S107.02 277.76 192.39 192.39 391.266 60.002 512 60.002c116.346 0 210.998 94.652 210.998 210.998S628.346 481.998 512 481.998c-149.432 0-271 121.57-271 271 0 56.034 17.094 108.154 46.344 151.412-34.302-19.71-66.228-44.074-94.954-72.8z m639.22 0C746.238 916.98 632.732 963.996 512 963.996c-116.346 0-210.998-94.652-210.998-210.998S395.654 542 512 542c149.432 0 271-121.57 271-271 0-56.034-17.094-108.154-46.344-151.412 34.302 19.71 66.228 44.074 94.952 72.802 85.372 85.37 132.386 198.878 132.386 319.608 0.002 120.732-47.014 234.24-132.384 319.612z" fill="currentColor"/>
                   <path d="M512 162.196c-60.682 0-110.054 49.37-110.054 110.054s49.368 110.054 110.054 110.054c60.682 0 110.054-49.37 110.054-110.054S572.682 162.196 512 162.196z m0 160.104c-27.598 0-50.05-22.454-50.05-50.05S484.4 222.198 512 222.198c27.598 0 50.05 22.454 50.05 50.05S539.598 322.3 512 322.3zM512 642.946c-60.682 0-110.054 49.37-110.054 110.054s49.37 110.054 110.054 110.054 110.054-49.37 110.054-110.054-49.372-110.054-110.054-110.054z m0 160.104c-27.598 0-50.05-22.454-50.05-50.05 0-27.598 22.454-50.05 50.05-50.05s50.05 22.454 50.05 50.05c0 27.596-22.452 50.05-50.05 50.05z" fill="currentColor"/>
@@ -1910,7 +2041,11 @@ export default function DashboardPage() {
             
             {/* VIP功能：疗愈*/}
             <div
-              className="px-4 py-4 rounded-lg cursor-pointer transition-all duration-300 text-center text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm"
+              className={`px-4 py-4 rounded-lg cursor-pointer transition-all duration-300 text-center relative ${
+                currentView === 'healing'
+                  ? 'bg-white text-gray-900'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm'
+              }`}
               onClick={() => {
                 if (isVip) {
                   message.info('功能开发中，敬请期待...')
@@ -1919,7 +2054,16 @@ export default function DashboardPage() {
                 }
               }}
             >
-              <div className="flex items-center justify-center space-x-2">
+              {/* 选中状态下显示ons.png图片 */}
+              {currentView === 'healing' && (
+                <div className="absolute inset-0 bg-cover bg-center bg-no-repeat rounded-lg opacity-60"
+                     style={{ 
+                       backgroundImage: 'url(/images/ons.png)',
+                       filter: 'brightness(1.2) contrast(1.3) saturate(1.5) hue-rotate(-10deg)'
+                     }}>
+                </div>
+              )}
+              <div className="flex items-center justify-center space-x-2 relative z-10">
                 <svg viewBox="0 0 1088 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="27" height="27">
                   <path d="M681.152 224a160 160 0 1 1-320 0 160 160 0 0 1 320 0z" fill="currentColor"/>
                   <path d="M617.152 224a96 96 0 1 0-96 96v64a160 160 0 1 1 0-320 160 160 0 0 1 0 320V320a96 96 0 0 0 96-96zM724.736 613.504c0-54.912-33.664-101.76-83.072-114.56-41.216-10.56-85.44-18.944-120.576-18.944-34.816 0-78.72 8.32-119.68 18.752-49.92 12.8-83.904 60.288-83.904 115.776 0 22.144-10.112 42.88-27.072 56.64l-7.68 5.44-50.944 31.296a32 32 0 1 1-33.536-54.528l50.944-31.36 1.792-1.408a8.896 8.896 0 0 0 2.496-6.08c0-80.768 50.048-156.8 132.032-177.792 42.496-10.88 92.544-20.736 135.552-20.736 43.392 0 93.824 10.048 136.512 20.992l14.912 4.544c72.512 25.856 116.224 96.832 116.224 171.968 0 3.136 1.728 6.016 4.48 7.488l56.832 31.68 5.312 3.712a32 32 0 0 1-30.464 54.784l-5.952-2.56-56.896-31.68c-23.04-12.8-37.312-37.12-37.312-63.424z" fill="currentColor"/>
@@ -1932,7 +2076,11 @@ export default function DashboardPage() {
             
             {/* VIP功能：宝阁*/}
             <div
-              className="px-4 py-4 rounded-lg cursor-pointer transition-all duration-300 text-center text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm"
+              className={`px-4 py-4 rounded-lg cursor-pointer transition-all duration-300 text-center relative ${
+                currentView === 'treasury'
+                  ? 'bg-white text-gray-900'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm'
+              }`}
               onClick={() => {
                 if (isVip) {
                   message.info('功能开发中，敬请期待...')
@@ -1941,7 +2089,16 @@ export default function DashboardPage() {
                 }
               }}
             >
-              <div className="flex items-center justify-center space-x-2">
+              {/* 选中状态下显示ons.png图片 */}
+              {currentView === 'treasury' && (
+                <div className="absolute inset-0 bg-cover bg-center bg-no-repeat rounded-lg opacity-60"
+                     style={{ 
+                       backgroundImage: 'url(/images/ons.png)',
+                       filter: 'brightness(1.2) contrast(1.3) saturate(1.5) hue-rotate(-10deg)'
+                     }}>
+                </div>
+              )}
+              <div className="flex items-center justify-center space-x-2 relative z-10">
                 <svg viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="27" height="27">
                   <path d="M927.289 577.885c-2.594-10.262-11.818-17.456-22.396-17.456-142.336 0-184.263-117.831-185.954-122.77a23.07 23.07 0 0 0-21.9-15.787v-92.379h22.757c3.744 0 7.42-0.913 10.735-2.65l92.402-48.501c9.405-4.939 14.231-15.652 11.683-25.97-2.549-10.318-11.795-17.569-22.418-17.569-153.559 0-281.59-129.765-283.284-131.499-0.099-0.113-0.135-0.259-0.237-0.372a874.27 874.27 0 0 1-3.462-2.774c-1.099-0.733-2.198-1.209-3.297-1.653-0.414-0.192-0.798-0.383-1.224-0.551-1.267-0.592-2.534-1.052-3.802-1.257-1.066-0.214-2.112-0.096-3.173-0.161-0.491-0.032-0.933-0.29-1.428-0.29h-0.034c-0.295 0-0.554 0.162-0.847 0.173-2.513 0.101-4.965 0.544-7.289 1.489-1.438 0.546-2.637 1.46-3.943 2.284-1.427 0.88-2.997 1.565-4.295 2.742-0.106 0.111-0.145 0.271-0.248 0.383-1.47 1.521-128.819 131.487-282.991 131.487-10.623 0-19.881 7.251-22.43 17.569-2.537 10.318 2.289 21.042 11.694 25.97l92.425 48.501a22.984 22.984 0 0 0 10.736 2.65h22.452v92.379a23.094 23.094 0 0 0-21.911 15.787c-0.406 1.229-42.581 122.77-185.943 122.77-10.578 0-19.802 7.195-22.396 17.456-2.582 10.239 2.131 20.952 11.446 25.982l90.068 48.513a23.164 23.164 0 0 0 10.95 2.752h25.407v249.533c0 12.765 10.341 23.095 23.095 23.095s23.095-10.33 23.095-23.095V875.96l46.19-12.693v18.328c0 12.765 10.341 23.095 23.095 23.095s23.095-10.33 23.095-23.095v-25.366l277.138 1.969v23.396c0 12.765 10.33 23.095 23.095 23.095s23.095-10.33 23.095-23.095v-16.749l46.19 11.542v28.279c0 12.765 10.33 23.095 23.095 23.095s23.095-10.33 23.095-23.095V655.131h25.395c3.812 0 7.578-0.947 10.961-2.752l90.079-48.513c9.314-5.029 14.028-15.742 11.434-25.981zM650.85 421.87h-46.19v-92.379h46.19v92.379z m-92.379-92.379v92.379h-92.379v-92.379h92.379z m-268.963-57.343c105.449-23.941 188.672-90.271 222.784-120.989 34.18 30.718 117.538 97.059 223.044 120.989l-21.223 11.153H310.765l-21.257-11.153z m84.204 57.343h46.19v92.379h-46.19v-92.379z m-92.38 498.578V655.131h46.19v160.24l-46.19 12.698z m92.38-18.035V655.131H650.85v156.876l-277.138-1.973z m369.517 18.759l-46.19-11.547V655.131h46.19v173.662z m65.767-219.852H215.555l-22.61-12.179c90.992-26.072 134.385-96.913 149.733-128.702h339.206c15.336 31.789 58.73 102.63 149.733 128.702l-22.621 12.179z" fill="currentColor"/>
                 </svg>
@@ -1953,24 +2110,35 @@ export default function DashboardPage() {
 
         {/* 底部问道1v1按钮 */}
         <div className="p-3 border-t border-gray-100 flex-shrink-0">
-          <Button
-            type="primary"
-            block
-            size="large"
-            onClick={handleConsultation}
-            className={`border-none shadow-lg hover:shadow-xl transition-all duration-300 ${
-              currentView === 'consultation' 
-                ? 'bg-blue-600 hover:bg-blue-700' 
-                : 'bg-black hover:bg-gray-800'
-            }`}
-          >
-            <span className="font-medium tracking-wide text-white">问道1v1</span>
-          </Button>
+          <div className="relative">
+            {/* 选中状态下显示ons.png图片 */}
+            {currentView === 'consultation' && (
+              <div className="absolute inset-0 bg-cover bg-center bg-no-repeat rounded-lg opacity-60 z-10 pointer-events-none"
+                   style={{ 
+                     backgroundImage: 'url(/images/ons.png)',
+                     filter: 'brightness(1.2) contrast(1.3) saturate(1.5) hue-rotate(-10deg)'
+                   }}>
+              </div>
+            )}
+            <Button
+              type="primary"
+              block
+              size="large"
+              onClick={handleConsultation}
+              className={`border-none shadow-lg hover:shadow-xl transition-all duration-300 relative z-20 ${
+                currentView === 'consultation' 
+                  ? 'bg-blue-600 hover:bg-blue-700' 
+                  : 'bg-black hover:bg-gray-800'
+              }`}
+            >
+              <span className="font-medium tracking-wide text-white">问道1v1</span>
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* 主内容区*/}
-      <div className="flex-1 p-1.5 md:p-3 overflow-y-auto h-full min-h-0">
+      <div className="flex-1 p-0.5 md:p-1 overflow-y-auto h-full min-h-0">
         <Suspense fallback={
           <div className="flex items-center justify-center h-64">
             <Spin size="large" />
@@ -1982,19 +2150,30 @@ export default function DashboardPage() {
 
       {/* 移动端底部问道1v1按钮 */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 flex-shrink-0">
-        <Button
-          type="primary"
-          block
-          size="large"
-          onClick={handleConsultation}
-          className={`border-none shadow-lg ${
-            currentView === 'consultation' 
-              ? 'bg-blue-600 hover:bg-blue-700' 
-              : 'bg-black hover:bg-gray-800'
-          }`}
-        >
-          <span className="font-medium tracking-wide text-white">问道1v1</span>
-        </Button>
+        <div className="relative">
+          {/* 选中状态下显示ons.png图片 */}
+          {currentView === 'consultation' && (
+            <div className="absolute inset-0 bg-cover bg-center bg-no-repeat rounded-lg opacity-60 z-10 pointer-events-none"
+                 style={{ 
+                   backgroundImage: 'url(/images/ons.png)',
+                   filter: 'brightness(1.2) contrast(1.3) saturate(1.5) hue-rotate(-10deg)'
+                 }}>
+            </div>
+          )}
+          <Button
+            type="primary"
+            block
+            size="large"
+            onClick={handleConsultation}
+            className={`border-none shadow-lg relative z-20 ${
+              currentView === 'consultation' 
+                ? 'bg-blue-600 hover:bg-blue-700' 
+                : 'bg-black hover:bg-gray-800'
+            }`}
+          >
+            <span className="font-medium tracking-wide text-white">问道1v1</span>
+          </Button>
+        </div>
       </div>
     </div>
     </div>
