@@ -69,6 +69,24 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
   const [drawerVisible, setDrawerVisible] = useState(false)
   const [copied, setCopied] = useState(false)
 
+  // 报告内容格式处理函数
+  const formatReportContent = (content: string): string => {
+    if (!content) return content
+    
+    let processedContent = content
+    
+    // 修正二：修复列表项格式，将换行的数字列表项合并
+    processedContent = processedContent.replace(/(\d+\.)\s*\n+\s*([^\n]+)/g, '$1 $2')
+    
+    // 修正三：在破折号列表前添加换行
+    processedContent = processedContent.replace(/([^\s\n])\s*-\s+([^-\n])/g, '$1\n- $2')
+    
+    // 清理多余的空行
+    processedContent = processedContent.replace(/\n\s*\n\s*\n/g, '\n\n')
+    
+    return processedContent.trim()
+  }
+
   // 新增状态：中间聊天记录区域的显示/隐藏
   const [chatHistoryVisible, setChatHistoryVisible] = useState(true)
 
@@ -588,7 +606,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
           const errorMessage = error instanceof Error ? error.message : String(error)
           
           // 对于常见的错误类型，给出更友好的提示
-          if (errorMessage.includes('Releasing Default reader') || 
+          if (errorMessage.includes('Rel3333333easing Default reader') || 
               errorMessage.includes('Default reader') ||
               errorMessage.includes('already been released') ||
               errorMessage.includes('InvalidStateError')) {
@@ -908,11 +926,11 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
               {userInfo && (
                 <div className="bg-gray-50 rounded-lg p-4 mt-4">
                   <Paragraph className="text-gray-700 mb-0">
-                    您好，<span className="font-semibold text-gray-900">{(() => {
+                    <span className="font-semibold text-gray-900">{(() => {
                       const activeUser = getActiveUser()
                       return activeUser?.name || userInfo?.nickname || '用户'
                     })()}</span>！
-                    根据您提供的出生信息（{(() => {
+                    道友，你好根据您提供的出生信息（{(() => {
                       const activeUser = getActiveUser()
                       if (activeUser) {
                         const genderText = activeUser.gender === 'male' ? '男' : '女'
@@ -992,7 +1010,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                   >
-                    {reportGeneration.reportContent}
+                    {formatReportContent(reportGeneration.reportContent)}
                   </ReactMarkdown>
                 </div>
               ) : (

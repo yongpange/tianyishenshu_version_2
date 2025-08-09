@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('🔮 获取八字报告:', { userId, isUserProfileId })
+    // console.log('🔮 获取八字报告:', { userId, isUserProfileId })
 
     let finalUserId = userId
 
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    console.log('✅ 成功获取八字报告:', baziReport.id)
+    // console.log('✅ 成功获取八字报告:', baziReport.id)
 
     // 提取用户原始信息
     const userProfile = baziReport.user_profiles

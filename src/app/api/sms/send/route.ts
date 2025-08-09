@@ -24,6 +24,38 @@ export async function POST(request: NextRequest) {
       .eq('phone_number', cleanPhone)
       .single()
 
+    // 如果是管理员登录类型，需要验证管理员权限
+    if (type === 'admin') {
+      if (userError && userError.code === 'PGRST116') {
+        return NextResponse.json(
+          { success: false, message: '该手机号尚未注册' },
+          { status: 404 }
+        )
+      }
+
+      if (!user) {
+        return NextResponse.json(
+          { success: false, message: '用户不存在' },
+          { status: 404 }
+        )
+      }
+
+      // 检查用户是否为管理员
+      const { data: userProfile } = await supabaseAdmin
+        .from('user_profiles')
+        .select('user_role')
+        .eq('user_id', user.id)
+        .is('parent_id', null)
+        .single()
+
+      if (!userProfile || userProfile.user_role !== 'admin') {
+        return NextResponse.json(
+          { success: false, message: '您没有管理员权限，无法登录管理后台' },
+          { status: 403 }
+        )
+      }
+    }
+
     // 如果是登录类型，但用户不存在，返回错误
     if (type === 'login' && (userError && userError.code === 'PGRST116')) {
       return NextResponse.json(
