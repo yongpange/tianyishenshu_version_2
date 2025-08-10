@@ -1886,13 +1886,21 @@ export default function DashboardPage() {
           {activeUser && (
             <div className="flex items-center space-x-3 mb-3">
               {/* 根据用户八字日干显示对应图标 */}
-              {baziData?.paipan?.dayPillar?.heavenly 
+              {/* {baziData?.paipan?.dayPillar?.heavenly 
                 ? getTianganIcon(baziData.paipan.dayPillar.heavenly)
                 : <GenIcon width={50} height={50} className="text-green-600 transform translate-y-2 translate-x-1" />
-              }
+              } */}
+              {allUsersBaziData[activeUser.id]?.paipan?.dayPillar?.heavenly
+              ? getTianganIcon(allUsersBaziData[activeUser.id].paipan.dayPillar.heavenly)
+              : <div className="w-[40px] h-[40px] bg-white rounded-full flex items-center justify-center">
+                  <div className="w-6 h-6 bg-white rounded-full"></div>
+                </div>}
+
               <div className="flex-1 transform -translate-x-4">
                 <div className="flex items-center space-x-2">
-                  <div className="text-lg font-bold text-gray-900">{activeUser.name}</div>
+                  {allUsersBaziData[activeUser.id]?.paipan?.dayPillar?.heavenly
+                    ? <div className="text-lg font-bold text-gray-900">{activeUser.name}</div>
+                    : <div className="w-[96px] h-[24px] bg-white rounded-md"></div>}
                   {/* 角色标签 */}
                   {/* {userRole && (
                     <Tooltip title={userRole.role_display_name}>
@@ -1912,8 +1920,10 @@ export default function DashboardPage() {
                       </Tag>
                     </Tooltip>
                   )} */}
-                </div>
-                <div className="text-xs text-gray-500">当前用户</div>
+                  </div>
+                  {allUsersBaziData[activeUser.id]?.paipan?.dayPillar?.heavenly
+                    ? <div className="text-xs text-gray-500">当前用户</div>
+                    : <div className="w-[96px] h-[24px] bg-white rounded-md"></div>}
               </div>
             </div>
           )}

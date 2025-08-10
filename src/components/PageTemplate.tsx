@@ -2211,10 +2211,14 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
     let processedContent = content
     
     // 修正二：修复列表项格式，将换行的数字列表项合并
-    processedContent = processedContent.replace(/(\d+\.)\s*\n+\s*([^\n]+)/g, '$1 $2')
+    // processedContent = processedContent.replace(/(\d+\.)\s*\n+\s*([^\n]+)/g, '$1 $2')
+    processedContent = processedContent.replace(/(\d+\.)\s*\n+\s*(\*\*[^*]+\*\*)/g, '$1 $2')
     
-    // 修正三：在破折号列表前添加换行
-    processedContent = processedContent.replace(/([^\s\n])\s*-\s+([^-\n])/g, '$1\n- $2')
+    // 修正二b：标准化数字列表项后的空格（多个空格变为一个空格）
+    processedContent = processedContent.replace(/(\d+\.)\s{2,}(\*\*[^*]+\*\*)/g, '$1$2')
+    
+    // 修正三：在破折号列表前添加换行（排除连续破折号和数字范围等情况）
+    processedContent = processedContent.replace(/([^\s\n\d])\s*(?<!-|、)-(?!-|\d)\s+([^-、\n])/g, '$1\n- $2')
     
     // 清理多余的空行
     processedContent = processedContent.replace(/\n\s*\n\s*\n/g, '\n\n')
@@ -2316,8 +2320,8 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       // 修正二：确保列表项格式正确，避免 "1.\n**xxx**" 的错误换行
       processedParagraph = processedParagraph.replace(/(\d+\.)\s*\n+\s*(\*\*[^*]+\*\*)/g, '$1 $2')
       
-      // 修正三：在破折号前添加换行 "xxx- yyy" -> "xxx\n- yyy"
-      processedParagraph = processedParagraph.replace(/([^\s\n])-\s+([^-])/g, '$1\n- $2')
+      // 修正三：在破折号前添加换行 "xxx- yyy" -> "xxx\n- yyy"（排除中文顿号）
+      processedParagraph = processedParagraph.replace(/([^\s\n])(?<!、)-\s+([^-、])/g, '$1\n- $2')
       
       // 按标点符号分割句子
       const sentences = processedParagraph.split(/[。；！？]/).map(s => s.trim()).filter(s => s.length > 0)
@@ -2345,7 +2349,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         
         // 再次应用格式修正，确保在重组后仍然正确
         rebuiltParagraph = rebuiltParagraph.replace(/(\d+\.)\s*\n+\s*(\*\*[^*]+\*\*)/g, '$1 $2')
-        rebuiltParagraph = rebuiltParagraph.replace(/([^\s\n])-\s+([^-])/g, '$1\n- $2')
+        rebuiltParagraph = rebuiltParagraph.replace(/([^\s\n])(?<!、)-\s+([^-、])/g, '$1\n- $2')
         
         if (rebuiltParagraph.trim()) {
           finalParagraphs.push(rebuiltParagraph)
@@ -2363,8 +2367,8 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
     // 修正二：修复列表项格式，将换行的数字列表项合并
     finalResult = finalResult.replace(/(\d+\.)\s*\n+\s*([^\n]+)/g, '$1 $2')
     
-    // 修正三：在破折号列表前添加换行
-    finalResult = finalResult.replace(/([^\s\n])\s*-\s+([^-\n])/g, '$1\n- $2')
+    // 修正三：在破折号列表前添加换行（排除中文顿号）
+    finalResult = finalResult.replace(/([^\s\n])(?<!、)\s*-\s+([^-、\n])/g, '$1\n- $2')
     
     // 清理多余的空行
     finalResult = finalResult.replace(/\n\s*\n\s*\n/g, '\n\n')
@@ -2838,7 +2842,8 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                       ),
                     }}
                   >
-                    {formatReportContent(reportContent)}
+                          {formatReportContent(reportContent)}
+                          {/* {reportContent} */}
                   </ReactMarkdown>
                 </div>
               ) : isGenerating ? (
