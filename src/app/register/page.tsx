@@ -102,7 +102,7 @@ function WechatQRModal({ isOpen, onClose }: WechatQRModalProps) {
           <div className="flex justify-center gap-6 mb-6">
             {/* 第一个二维码 */}
             <div className="flex flex-col items-center">
-              <div className="w-32 h-32 bg-gray-100 rounded-lg flex items-center justify-center mb-2">
+              <div className="w-48 h-48 bg-gray-100 rounded-lg flex items-center justify-center mb-2">
                 <img
                   src="/qr-code-1.png"
                   alt="客服微信二维码1"
@@ -119,12 +119,12 @@ function WechatQRModal({ isOpen, onClose }: WechatQRModalProps) {
                   <div className="text-xs">二维码1</div>
                 </div>
               </div>
-              <div className="text-xs text-gray-600">客服1</div>
+              <div className="text-xs text-gray-600">丁火师姐</div>
             </div>
 
             {/* 第二个二维码 */}
             <div className="flex flex-col items-center">
-              <div className="w-32 h-32 bg-gray-100 rounded-lg flex items-center justify-center mb-2">
+              <div className="w-48 h-48 bg-gray-100 rounded-lg flex items-center justify-center mb-2">
                 <img
                   src="/qr-code-2.png"
                   alt="客服微信二维码2"
@@ -141,7 +141,7 @@ function WechatQRModal({ isOpen, onClose }: WechatQRModalProps) {
                   <div className="text-xs">二维码2</div>
                 </div>
               </div>
-              <div className="text-xs text-gray-600">客服2</div>
+              <div className="text-xs text-gray-600">芷暄师妹</div>
             </div>
           </div>
 

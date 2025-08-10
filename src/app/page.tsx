@@ -100,17 +100,17 @@ export default function HomePage() {
                   <img
                     src="/images/wechat-qr-1.jpg"
                     alt="客服微信1"
-                    className="w-20 h-20 mx-auto mb-2 rounded-lg"
+                    className="w-20 h-20 mx-auto mb-2"
                   />
-                  <p className="text-xs text-gray-400">客服1</p>
+                  <p className="text-xs text-gray-400">丁火师姐</p>
                 </div>
                 <div className="text-center">
                   <img
                     src="/images/wechat-qr-2.jpg"
                     alt="客服微信2"
-                    className="w-20 h-20 mx-auto mb-2 rounded-lg"
+                    className="w-20 h-20 mx-auto mb-2"
                   />
-                  <p className="text-xs text-gray-400">客服2</p>
+                  <p className="text-xs text-gray-400">芷暄</p>
                 </div>
               </div>
             </div>
