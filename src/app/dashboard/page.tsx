@@ -1691,7 +1691,7 @@ export default function DashboardPage() {
           <div className="max-w-6xl mx-auto">
             {/* 欢迎区域 */}
             <div className="mb-6">
-              <div className="text-center py-4 md:py-6 px-4 md:px-8">
+              <div className="text-center py-4 md:py-16 px-4 md:px-8">
                 <div className="max-w-4xl mx-auto">
                   <div className="flex justify-center items-center space-x-3 mb-3">
                     <h2 className="text-lg md:text-2xl font-medium text-gray-700">
