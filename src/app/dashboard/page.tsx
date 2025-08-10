@@ -2175,7 +2175,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 主内容区*/}
-      <div className="flex-1 p-1.5 md:p-3 overflow-y-auto h-full min-h-0">
+      <div className="flex-1 p-0.5 md:p-1 overflow-y-auto h-full min-h-0">
         <Suspense fallback={
           <div className="flex items-center justify-center h-64">
             <Spin size="large" />
