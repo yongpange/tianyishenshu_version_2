@@ -42,7 +42,6 @@ import JiIcon from '@/components/icons/JiIcon'
 import XinIcon from '@/components/icons/XinIcon'
 import RenIcon from '@/components/icons/RenIcon'
 import KuiIcon from '@/components/icons/kuiIcon'
-import Breadcrumb, { BREADCRUMB_CONFIGS } from '@/components/Breadcrumb'
 
 export default function DashboardPage() {
   const [userInfo, setUserInfo] = useState<any>(null)
@@ -2146,21 +2145,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* PC端返回命书按钮 - 只在非dashboard主页时显示 */}
-        {currentView !== 'dashboard' && (
-          <div className="p-3 border-t border-gray-100">
-            <Button
-              block
-              size="large"
-              icon={<ArrowLeftOutlined />}
-              onClick={() => setCurrentView('dashboard')}
-              className="border-gray-300 text-gray-700 hover:border-gray-400 hover:text-gray-800 shadow-sm hover:shadow-md transition-all duration-300"
-            >
-              <span className="font-medium tracking-wide">返回「命书」</span>
-            </Button>
-          </div>
-        )}
-
         {/* 底部问道1v1按钮 */}
         <div className="p-3 border-t border-gray-100 flex-shrink-0">
           <div className="relative">
@@ -2192,13 +2176,6 @@ export default function DashboardPage() {
 
       {/* 主内容区*/}
       <div className="flex-1 p-1.5 md:p-3 overflow-y-auto h-full min-h-0">
-        {/* PC端面包屑导航 - 只在非dashboard主页时显示 */}
-        {currentView !== 'dashboard' && (
-          <div className="hidden md:block mb-4 px-2">
-            <Breadcrumb items={BREADCRUMB_CONFIGS[currentView as keyof typeof BREADCRUMB_CONFIGS] || []} />
-          </div>
-        )}
-
         <Suspense fallback={
           <div className="flex items-center justify-center h-64">
             <Spin size="large" />
