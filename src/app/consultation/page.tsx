@@ -139,30 +139,12 @@ export default function ConsultationPage() {
 
               {/* 二维码区域 */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12">
-                {/* 正哲师姐 */}
+                {/* 芷暄师妹 */}
                 <div className="text-center">
                   <div className="mb-6">
                     <div className="w-60 h-60 mx-auto bg-gray-100 rounded-lg flex items-center justify-center">
                       <Image
                         src="/qr-codes/zhengzhe.png"
-                        alt="丁火师姐微信二维码"
-                        width={240}
-                        height={240}
-                        className="rounded-lg"
-                      />
-                    </div>
-                  </div>
-                  <h3 className="text-xl font-medium text-gray-800">
-                    丁火师姐
-                  </h3>
-                </div>
-
-                {/* 丁火师妹 */}
-                <div className="text-center">
-                  <div className="mb-6">
-                    <div className="w-60 h-60 mx-auto bg-gray-100 rounded-lg flex items-center justify-center">
-                      <Image
-                        src="/qr-codes/dinghuo.png"
                         alt="芷暄师妹微信二维码"
                         width={240}
                         height={240}
@@ -172,6 +154,24 @@ export default function ConsultationPage() {
                   </div>
                   <h3 className="text-xl font-medium text-gray-800">
                     芷暄师妹
+                  </h3>
+                </div>
+
+                {/* 丁火师妹 */}
+                <div className="text-center">
+                  <div className="mb-6">
+                    <div className="w-60 h-60 mx-auto bg-gray-100 rounded-lg flex items-center justify-center">
+                      <Image
+                        src="/qr-codes/dinghuo.png"
+                        alt="丁火师妹微信二维码"
+                        width={240}
+                        height={240}
+                        className="rounded-lg"
+                      />
+                    </div>
+                  </div>
+                  <h3 className="text-xl font-medium text-gray-800">
+                    丁火师妹
                   </h3>
                 </div>
               </div>

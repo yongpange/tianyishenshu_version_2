@@ -1626,7 +1626,7 @@ export default function DashboardPage() {
                   <div className="w-48 h-48 bg-gray-100 rounded-xl flex items-center justify-center mb-4 shadow-sm">
                       <Image
                         src="/images/consultation-qr-1.jpg"
-                        alt="丁火师姐微信二维码"
+                        alt="芷暄师妹微信二维码"
                         width={300}
                         height={300}
                         className="w-full h-full object-contain rounded-xl"
@@ -1641,7 +1641,7 @@ export default function DashboardPage() {
                       <div className="text-sm">客服1</div>
                     </div>
                   </div>
-                  <p className="text-sm font-medium text-gray-700">丁火师姐</p>
+                  <p className="text-sm font-medium text-gray-700">芷暄师妹</p>
                 </div>
 
                 {/* 第二个客服二维码 */}
@@ -1649,7 +1649,7 @@ export default function DashboardPage() {
                   <div className="w-48 h-48 bg-gray-100 rounded-xl flex items-center justify-center mb-4 shadow-sm">
                                           <Image
                         src="/images/consultation-qr-2.jpg"
-                        alt="芷暄师妹微信二维码"
+                        alt="丁火师妹微信二维码"
                         width={300}
                         height={300}
                         className="w-full h-full object-contain rounded-xl"
@@ -1664,7 +1664,7 @@ export default function DashboardPage() {
                       <div className="text-sm">客服2</div>
                     </div>
                   </div>
-                  <p className="text-sm font-medium text-gray-700">芷暄师妹</p>
+                  <p className="text-sm font-medium text-gray-700">丁火师妹</p>
                 </div>
               </div>
               <p className="text-center text-gray-500 text-sm mt-6">扫描二维码添加客服微信，获得专业咨询服务</p>

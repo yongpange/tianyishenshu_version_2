@@ -81,8 +81,9 @@ export const disableDevTools = () => {
           devtools.open = true;
           // 如果检测到开发者工具打开，可以采取行动
           // 例如：跳转到其他页面或显示警告
-          alert('开发者工具已被禁用');
-          window.location.href = '/';
+          // alert('开发者工具已被禁用'); // 已注释掉弹窗
+          // window.location.href = '/'; // 已注释掉页面跳转
+          console.warn('检测到开发者工具被打开'); // 仅在控制台记录
         }
       } else {
         devtools.open = false;

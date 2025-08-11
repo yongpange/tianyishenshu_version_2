@@ -102,7 +102,7 @@ export default function HomePage() {
                     alt="客服微信1"
                     className="w-20 h-20 mx-auto mb-2"
                   />
-                  <p className="text-xs text-gray-400">丁火师姐</p>
+                  <p className="text-xs text-gray-400">芷暄师妹</p>
                 </div>
                 <div className="text-center">
                   <img
@@ -110,7 +110,7 @@ export default function HomePage() {
                     alt="客服微信2"
                     className="w-20 h-20 mx-auto mb-2"
                   />
-                  <p className="text-xs text-gray-400">芷暄</p>
+                  <p className="text-xs text-gray-400">丁火师妹</p>
                 </div>
               </div>
             </div>

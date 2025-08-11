@@ -119,7 +119,7 @@ function WechatQRModal({ isOpen, onClose }: WechatQRModalProps) {
                   <div className="text-xs">二维码1</div>
                 </div>
               </div>
-              <div className="text-xs text-gray-600">丁火师姐</div>
+              <div className="text-xs text-gray-600">芷暄师妹</div>
             </div>
 
             {/* 第二个二维码 */}
@@ -141,7 +141,7 @@ function WechatQRModal({ isOpen, onClose }: WechatQRModalProps) {
                   <div className="text-xs">二维码2</div>
                 </div>
               </div>
-              <div className="text-xs text-gray-600">芷暄师妹</div>
+              <div className="text-xs text-gray-600">丁火师妹</div>
             </div>
           </div>
 
