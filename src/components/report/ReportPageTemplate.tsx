@@ -157,7 +157,9 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
     
     return () => clearTimeout(timeoutId)
   }, [moduleConfig.moduleId, globalSessionManager, conversationHistory])
-  
+
+
+
   // 生成会话ID（基于模块和用户）
   const generateSessionId = useCallback(() => {
     const activeUser = getActiveUser()
@@ -840,6 +842,23 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
                 </div>
               </div>
             )}
+
+            {/* PC端返回命书按钮 - 在中间聊天记录区域底部 */}
+            <div className="hidden md:block p-3 md:p-4 border-t border-gray-100 flex-shrink-0">
+              <Button
+                block
+                size="large"
+                icon={<ArrowLeftOutlined />}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  window.location.href = '/dashboard'
+                }}
+                className="border-gray-300 text-gray-700 hover:border-gray-400 hover:text-gray-800 shadow-sm hover:shadow-md transition-all duration-300"
+              >
+                <span className="font-medium tracking-wide">返回「命书」</span>
+              </Button>
+            </div>
           </div>
         )}
       </div>

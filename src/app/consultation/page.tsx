@@ -142,36 +142,36 @@ export default function ConsultationPage() {
                 {/* 正哲师姐 */}
                 <div className="text-center">
                   <div className="mb-6">
-                    <div className="w-40 h-40 mx-auto bg-gray-100 rounded-lg flex items-center justify-center">
+                    <div className="w-60 h-60 mx-auto bg-gray-100 rounded-lg flex items-center justify-center">
                       <Image
                         src="/qr-codes/zhengzhe.png"
-                        alt="正哲师姐微信二维码"
-                        width={160}
-                        height={160}
+                        alt="丁火师姐微信二维码"
+                        width={240}
+                        height={240}
                         className="rounded-lg"
                       />
                     </div>
                   </div>
                   <h3 className="text-xl font-medium text-gray-800">
-                    正哲师姐
+                    丁火师姐
                   </h3>
                 </div>
 
                 {/* 丁火师妹 */}
                 <div className="text-center">
                   <div className="mb-6">
-                    <div className="w-40 h-40 mx-auto bg-gray-100 rounded-lg flex items-center justify-center">
+                    <div className="w-60 h-60 mx-auto bg-gray-100 rounded-lg flex items-center justify-center">
                       <Image
                         src="/qr-codes/dinghuo.png"
-                        alt="丁火师妹微信二维码"
-                        width={160}
-                        height={160}
+                        alt="芷暄师妹微信二维码"
+                        width={240}
+                        height={240}
                         className="rounded-lg"
                       />
                     </div>
                   </div>
                   <h3 className="text-xl font-medium text-gray-800">
-                    丁火师妹
+                    芷暄师妹
                   </h3>
                 </div>
               </div>

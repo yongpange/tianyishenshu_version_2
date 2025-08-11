@@ -105,8 +105,6 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
 
   const [drawerVisible, setDrawerVisible] = useState(false)
 
-  // 检测是否在dashboard环境中
-  const [isInDashboard, setIsInDashboard] = useState(false)
   const [reportContent, setReportContent] = useState<string | null>(null)
   const [reportLoading, setReportLoading] = useState(true)
   const [reportError, setReportError] = useState<string | null>(null)
@@ -780,41 +778,6 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       setConversationsLoading(false)
     }
   }
-
-  // 检测是否在dashboard环境中
-  useEffect(() => {
-    const checkDashboardEnvironment = () => {
-      const currentPath = window.location.pathname
-      const isDashboardPath = currentPath === '/dashboard'
-
-      // 也可以通过检查DOM结构来判断是否有dashboard的底部按钮
-      const hasDashboardButton = document.querySelector('[class*="md:hidden"][class*="fixed"][class*="bottom-0"]') !== null
-
-      const inDashboard = isDashboardPath || hasDashboardButton
-      setIsInDashboard(inDashboard)
-
-      devLog.log('🔍 Dashboard环境检测:', { currentPath, isDashboardPath, hasDashboardButton, inDashboard })
-    }
-
-    // 初始检测
-    checkDashboardEnvironment()
-
-    // 监听路径变化和DOM变化
-    const handleChange = () => {
-      setTimeout(checkDashboardEnvironment, 100) // 延迟检测，确保DOM更新
-    }
-
-    window.addEventListener('popstate', handleChange)
-
-    // 使用MutationObserver监听DOM变化
-    const observer = new MutationObserver(handleChange)
-    observer.observe(document.body, { childList: true, subtree: true })
-
-    return () => {
-      window.removeEventListener('popstate', handleChange)
-      observer.disconnect()
-    }
-  }, [])
 
   // 初始化用户信息和数据
   useEffect(() => {
@@ -2653,6 +2616,23 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                 )}
               </div>
             </div>
+
+            {/* PC端返回命书按钮 - 在中间聊天记录区域底部 */}
+            <div className="hidden md:block p-3 border-t border-gray-100 flex-shrink-0">
+              <Button
+                block
+                size="large"
+                icon={<ArrowLeftOutlined />}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  window.location.href = '/dashboard'
+                }}
+                className="border-gray-300 text-gray-700 hover:border-gray-400 hover:text-gray-800 shadow-sm hover:shadow-md transition-all duration-300"
+              >
+                <span className="font-medium tracking-wide">返回「命书」</span>
+              </Button>
+            </div>
           </div>
         )}
       </div>
@@ -3041,7 +3021,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
             </div>
 
             {/* 输入框区域 */}
-            <div className={`px-4 py-2 bg-white ${isInDashboard ? 'md:pb-2 pb-20' : ''}`}>
+            <div className="px-4 py-2 bg-white">
               <div className="max-w-4xl mx-auto">
                 {/* 问题按钮区域 */}
                 {(() => {
