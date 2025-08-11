@@ -584,11 +584,11 @@ export default function RegisterPage() {
         <div className="text-center text-xs text-gray-500 mb-4">
           <p>注册即表示您同意我们的</p>
           <div className="space-x-4 mt-1">
-            <Link href="/terms" className="text-blue-600 hover:text-blue-700">
+            <Link href="/user-agreement" className="text-blue-600 hover:text-blue-700">
               服务条款
             </Link>
             <span>和</span>
-            <Link href="/privacy" className="text-blue-600 hover:text-blue-700">
+            <Link href="/privacy-policy" className="text-blue-600 hover:text-blue-700">
               隐私政策
             </Link>
           </div>
