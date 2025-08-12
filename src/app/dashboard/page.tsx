@@ -1886,18 +1886,30 @@ export default function DashboardPage() {
             <div className="flex items-center space-x-3 mb-4 p-3 bg-gray-50 rounded-lg">
               {/* 根据用户八字日干显示对应图标 */}
               <div className="flex-shrink-0">
-                {baziData?.paipan?.dayPillar?.heavenly
+                {/* {baziData?.paipan?.dayPillar?.heavenly
                   ? getTianganIcon(baziData.paipan.dayPillar.heavenly, {
                       width: 32,
                       height: 32,
                       className: "text-green-600"
                     })
                   : <GenIcon width={32} height={32} className="text-green-600" />
-                }
+                } */}
+              {allUsersBaziData[activeUser.id]?.paipan?.dayPillar?.heavenly
+              ? getTianganIcon(allUsersBaziData[activeUser.id].paipan.dayPillar.heavenly, {
+                width: 32,
+                height: 32,
+                className: "text-green-600"
+              })
+              : <div className="w-[40px] h-[40px] bg-white rounded-full flex items-center justify-center">
+                  <div className="w-6 h-6 bg-white rounded-full"></div>
+                </div>}
+
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center space-x-2">
-                  <div className="text-base font-semibold text-gray-900">{activeUser.name}</div>
+                  {allUsersBaziData[activeUser.id]?.paipan?.dayPillar?.heavenly
+                    ? <div className="text-base font-semibold text-gray-900">{activeUser.name}</div>
+                    : <div className="w-[96px] h-[24px] bg-white rounded-md"></div>}
                   {/* 角色标签 */}
                   {/* {userRole && (
                     <Tooltip title={userRole.role_display_name}>
@@ -1917,8 +1929,10 @@ export default function DashboardPage() {
                       </Tag>
                     </Tooltip>
                   )} */}
-                </div>
-                <div className="text-xs text-gray-500">当前用户</div>
+                  </div>
+                  {allUsersBaziData[activeUser.id]?.paipan?.dayPillar?.heavenly
+                    ? <div className="text-xs text-gray-500">当前用户</div>
+                    : <div className="w-[96px] h-[24px] bg-white rounded-md"></div>}
               </div>
             </div>
           )}
