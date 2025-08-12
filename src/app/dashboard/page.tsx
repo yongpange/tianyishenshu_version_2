@@ -1691,7 +1691,7 @@ export default function DashboardPage() {
           <div className="max-w-6xl mx-auto">
             {/* 欢迎区域 */}
             <div className="mb-6">
-              <div className="text-center py-4 md:py-16 px-4 md:px-8">
+              <div className="text-center py-16 md:py-32 px-4 md:px-8">
                 <div className="max-w-4xl mx-auto">
                   <div className="flex justify-center items-center space-x-3 mb-3">
                     <h2 className="text-lg md:text-2xl font-medium text-gray-700">
@@ -1727,14 +1727,14 @@ export default function DashboardPage() {
 
                   {/* 哲学文案 */}
                   <h1 className="text-2xl md:text-4xl font-semibold text-gray-900 leading-relaxed tracking-wider mt-6 md:mt-8">
-                    人立于命 命行运中 命由心敕 运掌中天心御乾坤
+                    人立于命 命行运中 命由心敕 心御乾坤
                   </h1>
                 </div>
               </div>
             </div>
 
             {/* 报告模块 - 3×2布局 */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-6 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-6 mb-6 -mt-12 md:-mt-24">
               {reportModules.map((module) => {
                 const hasGeneratePermission = module.requiresPermission ? canGenerate(module.requiresPermission as string) : true
                 const hasViewPermission = module.requiresPermission ? canView(module.requiresPermission as string) : true
@@ -2000,7 +2000,7 @@ export default function DashboardPage() {
 
         {/* 导航菜单 */}
         <div className="flex-1 p-4">
-          <div className="space-y-2">
+          <div className="space-y-8">
             <div
               className={`px-4 py-3 rounded-lg cursor-pointer transition-all duration-300 text-center relative ${
                 currentView === 'dashboard'
