@@ -5,9 +5,14 @@ import Carousel from '@/components/Carousel'
 import TianIcon from '@/components/icons/TianIcon'
 
 export default function HomePage() {
-  // 轮播图图片数据 - 展示yy1.jpg
+  // 轮播图图片数据 - 响应式图片选择
   const carouselImages: string[] = [
-    '/images/yy1.jpg'
+    '/images/yy1.jpg' // PC端图片
+  ]
+
+  // 移动端图片
+  const mobileCarouselImages: string[] = [
+    '/images/carousel-1-mobile.webp' // 移动端图片 768*768
   ]
 
   return (
@@ -39,7 +44,7 @@ export default function HomePage() {
       {/* Hero Section with Carousel */}
       <section className="h-screen bg-gray-50 flex flex-col">
         {/* 文字内容区域 */}
-        <div className="pt-32 pb-0 px-4 sm:px-6 lg:px-8 flex-shrink-0">
+        <div className="pt-32 pb-4 md:pb-0 px-4 sm:px-6 lg:px-8 flex-shrink-0">
           <div className="max-w-4xl mx-auto text-center">
             <h1 className="text-4xl md:text-6xl font-bold text-black mb-6">
               开启与「命运」的深度对话
@@ -58,12 +63,11 @@ export default function HomePage() {
         </div>
         
         {/* 图片区域 - 填充剩余空间 */}
-        <div className="flex-1 bg-white px-4 sm:px-6 lg:px-0 pb-2">
-          <div className="h-full flex items-start justify-center pt-0">
+        <div className="flex-1 bg-white px-4 sm:px-6 lg:px-0 pb-8 md:pb-2">
+          <div className="h-full flex items-start justify-center pt-4 md:pt-0">
             <Carousel
               images={carouselImages}
-              autoPlay={true}
-              autoPlayInterval={5000}
+              mobileImages={mobileCarouselImages}
               useFullHeight={true}
               className="shadow-2xl lg:rounded-none lg:shadow-none"
             />
