@@ -123,6 +123,9 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
   // 中间聊天记录区域的显示/隐藏
   const [chatHistoryVisible, setChatHistoryVisible] = useState(true)
 
+  // 触摸手势状态
+  const [touchStart, setTouchStart] = useState<{x: number, y: number} | null>(null)
+
   // 本地流式响应状态管理
   const [currentReader, setCurrentReader] = useState<ReadableStreamDefaultReader<Uint8Array> | null>(null)
   
@@ -2418,11 +2421,11 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
           <div className="flex items-center space-x-2">
             <Button
               icon={<MenuOutlined />}
-              onClick={() => setDrawerVisible(true)}
+              onClick={() => setChatHistoryVisible(true)}
               size="small"
               type="text"
             >
-              菜单
+              对话
             </Button>
           </div>
         </div>
@@ -2431,11 +2434,32 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       {/* 中间聊天记录区域 */}
       <div className={`bg-white border-r border-gray-200 transition-all duration-300 overflow-hidden
         ${chatHistoryVisible
-          ? 'w-80 h-full md:relative fixed md:static left-0 top-0 md:top-auto z-[9999] md:z-auto'
-          : 'w-0 h-full'
+          ? 'w-[85%] md:w-80 h-full fixed md:relative left-0 top-0 md:top-auto z-[9999] md:z-auto'
+          : 'w-0 md:w-0 h-full hidden md:block'
         }`}>
         {chatHistoryVisible && (
-          <div className="flex flex-col h-full">
+          <div
+            className="flex flex-col h-full"
+            onTouchStart={(e) => {
+              const touch = e.touches[0]
+              setTouchStart({ x: touch.clientX, y: touch.clientY })
+            }}
+            onTouchMove={(e) => {
+              if (!touchStart) return
+              const touch = e.touches[0]
+              const deltaX = touch.clientX - touchStart.x
+              const deltaY = touch.clientY - touchStart.y
+
+              // 检测向左滑动（deltaX < -50 且水平滑动距离大于垂直滑动距离）
+              if (deltaX < -50 && Math.abs(deltaX) > Math.abs(deltaY)) {
+                setChatHistoryVisible(false)
+                setTouchStart(null)
+              }
+            }}
+            onTouchEnd={() => {
+              setTouchStart(null)
+            }}
+          >
             {/* 标题区域 */}
             <div className="p-3 border-b border-gray-100 flex items-center justify-between">
                 <div className="flex items-center space-x-2">
@@ -2637,17 +2661,17 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         )}
       </div>
 
-      {/* 移动端遮罩层 */}
+      {/* 移动端遮罩层 - 只覆盖右侧15%区域 */}
       {chatHistoryVisible && (
         <div
-          className="md:hidden fixed inset-0 bg-black bg-opacity-50 z-[9998]"
+          className="md:hidden fixed top-0 right-0 bottom-0 w-[15%] bg-black bg-opacity-30 z-[9998]"
           onClick={() => setChatHistoryVisible(false)}
         />
       )}
 
-      {/* 展开按钮 */}
+      {/* 展开按钮 - 只在PC端显示 */}
       {!chatHistoryVisible && (
-        <div className="w-8 bg-white border-r border-gray-200 flex items-center justify-center h-full">
+        <div className="hidden md:flex w-8 bg-white border-r border-gray-200 items-center justify-center h-full">
           <Button
             type="text"
             icon={<ArrowRightOutlined />}

@@ -1810,7 +1810,7 @@ export default function DashboardPage() {
                         <h3 className="font-medium text-xl mb-2 text-gray-900">
                           {module.title}
                         </h3>
-                        <p className="text-base leading-relaxed italic text-gray-500">
+                        <p className="text-base leading-relaxed italic text-gray-500 hidden md:block">
                           {module.subtitle}
                         </p>
                       </div>
