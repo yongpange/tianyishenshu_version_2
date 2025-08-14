@@ -479,7 +479,7 @@ export default function RegisterPage() {
         </div>
 
         {/* Register Form */}
-        <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+        <div className="bg-white rounded-2xl shadow-lg p-3 sm:p-4 md:p-6 mb-6 min-w-[280px]">
           <h3 className="text-lg font-semibold text-gray-900 mb-6">手机验证码注册</h3>
 
           {/* Phone Number */}
@@ -488,15 +488,15 @@ export default function RegisterPage() {
               手机号码
             </label>
             <div className="flex">
-              <div className="flex items-center px-3 bg-gray-50 border border-r-0 border-gray-300 rounded-l-lg">
-                <span className="text-gray-600 text-sm">+86</span>
+              <div className="flex items-center px-2 sm:px-3 bg-gray-50 border border-r-0 border-gray-300 rounded-l-lg">
+                <span className="text-gray-600 text-xs sm:text-sm">+86</span>
               </div>
               <input
                 type="tel"
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 11))}
-                placeholder="请输入手机号"
-                className="flex-1 px-4 py-3 border border-gray-300 rounded-r-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="手机号"
+                className="flex-1 px-3 sm:px-4 py-3 border border-gray-300 rounded-r-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
           </div>
@@ -506,18 +506,18 @@ export default function RegisterPage() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               验证码
             </label>
-            <div className="flex space-x-3">
+            <div className="flex gap-2 sm:gap-3">
               <input
                 type="text"
                 value={smsCode}
                 onChange={(e) => setSmsCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="6位验证码"
-                className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="验证码"
+                className="flex-1 px-3 sm:px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
               <button
                 onClick={sendSmsCode}
                 disabled={countdown > 0 || loading}
-                className="px-4 py-3 bg-gray-100 text-gray-700 rounded-lg border border-gray-300 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap text-sm"
+                className="px-2 sm:px-3 py-3 bg-gray-100 text-gray-700 rounded-lg border border-gray-300 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap text-xs sm:text-sm min-w-[70px] sm:min-w-[80px] flex-shrink-0"
               >
                 {countdown > 0 ? `${countdown}s` : '发送验证码'}
               </button>
@@ -526,7 +526,7 @@ export default function RegisterPage() {
         </div>
 
         {/* Invite Code Section */}
-        <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+        <div className="bg-white rounded-2xl shadow-lg p-3 sm:p-4 md:p-6 mb-6 min-w-[280px]">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">兑换码</h3>
           <p className="text-sm text-gray-600 mb-4">请输入兑换码</p>
 
