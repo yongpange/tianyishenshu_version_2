@@ -23,4 +23,4 @@ public/qr-codes/
 ## 注意事项
 - 图片文件名必须与代码中的引用保持一致
 - 确保图片路径为 `/qr-codes/文件名.png`
-- 如果需要更改文件名，请同时修改 `src/app/consultation/page.tsx` 中的对应引用
+- 如果需要更改文件名，请同时修改 `src/app/dashboard/page.tsx` 中的对应引用

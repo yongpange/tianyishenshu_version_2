@@ -1618,12 +1618,12 @@ export default function DashboardPage() {
             </div>
 
             {/* 客服二维码区*/}
-            <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
-                              <h2 className="text-xl font-semibold text-gray-900 text-center mb-6">联系客服</h2>
-              <div className="flex justify-center items-center gap-12">
+            <div className="bg-white rounded-2xl shadow-lg p-4 md:p-6 mb-8">
+              <h2 className="text-lg md:text-xl font-semibold text-gray-900 text-center mb-4 md:mb-6">联系客服</h2>
+              <div className="flex justify-center items-center gap-4 md:gap-12">
                 {/* 第一个客服二维码 */}
                 <div className="text-center">
-                  <div className="w-48 h-48 bg-gray-100 rounded-xl flex items-center justify-center mb-4 shadow-sm">
+                  <div className="w-32 h-32 md:w-48 md:h-48 bg-gray-100 rounded-xl flex items-center justify-center mb-3 md:mb-4 shadow-sm overflow-hidden">
                       <Image
                         src="/images/consultation-qr-1.jpg"
                         alt="芷暄师妹微信二维码"
@@ -1637,17 +1637,17 @@ export default function DashboardPage() {
                         }}
                       />
                     <div className="hidden text-gray-500 text-center">
-                      <div className="text-3xl mb-2">📱</div>
-                      <div className="text-sm">客服1</div>
+                      <div className="text-2xl md:text-3xl mb-1 md:mb-2">📱</div>
+                      <div className="text-xs md:text-sm">客服1</div>
                     </div>
                   </div>
-                  <p className="text-sm font-medium text-gray-700">芷暄师妹</p>
+                  <p className="text-xs md:text-sm font-medium text-gray-700">芷暄师妹</p>
                 </div>
 
                 {/* 第二个客服二维码 */}
                 <div className="text-center">
-                  <div className="w-48 h-48 bg-gray-100 rounded-xl flex items-center justify-center mb-4 shadow-sm">
-                                          <Image
+                  <div className="w-32 h-32 md:w-48 md:h-48 bg-gray-100 rounded-xl flex items-center justify-center mb-3 md:mb-4 shadow-sm overflow-hidden">
+                      <Image
                         src="/images/consultation-qr-2.jpg"
                         alt="丁火师妹微信二维码"
                         width={300}
@@ -1660,14 +1660,14 @@ export default function DashboardPage() {
                         }}
                       />
                     <div className="hidden text-gray-500 text-center">
-                      <div className="text-3xl mb-2">📱</div>
-                      <div className="text-sm">客服2</div>
+                      <div className="text-2xl md:text-3xl mb-1 md:mb-2">📱</div>
+                      <div className="text-xs md:text-sm">客服2</div>
                     </div>
                   </div>
-                  <p className="text-sm font-medium text-gray-700">丁火师妹</p>
+                  <p className="text-xs md:text-sm font-medium text-gray-700">丁火师妹</p>
                 </div>
               </div>
-              <p className="text-center text-gray-500 text-sm mt-6">扫描二维码添加客服微信，获得专业咨询服务</p>
+              <p className="text-center text-gray-500 text-xs md:text-sm mt-4 md:mt-6">扫描二维码添加客服微信，获得专业咨询服务</p>
             </div>
 
             {/* 公司介绍区域 */}
@@ -2166,7 +2166,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 主内容区*/}
-      <div className="flex-1 p-0.5 md:p-1 overflow-y-auto h-full min-h-0">
+      <div className="flex-1 p-0.5 md:p-1 pb-24 md:pb-1 overflow-y-auto h-full min-h-0">
         <Suspense fallback={
           <div className="flex items-center justify-center h-64">
             <Spin size="large" />

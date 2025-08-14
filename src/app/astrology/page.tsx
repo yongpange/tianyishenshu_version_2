@@ -426,7 +426,7 @@ export default function AstrologyPage() {
   }
 
   const handleConsultation = () => {
-    router.push('/consultation')
+    router.push('/dashboard')
   }
 
   const handleHealing = () => {

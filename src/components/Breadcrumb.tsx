@@ -70,9 +70,5 @@ export const BREADCRUMB_CONFIGS = {
   health: [
     { label: '命书', path: '/dashboard', clickable: true },
     { label: '身体健康', clickable: false }
-  ],
-  consultation: [
-    { label: '命书', path: '/dashboard', clickable: true },
-    { label: '问道1v1', clickable: false }
   ]
 }

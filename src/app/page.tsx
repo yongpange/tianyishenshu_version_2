@@ -46,7 +46,7 @@ export default function HomePage() {
         {/* 文字内容区域 */}
         <div className="pt-32 pb-4 md:pb-0 px-4 sm:px-6 lg:px-8 flex-shrink-0">
           <div className="max-w-4xl mx-auto text-center">
-            <h1 className="text-4xl md:text-6xl font-bold text-black mb-6">
+            <h1 className="text-2xl sm:text-3xl md:text-6xl font-bold text-black mb-6">
               开启与「命运」的深度对话
             </h1>
             <p className="text-lg md:text-xl text-gray-600 mb-6 max-w-2xl mx-auto">
