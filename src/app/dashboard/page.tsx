@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { Card, Avatar, Button, message, Divider, Spin, Collapse, Tag, Tooltip } from 'antd'
+import { Card, Avatar, Button, message, Divider, Spin, Collapse, Tag, Tooltip, Drawer } from 'antd'
 import {
   UserOutlined,
   WechatOutlined,
@@ -15,7 +15,10 @@ import {
   CrownOutlined,
   SecurityScanOutlined,
   LockOutlined,
-  ArrowLeftOutlined
+  ArrowLeftOutlined,
+  CheckCircleOutlined,
+  ArrowRightOutlined,
+  PlusOutlined
 } from '@ant-design/icons'
 import { PermissionGuard, usePermissionCheck } from '@/components/PermissionGuard'
 import { useGlobalSessionManager } from '@/hooks/useGlobalSessionManager'
@@ -50,6 +53,7 @@ export default function DashboardPage() {
   const [activeUser, setActiveUser] = useState<any>(null)
   const [currentView, setCurrentView] = useState<string>('dashboard') // 'dashboard', 'astrology', 'personality', etc.
   const [userListCollapsed, setUserListCollapsed] = useState<boolean>(true) // 用户列表折叠状态
+  const [userSelectorVisible, setUserSelectorVisible] = useState<boolean>(false) // 移动端用户选择器显示状态
   const [baziData, setBaziData] = useState<any>(null) // 当前用户八字数据
   const [allUsersBaziData, setAllUsersBaziData] = useState<{[key: string]: any}>({}) // 所有用户八字数据
   const router = useRouter()
@@ -1856,11 +1860,15 @@ export default function DashboardPage() {
               <div>天乙神算</div>
             </div>
           </div>
-          <div className="flex items-center space-x-2">
+          <div
+            className="flex items-center space-x-2 px-2 py-1 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+            onClick={() => setUserSelectorVisible(true)}
+          >
             <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
               <span className="text-green-600 text-xs">{activeUser?.name ? activeUser.name.charAt(0) : ''}</span>
             </div>
-            <span className="text-sm text-gray-700">{activeUser?.name || '用户'}</span>
+            <span className="text-sm text-gray-700 truncate max-w-16">{activeUser?.name || '用户'}</span>
+            <DownOutlined className="text-xs text-gray-500" />
           </div>
         </div>
       </div>
@@ -2203,7 +2211,100 @@ export default function DashboardPage() {
           </Button>
         </div>
       </div>
+
+      {/* 移动端用户选择器抽屉 */}
+      <Drawer
+        title="选择用户"
+        placement="bottom"
+        open={userSelectorVisible}
+        onClose={() => setUserSelectorVisible(false)}
+        height="60vh"
+        className="md:hidden"
+      >
+        <div className="space-y-4">
+          {/* 当前激活用户 */}
+          {activeUser && (
+            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="flex items-center space-x-3">
+                <div className="flex-shrink-0">
+                  {allUsersBaziData[activeUser.id]?.paipan?.dayPillar?.heavenly
+                    ? getTianganIcon(allUsersBaziData[activeUser.id].paipan.dayPillar.heavenly, {
+                        width: 32,
+                        height: 32,
+                        className: "text-green-600"
+                      })
+                    : <div className="w-8 h-8 bg-gray-300 rounded-full"></div>
+                  }
+                </div>
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">{activeUser.name}</div>
+                  <div className="text-sm text-blue-600">当前用户</div>
+                </div>
+                <div className="text-blue-600">
+                  <CheckCircleOutlined />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 其他用户列表 */}
+          {getUserDisplayList().length > 0 && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-gray-500 px-1">其他用户</div>
+              {getUserDisplayList().map((user: any) => (
+                <div
+                  key={user.id}
+                  className="flex items-center space-x-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
+                  onClick={() => {
+                    handleUserSwitch(user)
+                    setUserSelectorVisible(false)
+                  }}
+                >
+                  <div className="flex-shrink-0">
+                    {allUsersBaziData[user.id]?.paipan?.dayPillar?.heavenly
+                      ? getTianganIcon(allUsersBaziData[user.id].paipan.dayPillar.heavenly, {
+                          width: 32,
+                          height: 32,
+                          className: "text-green-600"
+                        })
+                      : <div className="w-8 h-8 bg-gray-300 rounded-full"></div>
+                    }
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-medium text-gray-900">{user.name}</div>
+                    <div className="text-sm text-gray-500">
+                      {user.parent_id === null ? '主账户' : '子账户'}
+                    </div>
+                  </div>
+                  <ArrowRightOutlined className="text-gray-400" />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 新增用户按钮 */}
+          <div
+            className="flex items-center space-x-3 p-3 rounded-lg border-2 border-dashed border-gray-300 cursor-pointer hover:border-gray-400 hover:bg-gray-50 transition-colors"
+            onClick={() => {
+              if (isAdmin || isVip) {
+                router.push('/profile?mode=add')
+                setUserSelectorVisible(false)
+              } else {
+                message.info('请开通VIP权限')
+              }
+            }}
+          >
+            <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+              <PlusOutlined className="text-gray-500" />
+            </div>
+            <div className="flex-1">
+              <div className="font-medium text-gray-700">新增用户</div>
+              <div className="text-sm text-gray-500">添加家庭成员</div>
+            </div>
+          </div>
+        </div>
+      </Drawer>
     </div>
     </div>
   )
-} 
+}
