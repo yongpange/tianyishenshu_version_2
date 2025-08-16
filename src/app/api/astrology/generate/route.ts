@@ -46,25 +46,55 @@ function extractCityName(fullLocationName: string): string {
   try {
     // 去掉空格后进行解析
     const cleanName = fullLocationName.replace(/\s+/g, '')
+    console.log(`🔍 正在解析地区名称: ${cleanName}`)
     
-    // 检查是否包含"县"
-    const countyMatch = cleanName.match(/([^省市]*县)/)
+    // 优先级1：内蒙古自治区的盟优先级最高，无论后面跟什么
+    if (cleanName.includes('内蒙古自治区') && cleanName.includes('盟')) {
+      const innerMongoliaLeagueMatch = cleanName.match(/([^省区]*盟)/)
+      if (innerMongoliaLeagueMatch) {
+        console.log(`🏕️ 内蒙古自治区检测到盟级单位（最高优先级）: ${innerMongoliaLeagueMatch[1]}`)
+        return innerMongoliaLeagueMatch[1]
+      }
+    }
+    
+    // 优先级2：如果包含"县"，取县
+    const countyMatch = cleanName.match(/([^省市盟]*县)/)
     if (countyMatch) {
       console.log(`🏘️ 检测到县级单位: ${countyMatch[1]}`)
       return countyMatch[1]
     }
     
-    // 检查是否包含"市"，找到所有的市，取最后一个
+    // 优先级3：如果包含"盟"，取盟（处理其他地区的盟）
+    const leagueMatch = cleanName.match(/([^省区]*盟)/)
+    if (leagueMatch) {
+      console.log(`🏕️ 检测到盟级单位: ${leagueMatch[1]}`)
+      return leagueMatch[1]
+    }
+    
+    // 优先级4：如果包含"市辖区"，取市辖区前面的市
+    if (cleanName.includes('市辖区')) {
+      const cityBeforeDistrictMatch = cleanName.match(/([^省区]*市)市辖区/)
+      if (cityBeforeDistrictMatch) {
+        console.log(`🏛️ 检测到市辖区，取前面的市: ${cityBeforeDistrictMatch[1]}`)
+        return cityBeforeDistrictMatch[1]
+      }
+    }
+    
+    // 优先级5：如果包含多个"市"，取最后一个市
     // 这样可以处理"黑龙江省佳木斯市同江市"这种情况，取"同江市"而不是"佳木斯市"
-    const cityMatches = cleanName.match(/[^省市]*市/g)
+    const cityMatches = cleanName.match(/([^省区盟市辖]*市)(?!辖区)/g)
     if (cityMatches && cityMatches.length > 0) {
-      const lastCity = cityMatches[cityMatches.length - 1]
-      console.log(`🏙️ 检测到市级单位（取最后一个）: ${lastCity}，共找到${cityMatches.length}个市级单位: [${cityMatches.join(', ')}]`)
-      return lastCity
+      // 过滤掉可能的错误匹配，确保是真正的市名
+      const validCities = cityMatches.filter(city => city.length > 1 && !city.includes('辖'))
+      if (validCities.length > 0) {
+        const lastCity = validCities[validCities.length - 1]
+        console.log(`🏙️ 检测到${validCities.length}个市级单位: [${validCities.join(', ')}]，取最后一个: ${lastCity}`)
+        return lastCity
+      }
     }
     
     // 如果都没有匹配到，返回处理后的原名称
-    console.log(`⚠️ 未能提取到标准的市/县名称，使用原名称: ${cleanName}`)
+    console.log(`⚠️ 未能提取到标准的市/县/盟名称，使用原名称: ${cleanName}`)
     return cleanName
     
   } catch (error) {
@@ -417,12 +447,35 @@ function transformApiData(apiData: any, userData: any) {
   const formatBirthplace = (city: string): string => {
     // 始终使用完整的地区名称（不是提取后的城市名称）
     const fullLocationName = convertAreaCodeToName(userData)
-    
+    console.log('fullLocationName', fullLocationName)
     if (!fullLocationName) return city || '北京市'
     
-    // 如果是北京市市辖区朝阳区这种格式，添加空格
+    // 如果包含市辖区，需要规范化格式
     if (fullLocationName.includes('市辖区')) {
-      return fullLocationName.replace(/市辖区/, '市 市辖区 ').replace(/区$/, '区')
+      // 先去掉所有多余的空格，重新标准化格式
+      let cleanName = fullLocationName.replace(/\s+/g, '')
+      console.log('cleanName after removing spaces:', cleanName)
+      
+      // 使用正则表达式来处理各种情况：
+      // 天津市市辖区和平区 -> 天津市 市辖区 和平区
+      // 天津市辖区和平区 -> 天津市 市辖区 和平区
+      let result
+      
+      // 如果是"X市市辖区Y"格式
+      if (/(.+市)市辖区(.+)/.test(cleanName)) {
+        result = cleanName.replace(/(.+市)市辖区(.+)/, '$1 市辖区 $2')
+      }
+      // 如果是"X市辖区Y"格式（只有一个市字）
+      else if (/(.+)市辖区(.+)/.test(cleanName)) {
+        result = cleanName.replace(/(.+)市辖区(.+)/, '$1市 市辖区 $2')
+      }
+      // 兜底情况
+      else {
+        result = cleanName
+      }
+      
+      console.log('formatted result:', result)
+      return result
     }
     
     // 其他情况保持原样

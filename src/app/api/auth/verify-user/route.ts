@@ -16,9 +16,9 @@ export async function POST(request: NextRequest) {
 
     // 简化日志输出，仅在debug模式下显示详细信息
     const isDebug = process.env.NODE_ENV === 'development'
-    if (isDebug) {
-      console.log('🔍 验证用户存在性:', { phone: phone ? `${phone.slice(0,3)}****${phone.slice(-4)}` : undefined, userId, userProfileId })
-    }
+    // if (isDebug) {
+    //   console.log('🔍 验证用户存在性:', { phone: phone ? `${phone.slice(0,3)}****${phone.slice(-4)}` : undefined, userId, userProfileId })
+    // }
 
     // 1. 如果有userProfileId，直接验证用户资料是否存在
     if (userProfileId) {
@@ -44,9 +44,9 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      if (isDebug) {
-        console.log('✅ 用户资料验证通过:', userProfile.name)
-      }
+      // if (isDebug) {
+      //   console.log('✅ 用户资料验证通过:', userProfile.name)
+      // }
       return NextResponse.json({
         success: true,
         exists: true,
@@ -84,9 +84,9 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      if (isDebug) {
-        console.log('✅ 用户验证通过:', user.phone_number?.slice(0,3) + '****' + user.phone_number?.slice(-4))
-      }
+      // if (isDebug) {
+      //   // console.log('✅ 用户验证通过:', user.phone_number?.slice(0,3) + '****' + user.phone_number?.slice(-4))
+      // }
       return NextResponse.json({
         success: true,
         exists: true,

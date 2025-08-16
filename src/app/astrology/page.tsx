@@ -513,10 +513,11 @@ export default function AstrologyPage() {
                 </div>
                 <div className="flex justify-between pt-2 border-t">
                   <span className="text-gray-600">出生地区：</span>
-                  <span className="font-medium">{data.birthplace}</span>
+                  <span className="font-medium">{data.birthplace.replace('市 市辖区', '市辖区')}</span>
                 </div>
               </div>
-            </Card>
+          </Card>
+          
 
             {/* 八字排盘表格 */}
             <Card title="八字排盘" className="mb-6">

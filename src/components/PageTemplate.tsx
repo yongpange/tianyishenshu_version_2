@@ -126,6 +126,9 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
   // 本地流式响应状态管理
   const [currentReader, setCurrentReader] = useState<ReadableStreamDefaultReader<Uint8Array> | null>(null)
   
+  // 跟踪正在进行流式输出的对话ID
+  const [streamingConversationId, setStreamingConversationId] = useState<string | null>(null)
+  
   // 防止重复保存的标记
   const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(new Set())
 
@@ -644,12 +647,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
 
   // 处理对话选择，包括按需加载消息
   const handleConversationSelect = useCallback(async (conversation: ConversationHistory, closeMobile = false) => {
-    // 🔒 检查是否有活跃的流式响应
-    if (currentReader || isTyping) {
-      message.warning('当前有对话正在进行中，请等待完成后再切换')
-      return
-    }
-    
+    // 直接切换到选中的对话（允许自由切换查看历史对话）
     setActiveConversationId(conversation.id)
     setCurrentContent('chat')
     
@@ -657,8 +655,19 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       setDrawerVisible(false)
     }
     
-    // 如果该对话的消息尚未加载，立即加载
+    devLog.log('🔄 切换到对话:', conversation.title, {
+      isCurrentlyGenerating: currentReader || isTyping,
+      note: '流式输出状态保持独立，不受对话切换影响'
+    })
+    
+    // 如果该对话的消息尚未加载，立即加载（但不要影响正在进行流式输出的对话）
     if (!conversation.messagesLoaded && !conversation.messagesLoadError && conversation.dbConversationId) {
+      // 🚨 关键修复：如果这个对话正在进行流式输出，不要重新加载消息
+      if (streamingConversationId === conversation.id) {
+        devLog.log('🚨 跳过重新加载消息：对话正在进行流式输出', conversation.title)
+        return
+      }
+      
       devLog.log('🎯 选择对话，立即加载消息:', conversation.title)
       try {
         await loadConversationMessages(conversation.id, conversation.dbConversationId)
@@ -880,23 +889,50 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
     }
   }, [])
 
-  // 重置聊天界面
+  // +新对话按钮：如果有正在生成的对话则警告，没有则创建新对话
+  const handleNewConversationButton = async () => {
+    if (!userInfo) {
+      alert('请先完善个人信息后再开始对话')
+      return
+    }
+
+    // +新对话按钮在有流式输出时显示警告
+    if (currentReader || isTyping) {
+      message.warning('当前有对话正在进行中，请等待完成后再新建对话')
+      return
+    }
+
+    // 没有正在生成的对话，创建新对话
+    setActiveConversationId(null)
+    setCurrentContent('chat')
+    // 重置显示数量，确保新对话可见
+    setVisibleConversationsCount(5)
+    devLog.log('🆕 创建新对话')
+  }
+
+  // 智能对话处理：有正在生成的对话则跳转，没有则创建新对话
   const createNewConversation = async () => {
     if (!userInfo) {
       alert('请先完善个人信息后再开始对话')
       return
     }
 
-    // 🔒 检查是否有活跃的流式响应
+    // 如果有正在生成的对话，切换到正在进行流式输出的对话
     if (currentReader || isTyping) {
-      message.warning('当前有对话正在进行中，请等待完成后再新建对话')
+      if (streamingConversationId) {
+        setActiveConversationId(streamingConversationId)
+        devLog.log('🔄 切换到正在进行流式输出的对话:', streamingConversationId)
+      }
+      setCurrentContent('chat')
       return
     }
 
+    // 没有正在生成的对话，创建新对话
     setActiveConversationId(null)
     setCurrentContent('chat')
     // 重置显示数量，确保新对话可见
     setVisibleConversationsCount(5)
+    devLog.log('🆕 创建新对话')
   }
 
   // 更新对话标题
@@ -1285,10 +1321,22 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       currentConvMessages: finalConversations.find(c => c.id === currentActiveConversationId)?.messages.length
     })
     
+    devLog.log('🔥 准备原子性状态更新:', {
+      currentActiveConversationId,
+      finalConversationsLength: finalConversations.length,
+      userMessage: userMessage.content.substring(0, 50)
+    })
+    
     // 🔥 原子性状态更新：一次性设置所有相关状态
     setConversations(finalConversations)
     setActiveConversationId(currentActiveConversationId)
     setIsTyping(true)
+    setStreamingConversationId(currentActiveConversationId) // 跟踪正在进行流式输出的对话
+    
+    devLog.log('✅ 设置streamingConversationId:', {
+      currentActiveConversationId,
+      streamingConversationId: currentActiveConversationId
+    })
     localStorage.setItem(`${moduleConfig.moduleId}_conversations`, JSON.stringify(finalConversations))
 
     // 后台处理数据库操作
@@ -1437,10 +1485,15 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       } catch (error) {
         devLog.error('❌ 数据库操作失败，无法继续AI请求:', error)
         setIsTyping(false)
+        
+        // 先保存streamingConversationId，然后再清除
+        const currentStreamingConversationId = streamingConversationId
+        setStreamingConversationId(null)
+        
         // 移除临时typing消息
         setConversations(prevConversations => 
           prevConversations.map(conv => 
-            conv.id === currentActiveConversationId 
+            conv.id === currentStreamingConversationId 
               ? { ...conv, messages: conv.messages.filter(msg => msg.id !== typingMessageId) }
               : conv
           )
@@ -1454,7 +1507,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         }
         setConversations(prevConversations => 
           prevConversations.map(conv => 
-            conv.id === currentActiveConversationId 
+            conv.id === streamingConversationId 
               ? { ...conv, messages: [...conv.messages, errorMessage] }
               : conv
           )
@@ -1559,12 +1612,12 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                       devLog.log('🚀 收到开始信号，准备接收AI回复')
                       setIsTyping(false) // 移除"正在思考中..."
                       // 不再显示"正在生成回复..."，等待第一个content块立即更新
-                    } else if (data.type === 'content') {
-                      streamingContent += data.content
-                      finalConversationId = data.conversationId || finalConversationId
-                      finalChatId = data.chatId || finalChatId
+                                                        } else if (data.type === 'content') {
+                                      streamingContent += data.content
+                                      finalConversationId = data.conversationId || finalConversationId
+                                      finalChatId = data.chatId || finalChatId
 
-                      // 检查是否已经到达真正的内容开始标记
+                                                            // 检查是否已经到达真正的内容开始标记
                       const contentStartMarker = "fabuwc directly streaming reply."
                       if (!hasReachedContentStart && streamingContent.includes(contentStartMarker)) {
                         hasReachedContentStart = true
@@ -1572,32 +1625,118 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                         devLog.log('🤖 到达内容开始标记，开始显示AI回复')
                       }
 
+                      // 移除强制显示逻辑，严格等待标记出现
+
                       devLog.log('📥 收到AI内容块:', {
                         contentLength: data.content.length,
                         totalLength: streamingContent.length,
                         hasReachedContentStart,
                         botMessageId,
-                        currentActiveConversationId
+                        streamingConversationId,
+                        // 新增：关键内容调试
+                        receivedContent: data.content,
+                        currentStreamingContent: streamingContent,
+                        streamingContentPreview: streamingContent.substring(0, 50)
                       })
 
                       // 更新本地流式内容状态 - 保存原始内容但显示过滤内容
                       setCurrentStreamingContent(streamingContent)
 
+                      devLog.log('🚀 准备更新对话状态:', {
+                        streamingConversationId,
+                        currentActiveConversationId,
+                        botMessageId,
+                        streamingContentLength: streamingContent.length,
+                        streamingContentPreview: streamingContent.substring(0, 100)
+                      })
+
                       setConversations(prevConversations => {
+                        devLog.log('🎯 进入setConversations更新:', {
+                          prevConversationsCount: prevConversations.length,
+                          streamingConversationId,
+                          currentActiveConversationId,
+                          botMessageId
+                        })
+                        
                         const updated = prevConversations.map(conv => {
                           if (conv.id === currentActiveConversationId) {
-                            const displayContent = hasReachedContentStart ? extractDisplayContent(streamingContent) : ''
+                            // 🚀 流式内容显示策略：始终过滤掉标记内容
+                            const extractedStreamingContent = extractDisplayContent(streamingContent)
+                            
+                            // 如果提取失败或为空，且已经到达内容开始，则手动过滤标记
+                            let finalDisplayContent = ''
+                            if (extractedStreamingContent && extractedStreamingContent.trim() !== '') {
+                              finalDisplayContent = extractedStreamingContent
+                            } else if (hasReachedContentStart && streamingContent) {
+                              // 手动过滤标记内容
+                              const startMarker = "fabuwc directly streaming reply."
+                              const startIndex = streamingContent.indexOf(startMarker)
+                              if (startIndex !== -1) {
+                                finalDisplayContent = streamingContent.substring(startIndex + startMarker.length).trim()
+                              } else {
+                                finalDisplayContent = '' // 如果没有找到标记，不显示任何内容
+                              }
+                            } else {
+                              finalDisplayContent = '' // 在到达标记前不显示任何内容
+                            }
+                            
+                            // 检查消息是否存在
+                            const targetMessage = conv.messages.find(m => m.id === botMessageId)
+                            
+                            devLog.log('🔄 流式内容更新检查:', {
+                              conversationId: conv.id,
+                              streamingConversationId,
+                              currentActiveConversationId,
+                              botMessageId,
+                              streamingContentLength: streamingContent.length,
+                              targetMessageExists: !!targetMessage,
+                              targetMessageId: targetMessage?.id,
+                              messagesCount: conv.messages.length,
+                              allMessageIds: conv.messages.map(m => m.id),
+                              streamingContentPreview: streamingContent.substring(0, 100)
+                            })
+                            
+                            // 简化的流式内容更新日志
+                            devLog.log('📝 流式内容更新:', {
+                              conversationId: conv.id,
+                              botMessageId,
+                              streamingContentLength: streamingContent.length,
+                              finalDisplayContentLength: finalDisplayContent.length,
+                              hasReachedContentStart,
+                              streamingContentPreview: streamingContent.substring(0, 100),
+                              finalDisplayContentPreview: finalDisplayContent.substring(0, 100),
+                              // 检查消息是否存在
+                              messageExists: conv.messages.some(m => m.id === botMessageId),
+                              totalMessages: conv.messages.length,
+                              // 状态检查
+                              currentActiveConversationId: conv.id,
+                              streamingConversationId
+                            })
+                            
                             return {
                               ...conv,
-                              messages: conv.messages.map(msg =>
-                                msg.id === botMessageId
-                                  ? { 
-                                      ...msg, 
-                                      content: streamingContent, // 保存原始完整内容
-                                      displayContent: displayContent // 只有到达标记后才显示内容
-                                    }
-                                  : msg
-                              ),
+                              messages: conv.messages.map(msg => {
+                                if (msg.id === botMessageId) {
+                                  const updatedMessage = { 
+                                    ...msg, 
+                                    content: streamingContent, // 保存原始完整内容
+                                    displayContent: finalDisplayContent // 只显示过滤后的内容，不fallback到原始内容
+                                  }
+                                  
+                                  devLog.log('🔄 更新消息内容:', {
+                                    messageId: msg.id,
+                                    botMessageId,
+                                    originalContent: msg.content,
+                                    newContent: streamingContent,
+                                    originalDisplayContent: msg.displayContent,
+                                    newDisplayContent: updatedMessage.displayContent,
+                                    streamingContentLength: streamingContent.length
+                                  })
+                                  
+                                  return updatedMessage
+                                }
+                                return msg
+                              }),
                               cozeConversationId: conv.cozeConversationId || finalConversationId,
                             }
                           }
@@ -1606,8 +1745,8 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                         
                         devLog.log('🔄 更新对话状态 - AI内容:', {
                           conversationsCount: updated.length,
-                          currentConv: updated.find(c => c.id === currentActiveConversationId),
-                          botMessage: updated.find(c => c.id === currentActiveConversationId)?.messages.find(m => m.id === botMessageId)
+                          currentConv: updated.find(c => c.id === streamingConversationId),
+                          botMessage: updated.find(c => c.id === streamingConversationId)?.messages.find(m => m.id === botMessageId)
                         })
                         
                         return updated
@@ -1620,6 +1759,18 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                         const finalConversations = prevConversations.map(conv => {
                           if (conv.id === currentActiveConversationId) {
                             const fullContent = data.fullResponse || streamingContent
+                            const extractedDisplayContent = extractDisplayContent(fullContent)
+                            
+                            devLog.log('✅ 流式输出完成 - 内容更新:', {
+                              conversationId: conv.id,
+                              botMessageId,
+                              fullContentLength: fullContent.length,
+                              extractedDisplayContentLength: extractedDisplayContent.length,
+                              messagesCount: conv.messages.length,
+                              targetMessageExists: conv.messages.some(m => m.id === botMessageId),
+                              fullContentPreview: fullContent.substring(0, 200)
+                            })
+                            
                             return {
                               ...conv,
                               messages: conv.messages.map(msg =>
@@ -1627,7 +1778,9 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                                   ? { 
                                       ...msg, 
                                       content: fullContent, // 保存原始完整内容
-                                      displayContent: extractDisplayContent(fullContent) // 添加显示内容字段
+                                      displayContent: extractedDisplayContent && extractedDisplayContent.trim() !== '' 
+                                        ? extractedDisplayContent 
+                                        : '' // 如果提取失败，显示空字符串而不是原始内容
                                     }
                                   : msg
                               ),
@@ -1649,6 +1802,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                       })
 
                       setIsTyping(false)
+                      setStreamingConversationId(null) // 清除流式输出对话跟踪
 
                       // 打印认证信息到前端控制台
                       if (data.authInfo) {
@@ -1668,8 +1822,14 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                       break
                     } else if (data.type === 'error') {
                       devLog.error('❌ 流式响应错误:', data.error)
+                      devLog.warn('🚨 流式错误清除streamingConversationId:', {
+                        error: data.error,
+                        streamingConversationId,
+                        botMessageId
+                      })
                       
                       setIsTyping(false)
+                      setStreamingConversationId(null) // 清除流式输出对话跟踪
                       
                       // 清理本地reader状态
                       setCurrentReader(null)
@@ -1738,6 +1898,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         })
 
         setIsTyping(false)
+        setStreamingConversationId(null) // 清除流式输出对话跟踪
 
         // 打印认证信息到前端控制台（非流式响应）
         if (data.authInfo) {
@@ -1758,8 +1919,15 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       }
     } catch (error: any) {
       devLog.error('❌ 消息发送失败:', error)
+      devLog.warn('🚨 Catch错误清除streamingConversationId:', {
+        errorName: error.name,
+        errorMessage: error.message,
+        streamingConversationId,
+        botMessageId: typingMessageId
+      })
       
       setIsTyping(false)
+      setStreamingConversationId(null) // 清除流式输出对话跟踪
       
       setConversations(finalConversations)
       
@@ -1785,6 +1953,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
     } finally {
       setLoading(false)
       setIsTyping(false)
+      setStreamingConversationId(null) // 清除流式输出对话跟踪
     }
   }
 
@@ -2049,16 +2218,16 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
   // 获取当前对话
   const getCurrentConversation = () => {
     const current = conversations.find(conv => conv.id === activeConversationId)
-    devLog.log('🔍 getCurrentConversation调试:', {
-      activeConversationId,
-      conversationsCount: conversations.length,
-      currentFound: !!current,
-      currentTitle: current?.title,
-      currentMessages: current?.messages?.length || 0,
-      conversationIds: conversations.map(c => c.id),
-      conversationTitles: conversations.map(c => c.title),
-      lastMessage: current?.messages?.[current.messages.length - 1]?.content?.substring(0, 50)
-    })
+    // devLog.log('🔍 getCurrentConversation调试:', {
+    //   activeConversationId,
+    //   conversationsCount: conversations.length,
+    //   currentFound: !!current,
+    //   currentTitle: current?.title,
+    //   currentMessages: current?.messages?.length || 0,
+    //   conversationIds: conversations.map(c => c.id),
+    //   conversationTitles: conversations.map(c => c.title),
+    //   lastMessage: current?.messages?.[current.messages.length - 1]?.content?.substring(0, 50)
+    // })
     return current
   }
 
@@ -2199,8 +2368,8 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
     
     const startIndex = content.indexOf(startMarker)
     if (startIndex === -1) {
-      // 如果没有找到起始标记，返回原内容（向后兼容）
-      return content
+      // 如果没有找到起始标记，返回空字符串，只显示标记后的内容
+      return ''
     }
     
     // 从起始标记之后开始提取
@@ -2493,7 +2662,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                     type="text"
                     icon={<PlusOutlined />}
                     onClick={() => {
-                      createNewConversation()
+                      handleNewConversationButton()
                     }}
                     className="text-gray-500 hover:text-gray-700"
                     size="small"
@@ -2924,7 +3093,11 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                     type: message.type,
                     contentLength: message.content.length,
                     content: message.content.substring(0, 50) + (message.content.length > 50 ? '...' : ''),
+                    displayContentLength: message.displayContent?.length || 0,
                     isTyping,
+                    streamingConversationId,
+                    currentConversationId: getCurrentConversation()?.id,
+                    isStreamingMatch: streamingConversationId === getCurrentConversation()?.id,
                     isEmpty: message.content === ''
                   })
                   return (
@@ -2938,24 +3111,130 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                         {message.type === 'user' ? '您' : <img src="/images/yy3.png" alt="AI助手" className="w-8 h-8 inline-block" />}
                       </span>
                     </div>
-                    {message.type === 'bot' && (
-                      message.content === '' || 
-                      (message.displayContent !== undefined && message.displayContent === '')
-                    ) && isTyping ? (
-                      <TypingIndicator />
-                    ) : message.type === 'bot' && (
-                      message.content === '' || 
-                      (message.displayContent !== undefined && message.displayContent === '')
-                    ) && !isTyping ? (
-                      <div className="text-gray-500 text-sm">
-                        AI深度分析中，预计2分钟，道友稍后~
-                        <span className="ml-1 inline-block">
-                          <span className="dot-loading-1">.</span>
-                          <span className="dot-loading-2">.</span>
-                          <span className="dot-loading-3">.</span>
-                        </span>
-                      </div>
+                    {message.type === 'bot' ? (
+                      // 🤖 Bot消息渲染逻辑
+                      (() => {
+                        // 修复：使用streamingConversationId来判断是否正在流式输出，不依赖isTyping
+                        const isCurrentlyStreaming = streamingConversationId === getCurrentConversation()?.id
+                        const hasRawContent = message.content && message.content.trim() !== ''
+                        const hasDisplayContent = message.displayContent && message.displayContent.trim() !== ''
+                        
+                        // 内容显示逻辑：始终过滤掉标记内容
+                        let contentToDisplay = ''
+                        
+                        // 优先使用displayContent（如果存在且有效）
+                        if (hasDisplayContent && message.displayContent) {
+                          contentToDisplay = message.displayContent
+                        } 
+                        // 否则使用原始内容，但必须经过过滤
+                        else if (hasRawContent && message.content) {
+                          const extracted = extractDisplayContent(message.content)
+                          if (extracted && extracted.trim() !== '') {
+                            contentToDisplay = extracted
+                          } else {
+                            // 如果extractDisplayContent失败，手动过滤标记
+                            const startMarker = "fabuwc directly streaming reply."
+                            const startIndex = message.content.indexOf(startMarker)
+                            if (startIndex !== -1) {
+                              contentToDisplay = message.content.substring(startIndex + startMarker.length).trim()
+                            } else {
+                              contentToDisplay = '' // 如果没有找到标记，不显示任何内容
+                            }
+                          }
+                        }
+                        // 最后的安全fallback：如果还是没有内容但有原始数据，也要经过筛选
+                        else if (message.content) {
+                          const extracted = extractDisplayContent(message.content)
+                          if (extracted && extracted.trim() !== '') {
+                            contentToDisplay = extracted
+                          } else {
+                            // 手动过滤标记
+                            const startMarker = "fabuwc directly streaming reply."
+                            const startIndex = message.content.indexOf(startMarker)
+                            if (startIndex !== -1) {
+                              contentToDisplay = message.content.substring(startIndex + startMarker.length).trim()
+                            } else {
+                              contentToDisplay = '' // 如果没有找到标记，不显示任何内容
+                            }
+                          }
+                        }
+                        
+                        const hasValidContent = contentToDisplay && contentToDisplay.trim() !== ''
+                        
+                        devLog.log('🎨 Bot消息内容分析:', {
+                          messageId: message.id,
+                          hasRawContent,
+                          hasDisplayContent,
+                          hasValidContent,
+                          isCurrentlyStreaming,
+                          contentLength: message.content?.length || 0,
+                          displayContentLength: message.displayContent?.length || 0,
+                          extractedContentLength: contentToDisplay.length,
+                          // 关键状态信息
+                          isTyping,
+                          streamingConversationId,
+                          currentConversationId: getCurrentConversation()?.id,
+                          isStreamingMatch: streamingConversationId === getCurrentConversation()?.id,
+                          currentBotMessageId,
+                          isCurrentBotMessage: message.id === currentBotMessageId,
+                          // 内容预览
+                          contentPreview: message.content?.substring(0, 100) || '',
+                          displayContentPreview: message.displayContent?.substring(0, 100) || '',
+                          extractedContentPreview: contentToDisplay.substring(0, 100),
+                          // 新增：显示决策
+                          willShowTyping: !hasValidContent && isCurrentlyStreaming,
+                          willShowWaiting: !hasValidContent && !isCurrentlyStreaming,
+                          willShowContent: hasValidContent
+                        })
+                        
+                        // 如果消息完全没有有效内容
+                        if (!hasValidContent) {
+                          if (isCurrentlyStreaming) {
+                            // 正在流式输出但还没有内容，显示typing指示器
+                            return <TypingIndicator />
+                          } else {
+                            // 不在流式输出中且没有内容，显示等待提示
+                            return <TypingIndicator />
+                          }
+                        }
+                        
+                        // 有内容时，显示内容
+                        return (
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                              strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                              em: ({ children }) => <em className="italic">{children}</em>,
+                              ul: ({ children }) => <ul className="list-disc list-inside mb-2">{children}</ul>,
+                              ol: ({ children }) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
+                              li: ({ children }) => <li className="mb-1">{children}</li>,
+                              code: ({ children }) => (
+                                <code className={`px-2 py-1 rounded text-sm font-mono ${
+                                  message.type === 'user' 
+                                    ? 'bg-blue-700 text-blue-100' 
+                                    : 'bg-gray-200 text-gray-800'
+                                }`}>
+                                  {children}
+                                </code>
+                              ),
+                              blockquote: ({ children }) => (
+                                <blockquote className={`border-l-4 pl-4 italic mb-2 ${
+                                  message.type === 'user' 
+                                    ? 'border-blue-300 text-blue-100' 
+                                    : 'border-gray-300 text-gray-600'
+                                }`}>
+                                  {children}
+                                </blockquote>
+                              ),
+                            }}
+                                                  >
+                        {contentToDisplay}
+                      </ReactMarkdown>
+                        )
+                      })()
                     ) : (
+                      // 👤 User消息渲染逻辑
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={{
@@ -2966,26 +3245,18 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                           ol: ({ children }) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
                           li: ({ children }) => <li className="mb-1">{children}</li>,
                           code: ({ children }) => (
-                            <code className={`px-2 py-1 rounded text-sm font-mono ${
-                              message.type === 'user' 
-                                ? 'bg-blue-700 text-blue-100' 
-                                : 'bg-gray-200 text-gray-800'
-                            }`}>
+                            <code className="px-2 py-1 rounded text-sm font-mono bg-blue-700 text-blue-100">
                               {children}
                             </code>
                           ),
                           blockquote: ({ children }) => (
-                            <blockquote className={`border-l-4 pl-4 italic mb-2 ${
-                              message.type === 'user' 
-                                ? 'border-blue-300 text-blue-100' 
-                                : 'border-gray-300 text-gray-600'
-                            }`}>
+                            <blockquote className="border-l-4 pl-4 italic mb-2 border-blue-300 text-blue-100">
                               {children}
                             </blockquote>
                           ),
                         }}
                       >
-                        {message.type === 'bot' && message.displayContent !== undefined ? message.displayContent : message.content}
+                        {message.content}
                       </ReactMarkdown>
                     )}
                     <div className={`text-xs mt-2 ${message.type === 'user' ? 'text-blue-200' : 'text-gray-500'}`}>
@@ -3196,8 +3467,8 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                 type="text"
                 icon={<PlusOutlined />}
                 size="small"
-                onClick={() => {
-                  createNewConversation()
+                onClick={async () => {
+                  await handleNewConversationButton()
                   setDrawerVisible(false)
                 }}
                 className="text-gray-500 hover:text-gray-700"
