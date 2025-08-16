@@ -2953,67 +2953,72 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                   })
                   return (
                 <div key={message.id} className={`mb-6 ${message.type === 'user' ? 'flex justify-end' : 'flex justify-start'}`}>
-                  <div className={`max-w-[80%] ${message.type === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-900'} rounded-lg p-4`}>
-                    <div className={`flex items-center space-x-2 mb-2 ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      {message.type === 'user' && (
-                        <UserOutlined className="text-blue-200" />
-                      )}
-                      <span className={`text-sm ${message.type === 'user' ? 'text-blue-200' : 'text-gray-600'}`}>
-                        {message.type === 'user' ? '您' : <img src="/images/yy3.png" alt="AI助手" className="w-8 h-8 inline-block" />}
-                      </span>
-                    </div>
+                  <div className={`max-w-[80%] ${message.type === 'user' ? 'flex flex-col items-end' : 'flex flex-col items-start'}`}>
+                    {/* 用户消息头部信息（头像和时间） */}
+                    {message.type === 'user' && (
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="text-xs text-gray-500">
+                          {formatTime(message.timestamp)}
+                        </span>
+                        <UserOutlined className="text-gray-400" />
+                        <span className="text-sm text-gray-600">您</span>
+                      </div>
+                    )}
+
+                    {/* AI消息头部信息（头像和时间） */}
                     {message.type === 'bot' && (
-                      message.content === '' || 
-                      (message.displayContent !== undefined && message.displayContent === '')
-                    ) && isTyping ? (
-                      <TypingIndicator />
-                    ) : message.type === 'bot' && (
-                      message.content === '' || 
-                      (message.displayContent !== undefined && message.displayContent === '')
-                    ) && !isTyping ? (
-                      <div className="text-gray-500 text-sm">
-                        AI深度分析中，预计2分钟，道友稍后~
-                        <span className="ml-1 inline-block">
-                          <span className="dot-loading-1">.</span>
-                          <span className="dot-loading-2">.</span>
-                          <span className="dot-loading-3">.</span>
+                      <div className="flex items-center space-x-2 mb-2">
+                        <img src="/images/yy3.png" alt="AI助手" className="w-8 h-8" />
+                        <span className="text-xs text-gray-500">
+                          {formatTime(message.timestamp)}
                         </span>
                       </div>
-                    ) : (
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                          strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                          em: ({ children }) => <em className="italic">{children}</em>,
-                          ul: ({ children }) => <ul className="list-disc list-inside mb-2">{children}</ul>,
-                          ol: ({ children }) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
-                          li: ({ children }) => <li className="mb-1">{children}</li>,
-                          code: ({ children }) => (
-                            <code className={`px-2 py-1 rounded text-sm font-mono ${
-                              message.type === 'user' 
-                                ? 'bg-blue-700 text-blue-100' 
-                                : 'bg-gray-200 text-gray-800'
-                            }`}>
-                              {children}
-                            </code>
-                          ),
-                          blockquote: ({ children }) => (
-                            <blockquote className={`border-l-4 pl-4 italic mb-2 ${
-                              message.type === 'user' 
-                                ? 'border-blue-300 text-blue-100' 
-                                : 'border-gray-300 text-gray-600'
-                            }`}>
-                              {children}
-                            </blockquote>
-                          ),
-                        }}
-                      >
-                        {message.type === 'bot' && message.displayContent !== undefined ? message.displayContent : message.content}
-                      </ReactMarkdown>
                     )}
-                    <div className={`text-xs mt-2 ${message.type === 'user' ? 'text-blue-200' : 'text-gray-500'}`}>
-                      {formatTime(message.timestamp)}
+
+                    {/* 消息气泡 */}
+                    <div className="bg-gray-100 text-gray-900 rounded-lg p-4">
+                      {message.type === 'bot' && (
+                        message.content === '' ||
+                        (message.displayContent !== undefined && message.displayContent === '')
+                      ) && isTyping ? (
+                        <TypingIndicator />
+                      ) : message.type === 'bot' && (
+                        message.content === '' ||
+                        (message.displayContent !== undefined && message.displayContent === '')
+                      ) && !isTyping ? (
+                        <div className="text-gray-500 text-sm">
+                          AI深度分析中，预计2分钟，道友稍后~
+                          <span className="ml-1 inline-block">
+                            <span className="dot-loading-1">.</span>
+                            <span className="dot-loading-2">.</span>
+                            <span className="dot-loading-3">.</span>
+                          </span>
+                        </div>
+                      ) : (
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                            strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                            em: ({ children }) => <em className="italic">{children}</em>,
+                            ul: ({ children }) => <ul className="list-disc list-inside mb-2">{children}</ul>,
+                            ol: ({ children }) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
+                            li: ({ children }) => <li className="mb-1">{children}</li>,
+                            code: ({ children }) => (
+                              <code className="px-2 py-1 rounded text-sm font-mono bg-gray-200 text-gray-800">
+                                {children}
+                              </code>
+                            ),
+                            blockquote: ({ children }) => (
+                              <blockquote className="border-l-4 pl-4 italic mb-2 border-gray-300 text-gray-600">
+                                {children}
+                              </blockquote>
+                            ),
+                          }}
+                        >
+                          {message.type === 'bot' && message.displayContent !== undefined ? message.displayContent : message.content}
+                        </ReactMarkdown>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -3024,19 +3029,24 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
 
               {/* 回到底部按钮 */}
               {showScrollToBottom && (
-                <div className="fixed bottom-32 right-8 z-10">
+                <div className="fixed bottom-60 right-8 z-10">
                   <Button
                     type="primary"
                     shape="circle"
                     size="large"
                     icon={<DownOutlined />}
                     onClick={handleScrollToBottomClick}
-                    className="shadow-lg hover:shadow-xl transition-all duration-200"
+                    className="shadow-sm hover:shadow-md transition-all duration-300 ease-out"
                     style={{
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                      border: 'none',
-                      width: '48px',
-                      height: '48px'
+                      background: 'rgba(255, 255, 255, 0.95)',
+                      backdropFilter: 'blur(20px)',
+                      border: '1px solid rgba(0, 0, 0, 0.08)',
+                      color: '#1d1d1f',
+                      width: '40px',
+                      height: '40px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
                     }}
                     title="回到底部"
                   />
@@ -3045,7 +3055,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
             </div>
 
             {/* 输入框区域 */}
-            <div className="px-4 py-2 bg-white">
+            <div className="px-4 py-4 pb-6 bg-white">
               <div className="max-w-4xl mx-auto">
                 {/* 问题按钮区域 */}
                 {(() => {
