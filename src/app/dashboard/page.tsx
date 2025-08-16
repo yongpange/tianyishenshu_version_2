@@ -1810,7 +1810,7 @@ export default function DashboardPage() {
                       </div>
                       
                       {/* 标题和副标题在右*/}
-                      <div className="flex-1 text-left flex flex-col justify-center">
+                      <div className="flex-1 text-left flex flex-col justify-center mt-4 md:mt-0">
                         <h3 className="font-medium text-xl mb-2 text-gray-900">
                           {module.title}
                         </h3>
@@ -1864,8 +1864,27 @@ export default function DashboardPage() {
             className="flex items-center space-x-2 px-2 py-1 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
             onClick={() => setUserSelectorVisible(true)}
           >
-            <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
-              <span className="text-green-600 text-xs">{activeUser?.name ? activeUser.name.charAt(0) : ''}</span>
+            <div className="flex-shrink-0 mt-1">
+              {allUsersBaziData[activeUser?.id]?.paipan?.dayPillar?.heavenly
+                ? getTianganIcon(allUsersBaziData[activeUser.id].paipan.dayPillar.heavenly, {
+                    width: 28,
+                    height: 28,
+                    className: "text-green-600 md:block hidden"
+                  })
+                : <div className="w-7 h-7 bg-green-100 rounded-full flex items-center justify-center md:block hidden">
+                    <span className="text-green-600 text-xs">{activeUser?.name ? activeUser.name.charAt(0) : ''}</span>
+                  </div>
+              }
+              {allUsersBaziData[activeUser?.id]?.paipan?.dayPillar?.heavenly
+                ? getTianganIcon(allUsersBaziData[activeUser.id].paipan.dayPillar.heavenly, {
+                    width: 32,
+                    height: 32,
+                    className: "text-green-600 md:hidden block"
+                  })
+                : <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center md:hidden block">
+                    <span className="text-green-600 text-xs">{activeUser?.name ? activeUser.name.charAt(0) : ''}</span>
+                  </div>
+              }
             </div>
             <span className="text-sm text-gray-700 truncate max-w-16">{activeUser?.name || '用户'}</span>
             <DownOutlined className="text-xs text-gray-500" />

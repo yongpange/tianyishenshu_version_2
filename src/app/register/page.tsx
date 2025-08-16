@@ -94,15 +94,15 @@ function WechatQRModal({ isOpen, onClose }: WechatQRModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-8 max-w-md mx-4" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl p-4 md:p-8 max-w-sm md:max-w-md mx-3 md:mx-4" onClick={e => e.stopPropagation()}>
         <div className="text-center">
-          <h3 className="text-xl font-bold text-gray-900 mb-6">添加客服微信</h3>
+          <h3 className="text-lg md:text-xl font-bold text-gray-900 mb-4 md:mb-6">添加客服微信</h3>
 
           {/* 两个二维码并排显示 */}
-          <div className="flex justify-center gap-6 mb-6">
+          <div className="flex justify-center gap-3 md:gap-6 mb-4 md:mb-6">
             {/* 第一个二维码 */}
             <div className="flex flex-col items-center">
-              <div className="w-48 h-48 bg-gray-100 rounded-lg flex items-center justify-center mb-2">
+              <div className="w-32 h-32 md:w-48 md:h-48 bg-gray-100 rounded-lg flex items-center justify-center mb-2">
                 <img
                   src="/qr-code-1.png"
                   alt="客服微信二维码1"
@@ -115,7 +115,7 @@ function WechatQRModal({ isOpen, onClose }: WechatQRModalProps) {
                   }}
                 />
                 <div className="hidden text-gray-500 text-center">
-                  <div className="text-2xl mb-1">📱</div>
+                  <div className="text-xl md:text-2xl mb-1">📱</div>
                   <div className="text-xs">二维码1</div>
                 </div>
               </div>
@@ -124,7 +124,7 @@ function WechatQRModal({ isOpen, onClose }: WechatQRModalProps) {
 
             {/* 第二个二维码 */}
             <div className="flex flex-col items-center">
-              <div className="w-48 h-48 bg-gray-100 rounded-lg flex items-center justify-center mb-2">
+              <div className="w-32 h-32 md:w-48 md:h-48 bg-gray-100 rounded-lg flex items-center justify-center mb-2">
                 <img
                   src="/qr-code-2.png"
                   alt="客服微信二维码2"
@@ -137,7 +137,7 @@ function WechatQRModal({ isOpen, onClose }: WechatQRModalProps) {
                   }}
                 />
                 <div className="hidden text-gray-500 text-center">
-                  <div className="text-2xl mb-1">📱</div>
+                  <div className="text-xl md:text-2xl mb-1">📱</div>
                   <div className="text-xs">二维码2</div>
                 </div>
               </div>
