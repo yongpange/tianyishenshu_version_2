@@ -44,7 +44,8 @@ interface InviteCode {
   remarks?: string
   user_phone?: string
   user_name?: string
-  remaining_tokens?: number
+  remaining_tokens?: number // user_profiles.chat_remaining_count (已激活用户)
+  chat_total_count?: number // invite_codes.chat_total_count (未激活用户)
   user_role?: string
   latest_verification_code?: string
   verification_code_expires_at?: string
@@ -282,7 +283,14 @@ export default function InviteCodesManagement() {
   const handleEditCode = (record: InviteCode) => {
     setEditingCode(record)
     setEditRemarks(record.remarks || '')
-    setEditRemainingTokens(record.remaining_tokens || 0)
+    // 根据激活状态设置对话次数的编辑值
+    if (record.user_phone) {
+      // 已激活用户：编辑 user_profiles.chat_remaining_count
+      setEditRemainingTokens(record.remaining_tokens || 0)
+    } else {
+      // 未激活用户：编辑 invite_codes.chat_total_count
+      setEditRemainingTokens(record.chat_total_count || 2) // 默认值为2
+    }
     setEditUserRole(record.user_role || '')
     setEditModalVisible(true)
   }
@@ -299,7 +307,8 @@ export default function InviteCodesManagement() {
         body: JSON.stringify({
           id: editingCode.id,
           remarks: editRemarks,
-          remainingTokens: editRemainingTokens,
+          remainingTokens: editingCode.user_phone ? editRemainingTokens : undefined, // 已激活用户的剩余对话次数
+          chatTotalCount: !editingCode.user_phone ? editRemainingTokens : undefined, // 未激活用户的预设对话次数
           userRole: editUserRole,
           hasUserData: !!editingCode.user_phone // 是否有用户数据（已激活）
         })
@@ -497,7 +506,25 @@ export default function InviteCodesManagement() {
       title: '剩余对话次数',
       dataIndex: 'remaining_tokens',
       key: 'remaining_tokens',
-      render: (tokens: number) => tokens !== null && tokens !== undefined ? tokens : '-'
+      render: (tokens: number, record: InviteCode) => {
+        // 已激活用户：显示 user_profiles.chat_remaining_count
+        if (record.user_phone && record.remaining_tokens !== null && record.remaining_tokens !== undefined) {
+          return (
+            <span className="text-blue-600 font-medium">
+              {record.remaining_tokens} <small className="text-gray-500">(已激活)</small>
+            </span>
+          )
+        }
+        // 未激活用户：显示 invite_codes.chat_total_count
+        if (!record.user_phone && record.chat_total_count !== null && record.chat_total_count !== undefined) {
+          return (
+            <span className="text-orange-600 font-medium">
+              {record.chat_total_count} <small className="text-gray-500">(预设)</small>
+            </span>
+          )
+        }
+        return '-'
+      }
     },
     {
       title: '用户角色',
@@ -768,7 +795,14 @@ export default function InviteCodesManagement() {
             </div>
             <div className="text-center p-3 bg-cyan-50 rounded-lg">
               <div className="text-lg font-semibold text-cyan-600">
-                {filteredCodes.reduce((sum, c) => sum + (c.remaining_tokens || 0), 0)}
+                {filteredCodes.reduce((sum, c) => {
+                  // 已激活用户使用 remaining_tokens，未激活用户使用 chat_total_count
+                  if (c.user_phone) {
+                    return sum + (c.remaining_tokens || 0)
+                  } else {
+                    return sum + (c.chat_total_count || 0)
+                  }
+                }, 0)}
               </div>
               <div className="text-sm text-gray-600">总剩余对话次数</div>
             </div>
@@ -924,31 +958,37 @@ export default function InviteCodesManagement() {
                    </p>
                  </div>
                  
+                 {/* 对话次数编辑 - 所有状态都可编辑 */}
+                 <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-2">
+                     {editingCode.user_phone ? '剩余对话次数' : '预设对话次数'}
+                   </label>
+                   <InputNumber
+                     value={editRemainingTokens}
+                     onChange={(value) => setEditRemainingTokens(value || 0)}
+                     min={0}
+                     max={999}
+                     className="w-full"
+                     placeholder={editingCode.user_phone ? "输入剩余对话次数" : "输入预设对话次数"}
+                   />
+                   <p className="text-xs text-gray-500 mt-1">
+                     {editingCode.user_phone ? 
+                       '修改已激活用户的当前剩余对话次数' : 
+                       '设置兑换码激活后用户的初始对话次数'
+                     }
+                   </p>
+                 </div>
+                 
                  {/* 已激活用户信息 */}
                  {editingCode.user_phone && (
-                   <>
-                     <div>
-                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                         使用用户
-                       </label>
-                       <p className="text-gray-600">
-                         {editingCode.user_name} ({editingCode.user_phone})
-                       </p>
-                     </div>
-                     <div>
-                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                         剩余对话次数
-                       </label>
-                       <InputNumber
-                         value={editRemainingTokens}
-                         onChange={(value) => setEditRemainingTokens(value || 0)}
-                         min={0}
-                         max={999}
-                         className="w-full"
-                         placeholder="输入剩余对话次数"
-                       />
-                     </div>
-                   </>
+                   <div>
+                     <label className="block text-sm font-medium text-gray-700 mb-2">
+                       使用用户
+                     </label>
+                     <p className="text-gray-600">
+                       {editingCode.user_name} ({editingCode.user_phone})
+                     </p>
+                   </div>
                  )}
                  
                  {/* 用户角色 - 所有状态都可修改 */}
@@ -958,7 +998,15 @@ export default function InviteCodesManagement() {
                    </label>
                    <Select
                      value={editUserRole}
-                     onChange={setEditUserRole}
+                     onChange={(value) => {
+                       setEditUserRole(value)
+                       // 角色联动：VIP用户默认50次对话，基础用户默认2次
+                       if (value === 'vip_user') {
+                         setEditRemainingTokens(50)
+                       } else if (value === 'basic_user') {
+                         setEditRemainingTokens(2)
+                       }
+                     }}
                      className="w-full"
                      placeholder="选择用户角色"
                      loading={roleOptions.length === 0}
@@ -975,6 +1023,11 @@ export default function InviteCodesManagement() {
                        '设置兑换码激活后的默认角色权限'
                      }
                    </p>
+                   {!editingCode.user_phone && (
+                     <p className="text-xs text-blue-500 mt-1">
+                       💡 提示：VIP用户默认50次对话，基础用户默认2次对话
+                     </p>
+                   )}
                  </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">

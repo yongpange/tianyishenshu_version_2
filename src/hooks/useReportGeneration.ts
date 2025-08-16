@@ -476,7 +476,7 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
               // 停止轮询
               stopPolling()
               
-              message.success(`${moduleConfig.title}报告生成完成！`)
+              message.success(`${moduleConfig.title}23报告生成完成！`)
               return
             } else {
               // 如果轮询没有返回内容，才重新加载报告
@@ -509,7 +509,7 @@ export const useReportGeneration = ({ moduleConfig, userInfo }: UseReportGenerat
                 stopPolling()
               }, 1000)
               
-              message.success(`${moduleConfig.title}报告生成完成！`)
+              message.success(`${moduleConfig.title}3报告生成完成！`)
               return
             }
           } else if (result.status === 'failed') {

@@ -145,28 +145,39 @@ export async function saveUserProfile(phoneNumber: string, userInfo: UserInfo): 
 
     const inviteCodeUsed = userWithInviteCode?.invite_code_used
 
-    // 获取兑换码的预设用户角色权限
+    // 获取兑换码的预设用户角色权限和对话次数
     let userRole = 'basic_user' // 默认角色
+    let chatTotalCount = 2 // 默认对话次数
+    let chatRemainingCount = 2 // 默认剩余对话次数
+    
     if (inviteCodeUsed) {
       try {
         const { data: inviteCodeData, error: inviteCodeError } = await supabaseAdmin
           .from('invite_codes')
-          .select('user_role')
+          .select('user_role, chat_total_count')
           .eq('code', inviteCodeUsed)
           .single()
 
-        if (!inviteCodeError && inviteCodeData?.user_role) {
-          userRole = inviteCodeData.user_role
-          console.log('✅ 从兑换码获取到预设用户角色:', userRole)
+        if (!inviteCodeError && inviteCodeData) {
+          if (inviteCodeData.user_role) {
+            userRole = inviteCodeData.user_role
+            console.log('✅ 从兑换码获取到预设用户角色:', userRole)
+          }
+          
+          if (inviteCodeData.chat_total_count !== null && inviteCodeData.chat_total_count !== undefined) {
+            chatTotalCount = inviteCodeData.chat_total_count
+            chatRemainingCount = inviteCodeData.chat_total_count // 初始剩余次数等于总次数
+            console.log('✅ 从兑换码获取到预设对话次数:', chatTotalCount)
+          }
         } else {
-          console.log('⚠️ 未找到兑换码预设角色，使用默认角色:', userRole)
+          console.log('⚠️ 未找到兑换码预设信息，使用默认值')
         }
       } catch (error) {
-        console.error('❌ 查询兑换码角色权限失败:', error)
-        console.log('⚠️ 使用默认角色:', userRole)
+        console.error('❌ 查询兑换码预设信息失败:', error)
+        console.log('⚠️ 使用默认值')
       }
     } else {
-      console.log('ℹ️ 用户没有使用兑换码，使用默认角色:', userRole)
+      console.log('ℹ️ 用户没有使用兑换码，使用默认值')
     }
 
     const profileData = {
@@ -184,6 +195,8 @@ export async function saveUserProfile(phoneNumber: string, userInfo: UserInfo): 
       phone_number: phoneNumber, // 保留 phone_number 字段，因为它是 NOT NULL
       invite_code_used: inviteCodeUsed, // 保存invite_code到user_profiles表
       user_role: userRole, // 设置用户角色权限
+      chat_total_count: chatTotalCount, // 设置总对话次数
+      chat_remaining_count: chatRemainingCount, // 设置剩余对话次数
       parent_id: parentId // 设置父级ID
     }
 
@@ -538,28 +551,39 @@ export async function saveUserProfileToUser(userId: string, userInfo: UserInfo, 
       }
     }
 
-    // 获取兑换码的预设用户角色权限
+    // 获取兑换码的预设用户角色权限和对话次数
     let userRole = 'basic_user' // 默认角色
+    let chatTotalCount = 10 // 默认对话次数
+    let chatRemainingCount = 10 // 默认剩余对话次数
+    
     if (inviteCode) {
       try {
         const { data: inviteCodeData, error: inviteCodeError } = await supabaseAdmin
           .from('invite_codes')
-          .select('user_role')
+          .select('user_role, chat_total_count')
           .eq('code', inviteCode)
           .single()
 
-        if (!inviteCodeError && inviteCodeData?.user_role) {
-          userRole = inviteCodeData.user_role
-          console.log('✅ 从兑换码获取到预设用户角色:', userRole)
+        if (!inviteCodeError && inviteCodeData) {
+          if (inviteCodeData.user_role) {
+            userRole = inviteCodeData.user_role
+            console.log('✅ 从兑换码获取到预设用户角色:', userRole)
+          }
+          
+          if (inviteCodeData.chat_total_count !== null && inviteCodeData.chat_total_count !== undefined) {
+            chatTotalCount = inviteCodeData.chat_total_count
+            chatRemainingCount = inviteCodeData.chat_total_count // 初始剩余次数等于总次数
+            console.log('✅ 从兑换码获取到预设对话次数:', chatTotalCount)
+          }
         } else {
-          console.log('⚠️ 未找到兑换码预设角色，使用默认角色:', userRole)
+          console.log('⚠️ 未找到兑换码预设信息，使用默认值')
         }
       } catch (error) {
-        console.error('❌ 查询兑换码角色权限失败:', error)
-        console.log('⚠️ 使用默认角色:', userRole)
+        console.error('❌ 查询兑换码预设信息失败:', error)
+        console.log('⚠️ 使用默认值')
       }
     } else {
-      console.log('ℹ️ 用户没有使用兑换码，使用默认角色:', userRole)
+      console.log('ℹ️ 没有提供兑换码，使用默认值')
     }
 
     const profileData = {
@@ -577,6 +601,8 @@ export async function saveUserProfileToUser(userId: string, userInfo: UserInfo, 
       phone_number: user.phone_number, // 使用查询到的手机号
       invite_code_used: inviteCode, // 在用户资料中记录使用的兑换码
       user_role: userRole, // 设置用户角色权限
+      chat_total_count: chatTotalCount, // 设置总对话次数
+      chat_remaining_count: chatRemainingCount, // 设置剩余对话次数
       parent_id: parentId // 设置父级ID（指向主用户的user_profiles.id）
     }
 

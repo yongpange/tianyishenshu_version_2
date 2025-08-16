@@ -341,7 +341,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
               pollingIntervalRef.current = null
             }
 
-            message.success(`${moduleConfig.title}报告生成完成！`)
+            message.success(`${moduleConfig.title}1报告生成完成！`)
             break
 
           case 'failed':
@@ -1333,6 +1333,14 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
     setIsTyping(true)
     setStreamingConversationId(currentActiveConversationId) // 跟踪正在进行流式输出的对话
     
+    // 🌐 设置全局流式输出标识，供dashboard页面检测
+    try {
+      localStorage.setItem(`${moduleConfig.moduleId}_streaming`, 'true')
+      localStorage.setItem('last_streaming_time', Date.now().toString())
+    } catch (error) {
+      console.warn('设置流式输出标识时出错:', error)
+    }
+    
     devLog.log('✅ 设置streamingConversationId:', {
       currentActiveConversationId,
       streamingConversationId: currentActiveConversationId
@@ -1803,6 +1811,14 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
 
                       setIsTyping(false)
                       setStreamingConversationId(null) // 清除流式输出对话跟踪
+                      
+                      // 🌐 清除全局流式输出标识
+                      try {
+                        localStorage.removeItem(`${moduleConfig.moduleId}_streaming`)
+                        localStorage.setItem('last_streaming_time', Date.now().toString())
+                      } catch (error) {
+                        console.warn('清除流式输出标识时出错:', error)
+                      }
 
                       // 打印认证信息到前端控制台
                       if (data.authInfo) {
@@ -1929,6 +1945,14 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       setIsTyping(false)
       setStreamingConversationId(null) // 清除流式输出对话跟踪
       
+      // 🌐 清除全局流式输出标识（错误情况下）
+      try {
+        localStorage.removeItem(`${moduleConfig.moduleId}_streaming`)
+        localStorage.setItem('last_streaming_time', Date.now().toString())
+      } catch (error) {
+        console.warn('清除流式输出标识时出错:', error)
+      }
+      
       setConversations(finalConversations)
       
       // 清理本地reader状态
@@ -1954,6 +1978,14 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       setLoading(false)
       setIsTyping(false)
       setStreamingConversationId(null) // 清除流式输出对话跟踪
+      
+      // 🌐 清除全局流式输出标识（finally块确保清理）
+      try {
+        localStorage.removeItem(`${moduleConfig.moduleId}_streaming`)
+        localStorage.setItem('last_streaming_time', Date.now().toString())
+      } catch (error) {
+        console.warn('清除流式输出标识时出错:', error)
+      }
     }
   }
 
@@ -2294,6 +2326,45 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
     setCurrentMessage(question)
   }
 
+  // 处理返回命书的逻辑
+  const handleBackToDashboard = () => {
+    // 检查是否有正在进行的流式输出
+    const hasActiveStream = currentReader || isTyping || streamingConversationId
+    
+    if (hasActiveStream) {
+      Modal.confirm({
+        title: '确认返回',
+        content: (
+          <div>
+            <p>检测到有对话正在生成中，返回会中断当前的AI回复流程。</p>
+            <p className="text-gray-600 text-sm mt-2">
+              💡 提示：中断不会影响已生成内容的保存，您随时可以回来查看结果。
+            </p>
+          </div>
+        ),
+        okText: '确认返回',
+        cancelText: '继续等待',
+        okType: 'primary',
+        onOk: () => {
+          // 用户确认返回，清理流式输出标识并执行跳转
+          try {
+            localStorage.removeItem(`${moduleConfig.moduleId}_streaming`)
+            localStorage.setItem('last_streaming_time', Date.now().toString())
+          } catch (error) {
+            console.warn('清除流式输出标识时出错:', error)
+          }
+          window.location.href = '/dashboard'
+        },
+        onCancel: () => {
+          // 用户取消，不做任何操作
+        }
+      })
+    } else {
+      // 没有流式输出，直接跳转
+      window.location.href = '/dashboard'
+    }
+  }
+
   // Typing动画组件
   const TypingIndicator = () => (
     <div className="flex items-center space-x-1 text-gray-500">
@@ -2574,7 +2645,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
               onClick={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
-                window.location.href = '/dashboard'
+                handleBackToDashboard()
               }}
               className="p-0 mr-2"
               title="返回「命书」"
@@ -2795,7 +2866,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                 onClick={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
-                  window.location.href = '/dashboard'
+                  handleBackToDashboard()
                 }}
                 className="border-gray-300 text-gray-700 hover:border-gray-400 hover:text-gray-800 shadow-sm hover:shadow-md transition-all duration-300"
               >

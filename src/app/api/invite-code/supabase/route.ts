@@ -77,6 +77,7 @@ export async function GET() {
       user_phone: item.user_profiles?.phone_number || item.user_profiles?.users?.phone_number || null,
       user_name: item.user_profiles?.name || null, 
       remaining_tokens: item.user_profiles?.chat_remaining_count || null,
+      chat_total_count: item.chat_total_count || null, // 添加 invite_codes 表的 chat_total_count 字段
       user_role: item.user_profiles?.user_role || item.user_role || null // 已激活用户从user_profiles取，未激活从invite_codes取
     })) || []
 
@@ -123,7 +124,9 @@ export async function POST(request: NextRequest) {
       codes.push({
         code,
         status: 'active',
-        remarks: remarks || `批量生成 ${new Date().toLocaleString()}`
+        remarks: remarks || `批量生成 ${new Date().toLocaleString()}`,
+        chat_total_count: 2, // 设置默认的预设对话次数为2
+        user_role: 'basic_user' // 设置默认的用户角色
       })
     }
 
@@ -162,7 +165,7 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    const { id, remarks, remainingTokens, userRole, hasUserData } = await request.json()
+    const { id, remarks, remainingTokens, chatTotalCount, userRole, hasUserData } = await request.json()
 
     if (!id) {
       return NextResponse.json(
@@ -219,14 +222,21 @@ export async function PUT(request: NextRequest) {
         console.log('✅ 用户信息更新成功:', userProfileId, userUpdateData)
       }
     } else {
-      // 未激活用户：只更新兑换码的备注和预设角色
+      // 未激活用户：更新兑换码的备注、预设角色和预设对话次数
+      const updateData: any = {
+        remarks: remarks || null,
+        user_role: userRole, // 更新预设的用户角色
+        updated_at: new Date().toISOString()
+      }
+      
+      // 如果提供了 chatTotalCount，则更新预设对话次数
+      if (chatTotalCount !== undefined && chatTotalCount !== null) {
+        updateData.chat_total_count = chatTotalCount
+      }
+      
       const { data: inviteCodeData, error: inviteCodeError } = await supabaseAdmin
         .from('invite_codes')
-        .update({
-          remarks: remarks || null,
-          user_role: userRole, // 更新预设的用户角色
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('id', id)
         .select()
 
@@ -234,7 +244,7 @@ export async function PUT(request: NextRequest) {
         throw inviteCodeError
       }
 
-      console.log('✅ 未激活兑换码更新成功，预设角色:', userRole)
+      console.log('✅ 未激活兑换码更新成功，预设角色:', userRole, '预设对话次数:', chatTotalCount)
     }
 
     // 重新查询更新后的完整数据，确保关联查询获取最新信息
@@ -286,6 +296,7 @@ export async function PUT(request: NextRequest) {
       user_phone: updatedData.user_profiles?.phone_number || updatedData.user_profiles?.users?.phone_number || null,
       user_name: updatedData.user_profiles?.name || null,
       remaining_tokens: updatedData.user_profiles?.chat_remaining_count || null,
+      chat_total_count: updatedData.chat_total_count || null, // 添加 invite_codes 表的 chat_total_count 字段
       user_role: updatedData.user_profiles?.user_role || updatedData.user_role || null // 已激活用户从user_profiles取，未激活从invite_codes取
     }
 

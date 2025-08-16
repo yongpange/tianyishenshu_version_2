@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { Card, Avatar, Button, message, Divider, Spin, Collapse, Tag, Tooltip } from 'antd'
+import { Card, Avatar, Button, message, Divider, Spin, Collapse, Tag, Tooltip, Modal } from 'antd'
 import {
   UserOutlined,
   WechatOutlined,
@@ -1434,6 +1434,81 @@ export default function DashboardPage() {
     setCurrentView('consultation')
   }
 
+  // 处理返回命书的逻辑 - 与PageTemplate中的handleBackToDashboard保持一致
+  const handleBackToDashboard = () => {
+    // 多重检查流式输出状态
+    const activeSessions = globalSessionManager.getActiveSessions()
+    
+    // 检查全局流式输出标识（通过localStorage）
+    let hasLocalStreamingState = false
+    try {
+      if (typeof window !== 'undefined') {
+        // 检查是否有模块在流式输出
+        const streamingFlags = [
+          'astrology_streaming',
+          'personality_streaming', 
+          'wealth_streaming',
+          'consultation_streaming'
+        ]
+        hasLocalStreamingState = streamingFlags.some(flag => 
+          localStorage.getItem(flag) === 'true'
+        )
+        
+        // 也检查是否有最近的流式输出活动
+        const lastStreamingTime = localStorage.getItem('last_streaming_time')
+        if (lastStreamingTime) {
+          const timeDiff = Date.now() - parseInt(lastStreamingTime)
+          // 如果最近5秒内有流式输出活动，也认为可能还在进行
+          if (timeDiff < 5000) {
+            hasLocalStreamingState = true
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('检查本地流式输出状态时出错:', error)
+    }
+    
+    const hasActiveStream = activeSessions.length > 0 || hasLocalStreamingState
+    
+    if (hasActiveStream) {
+      Modal.confirm({
+        title: '确认返回',
+        content: (
+          <div>
+            <p>检测到有对话正在生成中，返回会中断当前的AI回复流程。</p>
+            <p className="text-gray-600 text-sm mt-2">
+              💡 提示：中断不会影响已生成内容的保存，您随时可以回来查看结果。
+            </p>
+          </div>
+        ),
+        okText: '确认返回',
+        cancelText: '继续等待',
+        okType: 'primary',
+        onOk: () => {
+          // 用户确认返回，清理流式输出标识并执行跳转
+          try {
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('astrology_streaming')
+              localStorage.removeItem('personality_streaming')
+              localStorage.removeItem('wealth_streaming')
+              localStorage.removeItem('consultation_streaming')
+              localStorage.removeItem('last_streaming_time')
+            }
+          } catch (error) {
+            console.warn('清理流式输出标识时出错:', error)
+          }
+          setCurrentView('dashboard')
+        },
+        onCancel: () => {
+          // 用户取消，不做任何操作
+        }
+      })
+    } else {
+      // 没有流式输出，直接跳转
+      setCurrentView('dashboard')
+    }
+  }
+
   // 渲染主内容区
   const renderMainContent = () => {
     switch (currentView) {
@@ -1846,7 +1921,7 @@ export default function DashboardPage() {
               <Button
                 type="text"
                 icon={<ArrowLeftOutlined />}
-                onClick={() => setCurrentView('dashboard')}
+                onClick={handleBackToDashboard}
                 className="p-0 mr-2"
                 title="返回「命书」"
               />
@@ -2007,7 +2082,7 @@ export default function DashboardPage() {
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
               }`}
-              onClick={() => setCurrentView('dashboard')}
+              onClick={handleBackToDashboard}
             >
               {/* 选中状态下显示ons.png图片 */}
               {currentView === 'dashboard' && (
