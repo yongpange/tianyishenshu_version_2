@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { Card, Avatar, Button, message, Divider, Spin, Collapse, Tag, Tooltip, Modal } from 'antd'
+import { Card, Avatar, Button, message, Divider, Spin, Collapse, Tag, Tooltip, Drawer } from 'antd'
 import {
   UserOutlined,
   WechatOutlined,
@@ -15,7 +15,10 @@ import {
   CrownOutlined,
   SecurityScanOutlined,
   LockOutlined,
-  ArrowLeftOutlined
+  ArrowLeftOutlined,
+  CheckCircleOutlined,
+  ArrowRightOutlined,
+  PlusOutlined
 } from '@ant-design/icons'
 import { PermissionGuard, usePermissionCheck } from '@/components/PermissionGuard'
 import { useGlobalSessionManager } from '@/hooks/useGlobalSessionManager'
@@ -50,6 +53,7 @@ export default function DashboardPage() {
   const [activeUser, setActiveUser] = useState<any>(null)
   const [currentView, setCurrentView] = useState<string>('dashboard') // 'dashboard', 'astrology', 'personality', etc.
   const [userListCollapsed, setUserListCollapsed] = useState<boolean>(true) // 用户列表折叠状态
+  const [userSelectorVisible, setUserSelectorVisible] = useState<boolean>(false) // 移动端用户选择器显示状态
   const [baziData, setBaziData] = useState<any>(null) // 当前用户八字数据
   const [allUsersBaziData, setAllUsersBaziData] = useState<{[key: string]: any}>({}) // 所有用户八字数据
   const router = useRouter()
@@ -1693,12 +1697,12 @@ export default function DashboardPage() {
             </div>
 
             {/* 客服二维码区*/}
-            <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
-                              <h2 className="text-xl font-semibold text-gray-900 text-center mb-6">联系客服</h2>
-              <div className="flex justify-center items-center gap-12">
+            <div className="bg-white rounded-2xl shadow-lg p-4 md:p-6 mb-8">
+              <h2 className="text-lg md:text-xl font-semibold text-gray-900 text-center mb-4 md:mb-6">联系客服</h2>
+              <div className="flex justify-center items-center gap-4 md:gap-12">
                 {/* 第一个客服二维码 */}
                 <div className="text-center">
-                  <div className="w-48 h-48 bg-gray-100 rounded-xl flex items-center justify-center mb-4 shadow-sm">
+                  <div className="w-32 h-32 md:w-48 md:h-48 bg-gray-100 rounded-xl flex items-center justify-center mb-3 md:mb-4 shadow-sm overflow-hidden">
                       <Image
                         src="/images/consultation-qr-1.jpg"
                         alt="芷暄师妹微信二维码"
@@ -1712,17 +1716,17 @@ export default function DashboardPage() {
                         }}
                       />
                     <div className="hidden text-gray-500 text-center">
-                      <div className="text-3xl mb-2">📱</div>
-                      <div className="text-sm">客服1</div>
+                      <div className="text-2xl md:text-3xl mb-1 md:mb-2">📱</div>
+                      <div className="text-xs md:text-sm">客服1</div>
                     </div>
                   </div>
-                  <p className="text-sm font-medium text-gray-700">芷暄师妹</p>
+                  <p className="text-xs md:text-sm font-medium text-gray-700">芷暄师妹</p>
                 </div>
 
                 {/* 第二个客服二维码 */}
                 <div className="text-center">
-                  <div className="w-48 h-48 bg-gray-100 rounded-xl flex items-center justify-center mb-4 shadow-sm">
-                                          <Image
+                  <div className="w-32 h-32 md:w-48 md:h-48 bg-gray-100 rounded-xl flex items-center justify-center mb-3 md:mb-4 shadow-sm overflow-hidden">
+                      <Image
                         src="/images/consultation-qr-2.jpg"
                         alt="丁火师妹微信二维码"
                         width={300}
@@ -1735,14 +1739,14 @@ export default function DashboardPage() {
                         }}
                       />
                     <div className="hidden text-gray-500 text-center">
-                      <div className="text-3xl mb-2">📱</div>
-                      <div className="text-sm">客服2</div>
+                      <div className="text-2xl md:text-3xl mb-1 md:mb-2">📱</div>
+                      <div className="text-xs md:text-sm">客服2</div>
                     </div>
                   </div>
-                  <p className="text-sm font-medium text-gray-700">丁火师妹</p>
+                  <p className="text-xs md:text-sm font-medium text-gray-700">丁火师妹</p>
                 </div>
               </div>
-              <p className="text-center text-gray-500 text-sm mt-6">扫描二维码添加客服微信，获得专业咨询服务</p>
+              <p className="text-center text-gray-500 text-xs md:text-sm mt-4 md:mt-6">扫描二维码添加客服微信，获得专业咨询服务</p>
             </div>
 
             {/* 公司介绍区域 */}
@@ -1881,11 +1885,11 @@ export default function DashboardPage() {
                       </div>
                       
                       {/* 标题和副标题在右*/}
-                      <div className="flex-1 text-left flex flex-col justify-center">
+                      <div className="flex-1 text-left flex flex-col justify-center mt-4 md:mt-0">
                         <h3 className="font-medium text-xl mb-2 text-gray-900">
                           {module.title}
                         </h3>
-                        <p className="text-base leading-relaxed italic text-gray-500">
+                        <p className="text-base leading-relaxed italic text-gray-500 hidden md:block">
                           {module.subtitle}
                         </p>
                       </div>
@@ -1931,11 +1935,34 @@ export default function DashboardPage() {
               <div>天乙神算</div>
             </div>
           </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
-              <span className="text-green-600 text-xs">{activeUser?.name ? activeUser.name.charAt(0) : ''}</span>
+          <div
+            className="flex items-center space-x-2 px-2 py-1 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+            onClick={() => setUserSelectorVisible(true)}
+          >
+            <div className="flex-shrink-0 mt-1">
+              {allUsersBaziData[activeUser?.id]?.paipan?.dayPillar?.heavenly
+                ? getTianganIcon(allUsersBaziData[activeUser.id].paipan.dayPillar.heavenly, {
+                    width: 28,
+                    height: 28,
+                    className: "text-green-600 md:block hidden"
+                  })
+                : <div className="w-7 h-7 bg-green-100 rounded-full flex items-center justify-center md:block hidden">
+                    <span className="text-green-600 text-xs">{activeUser?.name ? activeUser.name.charAt(0) : ''}</span>
+                  </div>
+              }
+              {allUsersBaziData[activeUser?.id]?.paipan?.dayPillar?.heavenly
+                ? getTianganIcon(allUsersBaziData[activeUser.id].paipan.dayPillar.heavenly, {
+                    width: 32,
+                    height: 32,
+                    className: "text-green-600 md:hidden block"
+                  })
+                : <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center md:hidden block">
+                    <span className="text-green-600 text-xs">{activeUser?.name ? activeUser.name.charAt(0) : ''}</span>
+                  </div>
+              }
             </div>
-            <span className="text-sm text-gray-700">{activeUser?.name || '用户'}</span>
+            <span className="text-sm text-gray-700 truncate max-w-16">{activeUser?.name || '用户'}</span>
+            <DownOutlined className="text-xs text-gray-500" />
           </div>
         </div>
       </div>
@@ -2241,7 +2268,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 主内容区*/}
-      <div className="flex-1 p-0.5 md:p-1 overflow-y-auto h-full min-h-0">
+      <div className="flex-1 p-0.5 md:p-1 pb-24 md:pb-1 overflow-y-auto h-full min-h-0">
         <Suspense fallback={
           <div className="flex items-center justify-center h-64">
             <Spin size="large" />
@@ -2278,7 +2305,100 @@ export default function DashboardPage() {
           </Button>
         </div>
       </div>
+
+      {/* 移动端用户选择器抽屉 */}
+      <Drawer
+        title="选择用户"
+        placement="bottom"
+        open={userSelectorVisible}
+        onClose={() => setUserSelectorVisible(false)}
+        height="60vh"
+        className="md:hidden"
+      >
+        <div className="space-y-4">
+          {/* 当前激活用户 */}
+          {activeUser && (
+            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="flex items-center space-x-3">
+                <div className="flex-shrink-0">
+                  {allUsersBaziData[activeUser.id]?.paipan?.dayPillar?.heavenly
+                    ? getTianganIcon(allUsersBaziData[activeUser.id].paipan.dayPillar.heavenly, {
+                        width: 32,
+                        height: 32,
+                        className: "text-green-600"
+                      })
+                    : <div className="w-8 h-8 bg-gray-300 rounded-full"></div>
+                  }
+                </div>
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">{activeUser.name}</div>
+                  <div className="text-sm text-blue-600">当前用户</div>
+                </div>
+                <div className="text-blue-600">
+                  <CheckCircleOutlined />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 其他用户列表 */}
+          {getUserDisplayList().length > 0 && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-gray-500 px-1">其他用户</div>
+              {getUserDisplayList().map((user: any) => (
+                <div
+                  key={user.id}
+                  className="flex items-center space-x-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
+                  onClick={() => {
+                    handleUserSwitch(user)
+                    setUserSelectorVisible(false)
+                  }}
+                >
+                  <div className="flex-shrink-0">
+                    {allUsersBaziData[user.id]?.paipan?.dayPillar?.heavenly
+                      ? getTianganIcon(allUsersBaziData[user.id].paipan.dayPillar.heavenly, {
+                          width: 32,
+                          height: 32,
+                          className: "text-green-600"
+                        })
+                      : <div className="w-8 h-8 bg-gray-300 rounded-full"></div>
+                    }
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-medium text-gray-900">{user.name}</div>
+                    <div className="text-sm text-gray-500">
+                      {user.parent_id === null ? '主账户' : '子账户'}
+                    </div>
+                  </div>
+                  <ArrowRightOutlined className="text-gray-400" />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 新增用户按钮 */}
+          <div
+            className="flex items-center space-x-3 p-3 rounded-lg border-2 border-dashed border-gray-300 cursor-pointer hover:border-gray-400 hover:bg-gray-50 transition-colors"
+            onClick={() => {
+              if (isAdmin || isVip) {
+                router.push('/profile?mode=add')
+                setUserSelectorVisible(false)
+              } else {
+                message.info('请开通VIP权限')
+              }
+            }}
+          >
+            <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+              <PlusOutlined className="text-gray-500" />
+            </div>
+            <div className="flex-1">
+              <div className="font-medium text-gray-700">新增用户</div>
+              <div className="text-sm text-gray-500">添加家庭成员</div>
+            </div>
+          </div>
+        </div>
+      </Drawer>
     </div>
     </div>
   )
-} 
+}

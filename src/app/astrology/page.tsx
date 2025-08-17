@@ -188,7 +188,7 @@ export default function AstrologyPage() {
       const heavenlyColor = HEAVENLY_STEM_COLORS[cangganInfo.benqi] || 'text-gray-600'
       parts.push(
         <div key="benqi" className={heavenlyColor}>
-          {cangganInfo.benqi}{shishen}
+          {cangganInfo.benqi}  {shishen}
         </div>
       )
     }
@@ -199,7 +199,7 @@ export default function AstrologyPage() {
       const heavenlyColor = HEAVENLY_STEM_COLORS[cangganInfo.zhongqi] || 'text-gray-600'
       parts.push(
         <div key="zhongqi" className={heavenlyColor}>
-          {cangganInfo.zhongqi}{shishen}
+          {cangganInfo.zhongqi}  {shishen}
         </div>
       )
     }
@@ -210,7 +210,7 @@ export default function AstrologyPage() {
       const heavenlyColor = HEAVENLY_STEM_COLORS[cangganInfo.yuqi] || 'text-gray-600'
       parts.push(
         <div key="yuqi" className={heavenlyColor}>
-          {cangganInfo.yuqi}{shishen}
+          {cangganInfo.yuqi}  {shishen}
         </div>
       )
     }
@@ -426,7 +426,7 @@ export default function AstrologyPage() {
   }
 
   const handleConsultation = () => {
-    router.push('/consultation')
+    router.push('/dashboard')
   }
 
   const handleHealing = () => {
@@ -468,52 +468,115 @@ export default function AstrologyPage() {
           <div className="max-w-4xl mx-auto">
             {/* 页面标题 */}
             <div className="mb-8">
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">八字排盘分析</h1>
-              <p className="text-gray-600">
-                {(() => {
-                  const activeUser = getActiveUser()
-                  if (activeUser) {
-                    const genderText = activeUser.gender === 'male' ? '男' : '女'
-                    return `${activeUser.name || '用户'} ${genderText}`
-                  }
-                  
-                  const userData = localStorage.getItem('userData')
-                  if (userData) {
-                    const userInfo = JSON.parse(userData)
-                    return `${userInfo.nickname || '用户'} ${userInfo.gender || ''}`
-                  }
-                  
-                  return '基于您的出生信息，为您详细分析八字命理'
-                })()}
-              </p>
+              <h1 className="text-2xl font-bold text-gray-900 mb-2 pl-6">八字排盘分析</h1>
             </div>
 
             {/* 生辰信息卡片 */}
             <Card className="mb-6">
               <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">阳历生辰：</span>
+                {/* 移动端：6行布局 */}
+                <div className="md:hidden space-y-2">
+                  <div className="text-sm">
+                    <span className="text-gray-700">命主信息：</span>
+                    <span className="font-medium">
+                      {(() => {
+                        const activeUser = getActiveUser()
+                        if (activeUser) {
+                          const genderText = activeUser.gender === 'male' ? '男' : '女'
+                          return `${activeUser.name || '用户'} ${genderText}`
+                        }
+
+                        const userData = localStorage.getItem('userData')
+                        if (userData) {
+                          const userInfo = JSON.parse(userData)
+                          const genderText = userInfo.gender === 'male' ? '男' : '女'
+                          return `${userInfo.nickname || '用户'} ${genderText}`
+                        }
+
+                        return '用户'
+                      })()}
+                    </span>
+                  </div>
+                  <div className="text-sm">
+                    <span className="text-gray-700">阳历生辰：</span>
                     <span className="font-medium">
                       {originalUserInfo ? formatOriginalSolarDate(originalUserInfo) : data.solarDate}
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">农历生辰：</span>
+                  <div className="text-sm">
+                    <span className="text-gray-700">农历生辰：</span>
                     <span className="font-medium">{data.lunarDate}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">古历生辰：</span>
+                  <div className="text-sm">
+                    <span className="text-gray-700">古历生辰：</span>
                     <span className="font-medium">{data.ancientDate}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">真太阳时：</span>
+                  <div className="text-sm">
+                    <span className="text-gray-700">真太阳时：</span>
                     <span className="font-medium">{data.trueSolarTime}</span>
                   </div>
+                  <div className="text-sm">
+                    <span className="text-gray-700">出生地区：</span>
+                    <span className="font-medium">{data.birthplace}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between pt-2 border-t">
-                  <span className="text-gray-600">出生地区：</span>
-                  <span className="font-medium">{data.birthplace.replace('市 市辖区', '市辖区')}</span>
+
+                {/* 平板/桌面端：3行2列布局 */}
+                <div className="hidden md:block space-y-4">
+                  {/* 第1行：命主信息 + 阳历生辰 */}
+                  <div className="flex text-sm">
+                    <div className="flex-1">
+                      <span className="text-gray-700">命主信息：</span>
+                      <span className="font-medium">
+                        {(() => {
+                          const activeUser = getActiveUser()
+                          if (activeUser) {
+                            const genderText = activeUser.gender === 'male' ? '男' : '女'
+                            return `${activeUser.name || '用户'} ${genderText}`
+                          }
+
+                          const userData = localStorage.getItem('userData')
+                          if (userData) {
+                            const userInfo = JSON.parse(userData)
+                            const genderText = userInfo.gender === 'male' ? '男' : '女'
+                            return `${userInfo.nickname || '用户'} ${genderText}`
+                          }
+
+                          return '用户'
+                        })()}
+                      </span>
+                    </div>
+                    <div className="flex-1">
+                      <span className="text-gray-700">阳历生辰：</span>
+                      <span className="font-medium">
+                        {originalUserInfo ? formatOriginalSolarDate(originalUserInfo) : data.solarDate}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 第2行：农历生辰 + 古历生辰 */}
+                  <div className="flex text-sm">
+                    <div className="flex-1">
+                      <span className="text-gray-700">农历生辰：</span>
+                      <span className="font-medium">{data.lunarDate}</span>
+                    </div>
+                    <div className="flex-1">
+                      <span className="text-gray-700">古历生辰：</span>
+                      <span className="font-medium">{data.ancientDate}</span>
+                    </div>
+                  </div>
+
+                  {/* 第3行：真太阳时 + 出生地区 */}
+                  <div className="flex text-sm">
+                    <div className="flex-1">
+                      <span className="text-gray-700">真太阳时：</span>
+                      <span className="font-medium">{data.trueSolarTime}</span>
+                    </div>
+                    <div className="flex-1">
+                      <span className="text-gray-700">出生地区：</span>
+                      <span className="font-medium">{data.birthplace}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
           </Card>

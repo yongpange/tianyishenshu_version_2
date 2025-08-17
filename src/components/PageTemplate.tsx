@@ -123,6 +123,9 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
   // 中间聊天记录区域的显示/隐藏
   const [chatHistoryVisible, setChatHistoryVisible] = useState(true)
 
+  // 触摸手势状态
+  const [touchStart, setTouchStart] = useState<{x: number, y: number} | null>(null)
+
   // 本地流式响应状态管理
   const [currentReader, setCurrentReader] = useState<ReadableStreamDefaultReader<Uint8Array> | null>(null)
   
@@ -2658,11 +2661,11 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
           <div className="flex items-center space-x-2">
             <Button
               icon={<MenuOutlined />}
-              onClick={() => setDrawerVisible(true)}
+              onClick={() => setChatHistoryVisible(true)}
               size="small"
               type="text"
             >
-              菜单
+              对话
             </Button>
           </div>
         </div>
@@ -2671,11 +2674,32 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       {/* 中间聊天记录区域 */}
       <div className={`bg-white border-r border-gray-200 transition-all duration-300 overflow-hidden
         ${chatHistoryVisible
-          ? 'w-80 h-full md:relative fixed md:static left-0 top-0 md:top-auto z-[9999] md:z-auto'
-          : 'w-0 h-full'
+          ? 'w-[85%] md:w-80 h-full fixed md:relative left-0 top-0 md:top-auto z-[9999] md:z-auto'
+          : 'w-0 md:w-0 h-full hidden md:block'
         }`}>
         {chatHistoryVisible && (
-          <div className="flex flex-col h-full">
+          <div
+            className="flex flex-col h-full"
+            onTouchStart={(e) => {
+              const touch = e.touches[0]
+              setTouchStart({ x: touch.clientX, y: touch.clientY })
+            }}
+            onTouchMove={(e) => {
+              if (!touchStart) return
+              const touch = e.touches[0]
+              const deltaX = touch.clientX - touchStart.x
+              const deltaY = touch.clientY - touchStart.y
+
+              // 检测向左滑动（deltaX < -50 且水平滑动距离大于垂直滑动距离）
+              if (deltaX < -50 && Math.abs(deltaX) > Math.abs(deltaY)) {
+                setChatHistoryVisible(false)
+                setTouchStart(null)
+              }
+            }}
+            onTouchEnd={() => {
+              setTouchStart(null)
+            }}
+          >
             {/* 标题区域 */}
             <div className="p-3 border-b border-gray-100 flex items-center justify-between">
                 <div className="flex items-center space-x-2">
@@ -2877,17 +2901,17 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         )}
       </div>
 
-      {/* 移动端遮罩层 */}
+      {/* 移动端遮罩层 - 只覆盖右侧15%区域 */}
       {chatHistoryVisible && (
         <div
-          className="md:hidden fixed inset-0 bg-black bg-opacity-50 z-[9998]"
+          className="md:hidden fixed top-0 right-0 bottom-0 w-[15%] bg-black bg-opacity-30 z-[9998]"
           onClick={() => setChatHistoryVisible(false)}
         />
       )}
 
-      {/* 展开按钮 */}
+      {/* 展开按钮 - 只在PC端显示 */}
       {!chatHistoryVisible && (
-        <div className="w-8 bg-white border-r border-gray-200 flex items-center justify-center h-full">
+        <div className="hidden md:flex w-8 bg-white border-r border-gray-200 items-center justify-center h-full">
           <Button
             type="text"
             icon={<ArrowRightOutlined />}
@@ -3173,15 +3197,27 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                   })
                   return (
                 <div key={message.id} className={`mb-6 ${message.type === 'user' ? 'flex justify-end' : 'flex justify-start'}`}>
-                  <div className={`max-w-[80%] ${message.type === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-900'} rounded-lg p-4`}>
-                    <div className={`flex items-center space-x-2 mb-2 ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      {message.type === 'user' && (
-                        <UserOutlined className="text-blue-200" />
-                      )}
-                      <span className={`text-sm ${message.type === 'user' ? 'text-blue-200' : 'text-gray-600'}`}>
-                        {message.type === 'user' ? '您' : <img src="/images/yy3.png" alt="AI助手" className="w-8 h-8 inline-block" />}
-                      </span>
-                    </div>
+                  <div className={`max-w-[80%] ${message.type === 'user' ? 'flex flex-col items-end' : 'flex flex-col items-start'}`}>
+                    {/* 用户消息头部信息（头像和时间） */}
+                    {message.type === 'user' && (
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="text-xs text-gray-500">
+                          {formatTime(message.timestamp)}
+                        </span>
+                        <UserOutlined className="text-gray-400" />
+                        <span className="text-sm text-gray-600">您</span>
+                      </div>
+                    )}
+
+                    {/* AI消息头部信息（头像和时间） */}
+                    {message.type === 'bot' && (
+                      <div className="flex items-center space-x-2 mb-2">
+                        <img src="/images/yy3.png" alt="AI助手" className="w-8 h-8" />
+                        <span className="text-xs text-gray-500">
+                          {formatTime(message.timestamp)}
+                        </span>
+                      </div>
+                    )}
                     {message.type === 'bot' ? (
                       // 🤖 Bot消息渲染逻辑
                       (() => {
@@ -3342,19 +3378,24 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
 
               {/* 回到底部按钮 */}
               {showScrollToBottom && (
-                <div className="fixed bottom-32 right-8 z-10">
+                <div className="fixed bottom-60 right-8 z-10">
                   <Button
                     type="primary"
                     shape="circle"
                     size="large"
                     icon={<DownOutlined />}
                     onClick={handleScrollToBottomClick}
-                    className="shadow-lg hover:shadow-xl transition-all duration-200"
+                    className="shadow-sm hover:shadow-md transition-all duration-300 ease-out"
                     style={{
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                      border: 'none',
-                      width: '48px',
-                      height: '48px'
+                      background: 'rgba(255, 255, 255, 0.95)',
+                      backdropFilter: 'blur(20px)',
+                      border: '1px solid rgba(0, 0, 0, 0.08)',
+                      color: '#1d1d1f',
+                      width: '40px',
+                      height: '40px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
                     }}
                     title="回到底部"
                   />
@@ -3363,7 +3404,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
             </div>
 
             {/* 输入框区域 */}
-            <div className="px-4 py-2 bg-white">
+            <div className="px-4 py-4 pb-6 bg-white">
               <div className="max-w-4xl mx-auto">
                 {/* 问题按钮区域 */}
                 {(() => {

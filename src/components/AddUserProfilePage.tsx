@@ -130,8 +130,19 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
     setInviteCode(verifiedCode)
   }, [onCancel])
 
-  // 实时验证农历日期
+  // 实时验证农历日期和闰月选择
   useEffect(() => {
+    // 当年份或月份改变时，检查闰月选择是否还有效
+    if (lunarDate.year && lunarDate.month) {
+      const leapMonth = getLeapMonthInfo(lunarDate.year)
+
+      // 如果当前选择了闰月，但该月份不是闰月，自动取消闰月选择
+      if (lunarDate.isLeap && leapMonth !== lunarDate.month) {
+        setLunarDate(prev => ({ ...prev, isLeap: false }))
+      }
+    }
+
+    // 完整日期验证
     if (lunarDate.year && lunarDate.month && lunarDate.day) {
       const validation = validateLunarDate(lunarDate.year, lunarDate.month, lunarDate.day, lunarDate.isLeap)
       if (!validation.valid && lunarDate.isLeap) {
@@ -163,13 +174,53 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
     setValue('area', value, { shouldValidate: true })
   }
 
+  // 检查某年的闰月情况
+  const getLeapMonthInfo = (year: number) => {
+    try {
+      const { LunarYear } = require('lunar-javascript')
+      // 使用 LunarYear 类来检查闰月
+      const lunarYear = LunarYear.fromYear(year)
+      const leapMonth = lunarYear.getLeapMonth()
+      return leapMonth > 0 ? leapMonth : null
+    } catch (error) {
+      return null
+    }
+  }
+
+  // 检查当前选择是否应该显示闰月选项
+  const shouldShowLeapOption = () => {
+    if (!lunarDate.year || !lunarDate.month) return false
+    const leapMonth = getLeapMonthInfo(lunarDate.year)
+    return leapMonth === lunarDate.month
+  }
+
+  // 获取闰月提示信息
+  const getLeapMonthHint = () => {
+    if (!lunarDate.year) return ''
+    const leapMonth = getLeapMonthInfo(lunarDate.year)
+    if (leapMonth) {
+      return `${lunarDate.year}年闰${leapMonth}月`
+    }
+    return `${lunarDate.year}年无闰月`
+  }
+
   // 验证农历日期有效性
   const validateLunarDate = (year: number | undefined, month: number | undefined, day: number | undefined, isLeap: boolean) => {
     if (!year || !month || !day) return { valid: false, error: '请完整填写农历日期' }
 
+    // 闰月验证
+    if (isLeap) {
+      const leapMonth = getLeapMonthInfo(year)
+      if (leapMonth !== month) {
+        return { valid: false, error: `${year}年没有闰${month}月，该年${leapMonth ? `闰${leapMonth}月` : '无闰月'}` }
+      }
+    }
+
     try {
       const { Lunar } = require('lunar-javascript')
-      const lunar = Lunar.fromYmd(year, month, day, isLeap)
+      // 使用正确的闰月表示方法：闰月用负数表示
+      const monthValue = isLeap ? -month : month
+      const lunar = Lunar.fromYmd(year, monthValue, day)
       return { valid: true, lunar }
     } catch (error) {
       return { valid: false, error: '农历日期无效' }
@@ -187,8 +238,10 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
 
     try {
       // 使用农历转换库，支持闰月
-      const { Lunar, Solar } = require('lunar-javascript')
-      const lunar = Lunar.fromYmd(lunarDate.year, lunarDate.month, lunarDate.day, lunarDate.isLeap)
+      const { Lunar } = require('lunar-javascript')
+      // 使用正确的闰月表示方法：闰月用负数表示
+      const monthValue = lunarDate.isLeap ? -lunarDate.month : lunarDate.month
+      const lunar = Lunar.fromYmd(lunarDate.year, monthValue, lunarDate.day)
       const solar = lunar.getSolar()
 
       // 更新表单值
@@ -675,6 +728,21 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
                 请输入农历日期，系统将自动转换为对应的阳历日期
               </div>
 
+              {/* 闰月年份提示 */}
+              {lunarDate.year && (
+                <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="text-sm">
+                    <span className="font-medium text-blue-800">闰月提示：</span>
+                    <span className="text-blue-700 ml-1">{getLeapMonthHint()}</span>
+                  </div>
+                  {getLeapMonthInfo(lunarDate.year) && (
+                    <div className="text-xs text-blue-600 mt-1">
+                      只有闰月当月才可以选择"闰月"选项
+                    </div>
+                  )}
+                </div>
+              )}
+
               <Row gutter={16}>
                 <Col span={8}>
                   <div className="mb-2">
@@ -711,9 +779,20 @@ export default function AddUserProfilePage({ onSuccess, onCancel }: AddUserProfi
                     <Checkbox
                       checked={lunarDate.isLeap}
                       onChange={(e) => setLunarDate(prev => ({ ...prev, isLeap: e.target.checked }))}
+                      disabled={!shouldShowLeapOption()}
                     >
                       闰月
                     </Checkbox>
+                    {lunarDate.year && (
+                      <div className="text-xs text-gray-500 mt-1">
+                        {getLeapMonthHint()}
+                      </div>
+                    )}
+                    {!shouldShowLeapOption() && lunarDate.year && lunarDate.month && (
+                      <div className="text-xs text-orange-600 mt-1">
+                        该月份无闰月
+                      </div>
+                    )}
                   </div>
                 </Col>
 
