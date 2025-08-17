@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { devLog } from '@/utils/dev-logger'
 import { useRouter } from 'next/navigation'
 import Breadcrumb, { BREADCRUMB_CONFIGS } from '@/components/Breadcrumb'
+import { handleBackToDashboard as handleBackToDashboardUtil } from '@/utils/navigation-helper'
 import {
   Button,
   Input,
@@ -2331,41 +2332,15 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
 
   // 处理返回命书的逻辑
   const handleBackToDashboard = () => {
-    // 检查是否有正在进行的流式输出
-    const hasActiveStream = currentReader || isTyping || streamingConversationId
-    
-    if (hasActiveStream) {
-      Modal.confirm({
-        title: '确认返回',
-        content: (
-          <div>
-            <p>检测到有对话正在生成中，返回会中断当前的AI回复流程。</p>
-            <p className="text-gray-600 text-sm mt-2">
-              💡 提示：中断不会影响已生成内容的保存，您随时可以回来查看结果。
-            </p>
-          </div>
-        ),
-        okText: '确认返回',
-        cancelText: '继续等待',
-        okType: 'primary',
-        onOk: () => {
-          // 用户确认返回，清理流式输出标识并执行跳转
-          try {
-            localStorage.removeItem(`${moduleConfig.moduleId}_streaming`)
-            localStorage.setItem('last_streaming_time', Date.now().toString())
-          } catch (error) {
-            console.warn('清除流式输出标识时出错:', error)
-          }
-          window.location.href = '/dashboard'
-        },
-        onCancel: () => {
-          // 用户取消，不做任何操作
-        }
-      })
-    } else {
-      // 没有流式输出，直接跳转
-      window.location.href = '/dashboard'
-    }
+    // 使用新的工具函数处理返回逻辑
+    handleBackToDashboardUtil({
+      moduleId: moduleConfig.moduleId,
+      additionalChecks: () => {
+        // 检查组件内部的流式输出状态
+        return !!(currentReader || isTyping || streamingConversationId)
+      },
+      navigationType: 'redirect'
+    })
   }
 
   // Typing动画组件
@@ -2926,7 +2901,11 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       <div className="flex-1 pt-8 md:pt-0 h-full overflow-hidden bg-white md:relative">
         {/* PC端面包屑导航 */}
         <div className="hidden md:block p-4 pb-0">
-          <Breadcrumb items={BREADCRUMB_CONFIGS[moduleConfig.moduleId as keyof typeof BREADCRUMB_CONFIGS] || []} />
+          <Breadcrumb
+            items={BREADCRUMB_CONFIGS[moduleConfig.moduleId as keyof typeof BREADCRUMB_CONFIGS] || []}
+            moduleId={moduleConfig.moduleId}
+            streamingCheckFn={() => !!(currentReader || isTyping || streamingConversationId)}
+          />
         </div>
 
         {currentContent === 'report' ? (
@@ -3307,68 +3286,61 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                         
                         // 有内容时，显示内容
                         return (
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm]}
-                            components={{
-                              p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                              strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                              em: ({ children }) => <em className="italic">{children}</em>,
-                              ul: ({ children }) => <ul className="list-disc list-inside mb-2">{children}</ul>,
-                              ol: ({ children }) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
-                              li: ({ children }) => <li className="mb-1">{children}</li>,
-                              code: ({ children }) => (
-                                <code className={`px-2 py-1 rounded text-sm font-mono ${
-                                  message.type === 'user' 
-                                    ? 'bg-blue-700 text-blue-100' 
-                                    : 'bg-gray-200 text-gray-800'
-                                }`}>
-                                  {children}
-                                </code>
-                              ),
-                              blockquote: ({ children }) => (
-                                <blockquote className={`border-l-4 pl-4 italic mb-2 ${
-                                  message.type === 'user' 
-                                    ? 'border-blue-300 text-blue-100' 
-                                    : 'border-gray-300 text-gray-600'
-                                }`}>
-                                  {children}
-                                </blockquote>
-                              ),
-                            }}
-                                                  >
-                        {contentToDisplay}
-                      </ReactMarkdown>
+                          <div className="bg-gray-100 text-gray-900 rounded-lg p-4">
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              components={{
+                                p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                                strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
+                                em: ({ children }) => <em className="italic">{children}</em>,
+                                ul: ({ children }) => <ul className="list-disc list-inside mb-2">{children}</ul>,
+                                ol: ({ children }) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
+                                li: ({ children }) => <li className="mb-1">{children}</li>,
+                                code: ({ children }) => (
+                                  <code className="px-2 py-1 rounded text-sm font-mono bg-gray-200 text-gray-800">
+                                    {children}
+                                  </code>
+                                ),
+                                blockquote: ({ children }) => (
+                                  <blockquote className="border-l-4 pl-4 italic mb-2 border-gray-300 text-gray-600">
+                                    {children}
+                                  </blockquote>
+                                ),
+                              }}
+                            >
+                              {contentToDisplay}
+                            </ReactMarkdown>
+                          </div>
                         )
                       })()
                     ) : (
                       // 👤 User消息渲染逻辑
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                          strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                          em: ({ children }) => <em className="italic">{children}</em>,
-                          ul: ({ children }) => <ul className="list-disc list-inside mb-2">{children}</ul>,
-                          ol: ({ children }) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
-                          li: ({ children }) => <li className="mb-1">{children}</li>,
-                          code: ({ children }) => (
-                            <code className="px-2 py-1 rounded text-sm font-mono bg-blue-700 text-blue-100">
-                              {children}
-                            </code>
-                          ),
-                          blockquote: ({ children }) => (
-                            <blockquote className="border-l-4 pl-4 italic mb-2 border-blue-300 text-blue-100">
-                              {children}
-                            </blockquote>
-                          ),
-                        }}
-                      >
-                        {message.content}
-                      </ReactMarkdown>
+                      <div className="bg-gray-100 text-gray-900 rounded-lg p-4">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                            strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
+                            em: ({ children }) => <em className="italic">{children}</em>,
+                            ul: ({ children }) => <ul className="list-disc list-inside mb-2">{children}</ul>,
+                            ol: ({ children }) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
+                            li: ({ children }) => <li className="mb-1">{children}</li>,
+                            code: ({ children }) => (
+                              <code className="px-2 py-1 rounded text-sm font-mono bg-gray-200 text-gray-800">
+                                {children}
+                              </code>
+                            ),
+                            blockquote: ({ children }) => (
+                              <blockquote className="border-l-4 pl-4 italic mb-2 border-gray-300 text-gray-600">
+                                {children}
+                              </blockquote>
+                            ),
+                          }}
+                        >
+                          {message.content}
+                        </ReactMarkdown>
+                      </div>
                     )}
-                    <div className={`text-xs mt-2 ${message.type === 'user' ? 'text-blue-200' : 'text-gray-500'}`}>
-                      {formatTime(message.timestamp)}
-                    </div>
                   </div>
                 </div>
                   )

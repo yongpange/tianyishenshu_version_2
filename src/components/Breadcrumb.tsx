@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { RightOutlined } from '@ant-design/icons'
+import { handleBackToDashboard } from '@/utils/navigation-helper'
 
 interface BreadcrumbItem {
   label: string
@@ -12,16 +13,36 @@ interface BreadcrumbItem {
 interface BreadcrumbProps {
   items: BreadcrumbItem[]
   className?: string
+  /** 可选的流式输出检查函数，用于在点击"命书"时检查是否有正在进行的聊天 */
+  streamingCheckFn?: () => boolean
+  /** 可选的模块ID，用于检查特定模块的流式输出状态 */
+  moduleId?: string
 }
 
-export default function Breadcrumb({ items, className = '' }: BreadcrumbProps) {
+export default function Breadcrumb({
+  items,
+  className = '',
+  streamingCheckFn,
+  moduleId
+}: BreadcrumbProps) {
   const router = useRouter()
 
   const handleClick = (item: BreadcrumbItem, e: React.MouseEvent) => {
     if (item.clickable && item.path) {
       e.preventDefault()
       e.stopPropagation()
-      window.location.href = item.path
+
+      // 如果是点击"命书"链接且路径是dashboard，使用确认逻辑
+      if (item.label === '命书' && item.path === '/dashboard') {
+        handleBackToDashboard({
+          moduleId,
+          additionalChecks: streamingCheckFn,
+          navigationType: 'redirect'
+        })
+      } else {
+        // 其他链接直接跳转
+        window.location.href = item.path
+      }
     }
   }
 
