@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { Card, Avatar, Button, message, Divider, Spin, Collapse, Tag, Tooltip, Drawer } from 'antd'
+import { Card, Avatar, Button, message, Divider, Spin, Collapse, Tag, Tooltip, Drawer, Modal } from 'antd'
 import {
   UserOutlined,
   WechatOutlined,
@@ -22,6 +22,7 @@ import {
 } from '@ant-design/icons'
 import { PermissionGuard, usePermissionCheck } from '@/components/PermissionGuard'
 import { useGlobalSessionManager } from '@/hooks/useGlobalSessionManager'
+import { handleBackToDashboard as handleBackToDashboardUtil } from '@/utils/navigation-helper'
 
 // 直接导入页面组件
 import AstrologyPage from '@/app/astrology/page'
@@ -1438,79 +1439,20 @@ export default function DashboardPage() {
     setCurrentView('consultation')
   }
 
-  // 处理返回命书的逻辑 - 与PageTemplate中的handleBackToDashboard保持一致
+  // 处理返回命书的逻辑 - 使用新的工具函数
   const handleBackToDashboard = () => {
-    // 多重检查流式输出状态
-    const activeSessions = globalSessionManager.getActiveSessions()
-    
-    // 检查全局流式输出标识（通过localStorage）
-    let hasLocalStreamingState = false
-    try {
-      if (typeof window !== 'undefined') {
-        // 检查是否有模块在流式输出
-        const streamingFlags = [
-          'astrology_streaming',
-          'personality_streaming', 
-          'wealth_streaming',
-          'consultation_streaming'
-        ]
-        hasLocalStreamingState = streamingFlags.some(flag => 
-          localStorage.getItem(flag) === 'true'
-        )
-        
-        // 也检查是否有最近的流式输出活动
-        const lastStreamingTime = localStorage.getItem('last_streaming_time')
-        if (lastStreamingTime) {
-          const timeDiff = Date.now() - parseInt(lastStreamingTime)
-          // 如果最近5秒内有流式输出活动，也认为可能还在进行
-          if (timeDiff < 5000) {
-            hasLocalStreamingState = true
-          }
-        }
+    // 使用新的工具函数处理返回逻辑
+    handleBackToDashboardUtil({
+      additionalChecks: () => {
+        // 检查全局会话管理器
+        const activeSessions = globalSessionManager.getActiveSessions()
+        return activeSessions.length > 0
+      },
+      navigationType: 'callback',
+      onNavigate: () => {
+        setCurrentView('dashboard')
       }
-    } catch (error) {
-      console.warn('检查本地流式输出状态时出错:', error)
-    }
-    
-    const hasActiveStream = activeSessions.length > 0 || hasLocalStreamingState
-    
-    if (hasActiveStream) {
-      Modal.confirm({
-        title: '确认返回',
-        content: (
-          <div>
-            <p>检测到有对话正在生成中，返回会中断当前的AI回复流程。</p>
-            <p className="text-gray-600 text-sm mt-2">
-              💡 提示：中断不会影响已生成内容的保存，您随时可以回来查看结果。
-            </p>
-          </div>
-        ),
-        okText: '确认返回',
-        cancelText: '继续等待',
-        okType: 'primary',
-        onOk: () => {
-          // 用户确认返回，清理流式输出标识并执行跳转
-          try {
-            if (typeof window !== 'undefined') {
-              localStorage.removeItem('astrology_streaming')
-              localStorage.removeItem('personality_streaming')
-              localStorage.removeItem('wealth_streaming')
-              localStorage.removeItem('consultation_streaming')
-              localStorage.removeItem('last_streaming_time')
-            }
-          } catch (error) {
-            console.warn('清理流式输出标识时出错:', error)
-          }
-          setCurrentView('dashboard')
-        },
-        onCancel: () => {
-          // 用户取消，不做任何操作
-        }
-      })
-    } else {
-      // 没有流式输出，直接跳转
-      setCurrentView('dashboard')
-    }
+    })
   }
 
   // 渲染主内容区

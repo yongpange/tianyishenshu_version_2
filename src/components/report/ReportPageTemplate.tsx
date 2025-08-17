@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Breadcrumb, { BREADCRUMB_CONFIGS } from '@/components/Breadcrumb'
+import { handleBackToDashboard as handleBackToDashboardUtil } from '@/utils/navigation-helper'
 import {
   Button,
   Input,
@@ -260,6 +261,16 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
       setTimeout(() => setCopied(false), 2000)
     }
   }, [reportGeneration.reportContent, moduleConfig.title])
+
+  // 处理返回命书的逻辑
+  const handleBackToDashboard = () => {
+    // 使用新的工具函数处理返回逻辑
+    // ReportPageTemplate目前没有聊天功能，所以不需要额外检查
+    handleBackToDashboardUtil({
+      moduleId: moduleConfig.moduleId,
+      navigationType: 'redirect'
+    })
+  }
 
   // 智能滚动到底部
   const scrollToBottom = useCallback((force = false) => {
@@ -675,7 +686,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
               onClick={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
-                window.location.href = '/dashboard'
+                handleBackToDashboard()
               }}
               className="p-0 mr-2"
               title="返回「命书」"
@@ -852,7 +863,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
                 onClick={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
-                  window.location.href = '/dashboard'
+                  handleBackToDashboard()
                 }}
                 className="border-gray-300 text-gray-700 hover:border-gray-400 hover:text-gray-800 shadow-sm hover:shadow-md transition-all duration-300"
               >
@@ -880,7 +891,10 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
       <div className="flex-1 pt-16 md:pt-0 h-screen overflow-hidden bg-white">
         {/* PC端面包屑导航 */}
         <div className="hidden md:block p-3 md:p-6 pb-0">
-          <Breadcrumb items={BREADCRUMB_CONFIGS[moduleConfig.moduleId as keyof typeof BREADCRUMB_CONFIGS] || []} />
+          <Breadcrumb
+            items={BREADCRUMB_CONFIGS[moduleConfig.moduleId as keyof typeof BREADCRUMB_CONFIGS] || []}
+            moduleId={moduleConfig.moduleId}
+          />
         </div>
 
         {currentContent === 'report' ? (
