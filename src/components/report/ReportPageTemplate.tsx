@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Breadcrumb, { BREADCRUMB_CONFIGS } from '@/components/Breadcrumb'
 import { handleBackToDashboard as handleBackToDashboardUtil } from '@/utils/navigation-helper'
+import TianIcon from '@/components/icons/TianIcon'
 import {
   Button,
   Input,
@@ -691,9 +692,7 @@ export default function ReportPageTemplate({ moduleConfig }: ReportPageTemplateP
               className="p-0 mr-2"
               title="返回「命书」"
             />
-            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center">
-              <span className="text-white font-bold text-sm">乙</span>
-            </div>
+            <TianIcon width={32} height={32} />
             <span className="font-bold text-gray-900">天乙神算</span>
           </div>
           <div className="flex items-center space-x-2">

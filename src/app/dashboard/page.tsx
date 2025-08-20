@@ -2210,7 +2210,11 @@ export default function DashboardPage() {
       </div>
 
       {/* 主内容区*/}
-      <div className="flex-1 p-0.5 md:p-1 pb-24 md:pb-1 overflow-y-auto h-full min-h-0">
+      <div className={`flex-1 p-0.5 md:p-1 md:pb-1 overflow-y-auto h-full min-h-0 ${
+        (currentView === 'dashboard' || currentView === 'consultation')
+          ? 'pb-24'  // 为问道1v1按钮预留空间
+          : 'pb-1'   // 其他页面最小底部空间，最大化内容展示
+      }`}>
         <Suspense fallback={
           <div className="flex items-center justify-center h-64">
             <Spin size="large" />
@@ -2220,33 +2224,35 @@ export default function DashboardPage() {
         </Suspense>
       </div>
 
-      {/* 移动端底部问道1v1按钮 */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 flex-shrink-0">
-        <div className="relative">
-          {/* 选中状态下显示ons.png图片 */}
-          {currentView === 'consultation' && (
-            <div className="absolute inset-0 bg-cover bg-center bg-no-repeat rounded-lg opacity-60 z-10 pointer-events-none"
-                 style={{ 
-                   backgroundImage: 'url(/images/ons.png)',
-                   filter: 'brightness(1.2) contrast(1.3) saturate(1.5) hue-rotate(-10deg)'
-                 }}>
-            </div>
-          )}
-          <Button
-            type="primary"
-            block
-            size="large"
-            onClick={handleConsultation}
-            className={`border-none shadow-lg relative z-20 ${
-              currentView === 'consultation' 
-                ? 'bg-blue-600 hover:bg-blue-700' 
-                : 'bg-black hover:bg-gray-800'
-            }`}
-          >
-            <span className="font-medium tracking-wide text-white">问道1v1</span>
-          </Button>
+      {/* 移动端底部问道1v1按钮 - 只在dashboard和consultation视图显示 */}
+      {(currentView === 'dashboard' || currentView === 'consultation') && (
+        <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 flex-shrink-0">
+          <div className="relative">
+            {/* 选中状态下显示ons.png图片 */}
+            {currentView === 'consultation' && (
+              <div className="absolute inset-0 bg-cover bg-center bg-no-repeat rounded-lg opacity-60 z-10 pointer-events-none"
+                   style={{
+                     backgroundImage: 'url(/images/ons.png)',
+                     filter: 'brightness(1.2) contrast(1.3) saturate(1.5) hue-rotate(-10deg)'
+                   }}>
+              </div>
+            )}
+            <Button
+              type="primary"
+              block
+              size="large"
+              onClick={handleConsultation}
+              className={`border-none shadow-lg relative z-20 ${
+                currentView === 'consultation'
+                  ? 'bg-blue-600 hover:bg-blue-700'
+                  : 'bg-black hover:bg-gray-800'
+              }`}
+            >
+              <span className="font-medium tracking-wide text-white">问道1v1</span>
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 移动端用户选择器抽屉 */}
       <Drawer
