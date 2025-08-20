@@ -2,6 +2,7 @@ import './globals.css'
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 // import DevToolsProtection from '@/components/DevToolsProtection'
+import { DevAuthMonitor } from '@/components/DevAuthMonitor'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -21,6 +22,7 @@ export default function RootLayout({
       <body className={inter.className}>
         {/* <DevToolsProtection /> */}
         {children}
+        <DevAuthMonitor />
       </body>
     </html>
   )

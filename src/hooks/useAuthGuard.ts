@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { devLog } from '@/utils/dev-logger'
+import { shouldSkipAuth, getCheckInterval, isLenientErrorHandling } from '@/config/auth'
 export interface UseAuthGuardOptions {
   redirectPath?: string
   checkInterval?: number // 检查间隔，单位：毫秒
@@ -16,7 +17,7 @@ export interface UseAuthGuardReturn {
 export function useAuthGuard(options: UseAuthGuardOptions = {}): UseAuthGuardReturn {
   const {
     redirectPath = '/login',
-    checkInterval = 120000, // 默认2分钟检查一次
+    checkInterval = getCheckInterval(),
     skipInitialCheck = false
   } = options
 
@@ -35,10 +36,17 @@ export function useAuthGuard(options: UseAuthGuardOptions = {}): UseAuthGuardRet
   // 检查用户状态
   const checkUserStatus = async (): Promise<boolean> => {
     try {
+      // 开发环境跳过认证检查
+      if (shouldSkipAuth()) {
+        devLog.log('🔓 开发环境跳过认证检查')
+        setIsAuthenticated(true)
+        return true
+      }
+
       // 检查是否有登录数据
       const loginData = localStorage.getItem('loginData')
       const activeUser = localStorage.getItem('activeUser')
-      
+
       if (!loginData) {
         devLog.log('🔒 没有登录数据')
         setIsAuthenticated(false)
@@ -65,6 +73,12 @@ export function useAuthGuard(options: UseAuthGuardOptions = {}): UseAuthGuardRet
 
       if (!response.ok) {
         devLog.log('🔒 用户验证API调用失败，状态码:', response.status)
+
+        // 开发环境更宽松的错误处理
+        if (isLenientErrorHandling()) {
+          devLog.warn('开发环境：API调用失败，但保持当前认证状态')
+          return true
+        }
 
         // 区分错误类型
         if (response.status >= 500) {
@@ -134,6 +148,12 @@ export function useAuthGuard(options: UseAuthGuardOptions = {}): UseAuthGuardRet
 
     } catch (error) {
       devLog.error('❌ 用户状态检查失败:', error)
+
+      // 开发环境更宽松的错误处理
+      if (isLenientErrorHandling()) {
+        devLog.warn('开发环境：验证失败，但保持当前认证状态')
+        return true
+      }
 
       // 区分错误类型
       if (error instanceof TypeError && error.message.includes('fetch')) {

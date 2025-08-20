@@ -38,6 +38,7 @@ import {
   CopyOutlined,
   CheckOutlined,
   DownOutlined,
+  UpOutlined,
   ArrowUpOutlined
 } from '@ant-design/icons'
 import {
@@ -178,6 +179,10 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
   const [renameModalVisible, setRenameModalVisible] = useState(false)
   const [renamingConversationId, setRenamingConversationId] = useState<string | null>(null)
   const [newTitle, setNewTitle] = useState('')
+
+  // 移动端用户信息展开/隐藏状态
+  const [isUserInfoExpanded, setIsUserInfoExpanded] = useState(false)
+  const [autoCloseTimer, setAutoCloseTimer] = useState<NodeJS.Timeout | null>(null)
   
   // 对话显示数量控制
   const [visibleConversationsCount, setVisibleConversationsCount] = useState(5)
@@ -511,12 +516,42 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
 
     const { copyReport: copyReportHelper } = await import('@/utils/copy-helper')
     const success = await copyReportHelper(reportContent, moduleConfig.reportTitle || '报告')
-    
+
     if (success) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     }
   }
+
+  // 处理移动端用户信息展开/隐藏
+  const handleToggleUserInfo = useCallback(() => {
+    if (!isUserInfoExpanded) {
+      // 展开
+      setIsUserInfoExpanded(true)
+
+      // 设置10秒自动关闭
+      const timer = setTimeout(() => {
+        setIsUserInfoExpanded(false)
+      }, 10000)
+      setAutoCloseTimer(timer)
+    } else {
+      // 手动关闭
+      setIsUserInfoExpanded(false)
+      if (autoCloseTimer) {
+        clearTimeout(autoCloseTimer)
+        setAutoCloseTimer(null)
+      }
+    }
+  }, [isUserInfoExpanded, autoCloseTimer])
+
+  // 清理定时器
+  useEffect(() => {
+    return () => {
+      if (autoCloseTimer) {
+        clearTimeout(autoCloseTimer)
+      }
+    }
+  }, [autoCloseTimer])
 
   // 重新生成报告
   const regenerateReport = async () => {
@@ -2897,7 +2932,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       )}
 
       {/* 右侧内容区域 */}
-      <div className="flex-1 pt-8 md:pt-0 h-full overflow-hidden bg-white md:relative">
+      <div className="flex-1 pt-4 md:pt-0 h-full overflow-hidden bg-white md:relative">
         {/* PC端面包屑导航 */}
         <div className="hidden md:block p-4 pb-0">
           <Breadcrumb
@@ -2911,7 +2946,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
           /* 报告展示区域 */
           <div className="h-full flex flex-col">
             {/* 报告标题栏 */}
-            <div className="p-4 border-b border-gray-100">
+            <div className="px-4 py-0 md:p-4 border-b border-gray-100">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
@@ -2923,7 +2958,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                   <Button
                     icon={copied ? <CheckOutlined /> : <CopyOutlined />}
                     onClick={copyReport}
-                    className={`${copied ? 'border-green-500 text-green-500' : 'border-gray-400 text-gray-600'} hover:bg-gray-50`}
+                    className={`${copied ? 'border-green-500 text-green-500' : 'border-gray-400 text-gray-600'} hover:bg-gray-50 text-xs`}
                     size="small"
                   >
                     {copied ? '已复制' : '复制报告'}
@@ -2931,32 +2966,81 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                 )}
               </div>
               {userInfo && (
-                <div className="bg-gray-50 rounded-lg p-4 mt-4">
-                  <Paragraph className="text-gray-700 mb-0">
-                    <span className="font-semibold text-gray-900">{(() => {
-                      const activeUser = getActiveUser()
-                      return activeUser?.name || userInfo?.nickname || '用户'
-                    })()}</span>
-                    道友，你好~您的生辰信息（{(() => {
-                      const activeUser = getActiveUser()
-                      if (activeUser) {
-                        const genderText = activeUser.gender === 'male' ? '男' : '女'
-                        const areaText = activeUser.area_province && activeUser.area_city && activeUser.area_district 
-                          ? `${activeUser.area_province} ${activeUser.area_city} ${activeUser.area_district}`
-                          : '未知地区'
-                        return `${activeUser.year}年${activeUser.month}月${activeUser.day}日 ${activeUser.hour}:${String(activeUser.minute).padStart(2, '0')}, ${genderText}`
-                      }
-                      return formatUserInfoDisplay(userInfo)
-                    })()}），
-                      {/* 经过天乙的深度分析，为您生成以下{moduleConfig.title}报告。 */}
-                      经过天乙的深度分析，为您生成以下报告。
-                  </Paragraph>
-                </div>
+                <>
+                  {/* 移动端：展开/隐藏的用户信息 */}
+                  <div className="md:hidden mt-4">
+                    {!isUserInfoExpanded ? (
+                      // 折叠状态：只显示向下箭头
+                      <div className="flex justify-center py-2">
+                        <Button
+                          type="text"
+                          icon={<DownOutlined />}
+                          onClick={handleToggleUserInfo}
+                          size="small"
+                          className="text-gray-400 hover:text-gray-600"
+                        />
+                      </div>
+                    ) : (
+                      // 展开状态：显示完整信息
+                      <div className="bg-gray-50 rounded-lg p-0 md:p-4 transition-all duration-300">
+                        <div className="flex justify-between items-start">
+                          <Paragraph className="text-gray-700 mb-0 flex-1">
+                            <span className="font-semibold text-gray-900">{(() => {
+                              const activeUser = getActiveUser()
+                              return activeUser?.name || userInfo?.nickname || '用户'
+                            })()}</span>
+                            道友，你好~您的生辰信息（{(() => {
+                              const activeUser = getActiveUser()
+                              if (activeUser) {
+                                const genderText = activeUser.gender === 'male' ? '男' : '女'
+                                const areaText = activeUser.area_province && activeUser.area_city && activeUser.area_district
+                                  ? `${activeUser.area_province} ${activeUser.area_city} ${activeUser.area_district}`
+                                  : '未知地区'
+                                return `${activeUser.year}年${activeUser.month}月${activeUser.day}日 ${activeUser.hour}:${String(activeUser.minute).padStart(2, '0')}, ${genderText}`
+                              }
+                              return formatUserInfoDisplay(userInfo)
+                            })()}），经过天乙的深度分析，为您生成以下报告。
+                          </Paragraph>
+                          <Button
+                            type="text"
+                            icon={<UpOutlined />}
+                            onClick={handleToggleUserInfo}
+                            size="small"
+                            className="text-gray-400 hover:text-gray-600 ml-2 flex-shrink-0"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* PC端：始终显示 */}
+                  <div className="hidden md:block mt-4">
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <Paragraph className="text-gray-700 mb-0">
+                        <span className="font-semibold text-gray-900">{(() => {
+                          const activeUser = getActiveUser()
+                          return activeUser?.name || userInfo?.nickname || '用户'
+                        })()}</span>
+                        道友，你好~您的生辰信息（{(() => {
+                          const activeUser = getActiveUser()
+                          if (activeUser) {
+                            const genderText = activeUser.gender === 'male' ? '男' : '女'
+                            const areaText = activeUser.area_province && activeUser.area_city && activeUser.area_district
+                              ? `${activeUser.area_province} ${activeUser.area_city} ${activeUser.area_district}`
+                              : '未知地区'
+                            return `${activeUser.year}年${activeUser.month}月${activeUser.day}日 ${activeUser.hour}:${String(activeUser.minute).padStart(2, '0')}, ${genderText}`
+                          }
+                          return formatUserInfoDisplay(userInfo)
+                        })()}），经过天乙的深度分析，为您生成以下报告。
+                      </Paragraph>
+                    </div>
+                  </div>
+                </>
               )}
             </div>
 
             {/* 报告内容区域 */}
-            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar" style={{ overscrollBehavior: 'contain' }}>
+            <div className="flex-1 overflow-y-auto p-1.5 md:p-4 custom-scrollbar" style={{ overscrollBehavior: 'contain' }}>
               {reportLoading ? (
                 <div className="flex flex-col items-center justify-center py-20">
                   {isGenerating ? (
@@ -3116,7 +3200,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
             {/* 聊天消息区域 */}
             <div
               ref={chatContainerRef}
-              className="flex-1 overflow-y-auto p-4 relative custom-scrollbar"
+              className="flex-1 overflow-y-auto px-4 py-0 md:p-4 relative custom-scrollbar"
               style={{ 
                 overscrollBehavior: 'contain'
               }}
@@ -3375,7 +3459,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
             </div>
 
             {/* 输入框区域 */}
-            <div className="px-4 py-4 pb-6 bg-white">
+            <div className="px-4 py-0 pb-2 md:py-4 md:pb-6 bg-white">
               <div className="max-w-4xl mx-auto">
                 {/* 问题按钮区域 */}
                 {(() => {
