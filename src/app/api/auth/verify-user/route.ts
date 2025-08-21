@@ -16,9 +16,14 @@ export async function POST(request: NextRequest) {
 
     // 简化日志输出，仅在debug模式下显示详细信息
     const isDebug = process.env.NODE_ENV === 'development'
-    // if (isDebug) {
-    //   console.log('🔍 验证用户存在性:', { phone: phone ? `${phone.slice(0,3)}****${phone.slice(-4)}` : undefined, userId, userProfileId })
-    // }
+    if (isDebug) {
+      console.log('🔍 验证用户存在性:', {
+        phone: phone ? `${phone.slice(0,3)}****${phone.slice(-4)}` : undefined,
+        userId,
+        userProfileId,
+        timestamp: new Date().toISOString()
+      })
+    }
 
     // 1. 如果有userProfileId，直接验证用户资料是否存在
     if (userProfileId) {
@@ -33,7 +38,19 @@ export async function POST(request: NextRequest) {
         .eq('id', userProfileId)
         .single()
 
-      if (profileError || !userProfile) {
+      if (profileError) {
+        console.error('数据库查询错误:', profileError)
+        if (isDebug) {
+          console.log('❌ 数据库查询失败:', userProfileId, profileError)
+        }
+        return NextResponse.json({
+          success: false,
+          exists: false,
+          message: '数据库查询失败，请稍后重试'
+        }, { status: 500 })
+      }
+
+      if (!userProfile) {
         if (isDebug) {
           console.log('❌ 用户资料不存在:', userProfileId)
         }
@@ -73,7 +90,19 @@ export async function POST(request: NextRequest) {
         .eq('phone_number', phone)
         .single()
 
-      if (userError || !user) {
+      if (userError) {
+        console.error('数据库查询错误:', userError)
+        if (isDebug) {
+          console.log('❌ 数据库查询失败:', phone?.slice(0,3) + '****' + phone?.slice(-4), userError)
+        }
+        return NextResponse.json({
+          success: false,
+          exists: false,
+          message: '数据库查询失败，请稍后重试'
+        }, { status: 500 })
+      }
+
+      if (!user) {
         if (isDebug) {
           console.log('❌ 用户不存在:', phone?.slice(0,3) + '****' + phone?.slice(-4))
         }
@@ -110,7 +139,19 @@ export async function POST(request: NextRequest) {
         .eq('id', userId)
         .single()
 
-      if (userError || !user) {
+      if (userError) {
+        console.error('数据库查询错误:', userError)
+        if (isDebug) {
+          console.log('❌ 数据库查询失败:', userId, userError)
+        }
+        return NextResponse.json({
+          success: false,
+          exists: false,
+          message: '数据库查询失败，请稍后重试'
+        }, { status: 500 })
+      }
+
+      if (!user) {
         if (isDebug) {
           console.log('❌ 用户ID不存在:', userId)
         }
