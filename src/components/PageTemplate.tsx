@@ -2668,14 +2668,38 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
             <span className="font-bold text-gray-900">天乙神算</span>
           </div>
           <div className="flex items-center space-x-2">
+            {/* 主要切换按钮：报告页面显示"对话"，聊天页面显示"报告" */}
             <Button
-              icon={<MenuOutlined />}
-              onClick={() => setChatHistoryVisible(true)}
+              icon={currentContent === 'report' ? <MessageOutlined /> : <FileTextOutlined />}
+              onClick={() => {
+                if (currentContent === 'report') {
+                  // 当前在报告页面，点击切换到聊天
+                  setCurrentContent('chat')
+                } else {
+                  // 当前在聊天页面，点击切换到报告
+                  setCurrentContent('report')
+                  setChatHistoryVisible(false) // 切换到报告时关闭历史面板
+                }
+              }}
               size="small"
               type="text"
+              className="font-medium"
             >
-              对话
+              {currentContent === 'report' ? '对话' : '报告'}
             </Button>
+
+            {/* 历史记录按钮 - 仅在聊天页面显示 */}
+            {currentContent === 'chat' && (
+              <Button
+                icon={<MenuOutlined />}
+                onClick={() => setChatHistoryVisible(!chatHistoryVisible)}
+                size="small"
+                type="text"
+                className={`font-medium ${chatHistoryVisible ? 'bg-gray-100' : ''}`}
+              >
+                历史
+              </Button>
+            )}
           </div>
         </div>
       </div>

@@ -1748,7 +1748,12 @@ export default function DashboardPage() {
 
                   {/* 哲学文案 */}
                   <h1 className="text-2xl md:text-4xl font-semibold text-gray-900 leading-relaxed tracking-wider mt-6 md:mt-8">
-                    人立于命 命行运中 命由心敕 心御乾坤
+                    <span className="md:hidden">
+                      人立于命 命行运中<br />命由心敕 心御乾坤
+                    </span>
+                    <span className="hidden md:inline">
+                      人立于命 命行运中 命由心敕 心御乾坤
+                    </span>
                   </h1>
                 </div>
               </div>
@@ -1829,9 +1834,23 @@ export default function DashboardPage() {
                       {/* 标题和副标题在右*/}
                       <div className="flex-1 text-left flex flex-col justify-center mt-4 md:mt-0">
                         <h3 className="font-medium text-xl mb-2 text-gray-900">
-                          {module.title}
+                          <span className="md:hidden">
+                            {(() => {
+                              const title = module.title
+                              if (title === '八字排盘') return <>八字<br />排盘</>
+                              if (title === '性格内观') return <>性格<br />内观</>
+                              if (title === '事业财富') return <>事业<br />财富</>
+                              if (title === '婚恋感情') return <>婚恋<br />感情</>
+                              if (title === '身体健康') return <>身体<br />健康</>
+                              if (title === '2026年运') return <>2026<br />年运</>
+                              return title
+                            })()}
+                          </span>
+                          <span className="hidden md:inline">
+                            {module.title}
+                          </span>
                         </h3>
-                        <p className="text-base leading-relaxed italic text-gray-500 hidden md:block">
+                        <p className="text-base leading-relaxed italic text-gray-500 hidden lg:block">
                           {module.subtitle}
                         </p>
                       </div>
@@ -1911,7 +1930,7 @@ export default function DashboardPage() {
 
       <div className="flex flex-1 min-h-0">
         {/* 左侧导航栏*/}
-        <div className="w-48 bg-white shadow-sm border-r border-gray-200 flex flex-col hidden md:flex h-full overflow-hidden">
+        <div className="w-48 bg-white shadow-sm border-r border-gray-200 flex flex-col hidden md:flex h-screen overflow-y-auto">
         {/* Logo区域 */}
         <div className="p-4 border-b border-gray-100 text-center flex-shrink-0">
           <div className="flex flex-col items-center space-y-2">

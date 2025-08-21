@@ -536,7 +536,7 @@ export default function RegisterPage() {
                 type="text"
                 value={inviteCode}
                 onChange={(e) => handleInviteCodeChange(e.target.value)}
-                placeholder="2406AB8F9E2D4C7K"
+                placeholder="请输入16位数兑换码"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-center tracking-wider"
                 maxLength={16}
               />
@@ -595,7 +595,7 @@ export default function RegisterPage() {
         </div>
 
         {/* Login Link */}
-        <div className="text-center">
+        <div className="text-center mb-4">
           <p className="text-sm text-gray-600">
             已有账号？
             <Link href="/login" className="text-blue-600 hover:text-blue-700 font-medium ml-1">
