@@ -506,18 +506,18 @@ export default function RegisterPage() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               验证码
             </label>
-            <div className="flex gap-2 sm:gap-3">
+            <div className="grid grid-cols-[1fr_auto] gap-2 sm:gap-3">
               <input
                 type="text"
                 value={smsCode}
                 onChange={(e) => setSmsCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 placeholder="验证码"
-                className="flex-1 px-3 sm:px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-3 sm:px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent min-w-0"
               />
               <button
                 onClick={sendSmsCode}
                 disabled={countdown > 0 || loading}
-                className="px-2 sm:px-3 py-3 bg-gray-100 text-gray-700 rounded-lg border border-gray-300 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap text-xs sm:text-sm min-w-[70px] sm:min-w-[80px] flex-shrink-0"
+                className="px-1 xs:px-2 sm:px-3 py-3 bg-gray-100 text-gray-700 rounded-lg border border-gray-300 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap text-xs sm:text-sm min-w-[60px] xs:min-w-[70px] sm:min-w-[80px]"
               >
                 {countdown > 0 ? `${countdown}s` : '发送验证码'}
               </button>

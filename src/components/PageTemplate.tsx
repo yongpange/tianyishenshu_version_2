@@ -2956,9 +2956,9 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                 </div>
                 {reportContent && (
                   <Button
-                    icon={copied ? <CheckOutlined /> : <CopyOutlined />}
+                    icon={copied ? <CheckOutlined className="text-xs" /> : <CopyOutlined className="text-xs" />}
                     onClick={copyReport}
-                    className={`${copied ? 'border-green-500 text-green-500' : 'border-gray-400 text-gray-600'} hover:bg-gray-50 text-xs`}
+                    className={`${copied ? 'border-green-500 text-green-500' : 'border-gray-400 text-gray-600'} hover:bg-gray-50 text-xs px-2 py-1 h-6 min-w-0`}
                     size="small"
                   >
                     {copied ? '已复制' : '复制报告'}
@@ -3459,7 +3459,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
             </div>
 
             {/* 输入框区域 */}
-            <div className="px-4 py-0 pb-2 md:py-4 md:pb-6 bg-white">
+            <div className="px-4 py-0 pb-2 md:py-4 md:pb-12 bg-white">
               <div className="max-w-4xl mx-auto">
                 {/* 问题按钮区域 */}
                 {(() => {
