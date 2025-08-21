@@ -3526,12 +3526,13 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                     }`}
                     disabled={!chatAvailable || loading || isTyping}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault()
-                        if (currentMessage.trim() && !loading && !isTyping && chatAvailable) {
-                          sendMessage()
-                        }
-                      }
+                      // 注释掉回车发送功能，只能通过点击按钮发送
+                      // if (e.key === 'Enter' && !e.shiftKey) {
+                      //   e.preventDefault()
+                      //   if (currentMessage.trim() && !loading && !isTyping && chatAvailable) {
+                      //     sendMessage()
+                      //   }
+                      // }
                     }}
                   />
                   <div className="absolute bottom-2 right-2">
@@ -3548,6 +3549,8 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                           activeConversationId,
                           conversationsCount: conversations.length
                         })
+                        // 立即设置loading状态，让按钮变灰，防止二次点击
+                        setLoading(true)
                         sendMessage()
                       }}
                       loading={loading}
@@ -3578,7 +3581,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                 )}
                 
                 <div className="text-xs text-gray-400 mt-2 text-center">
-                  {chatAvailable ? "Enter 发送，Shift + Enter 换行" : "聊天功能需要先生成报告"}
+                  {chatAvailable ? "点击按钮发送，Shift + Enter 换行" : "聊天功能需要先生成报告"}
                 </div>
               </div>
             </div>
