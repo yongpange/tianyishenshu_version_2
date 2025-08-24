@@ -57,21 +57,28 @@ function extractCityName(fullLocationName: string): string {
       }
     }
     
-    // 优先级2：如果包含"县"，取县
+    // 优先级2：如果是xxxx州xxxx市或xxxx州xxxx县格式，取最后的市或县
+    const stateMatch = cleanName.match(/州([^州]*[市县])/)
+    if (stateMatch) {
+      console.log(`🏛️ 检测到州级单位下的市/县: ${stateMatch[1]}`)
+      return stateMatch[1]
+    }
+    
+    // 优先级3：如果包含"县"，取县
     const countyMatch = cleanName.match(/([^省市盟]*县)/)
     if (countyMatch) {
       console.log(`🏘️ 检测到县级单位: ${countyMatch[1]}`)
       return countyMatch[1]
     }
     
-    // 优先级3：如果包含"盟"，取盟（处理其他地区的盟）
+    // 优先级4：如果包含"盟"，取盟（处理其他地区的盟）
     const leagueMatch = cleanName.match(/([^省区]*盟)/)
     if (leagueMatch) {
       console.log(`🏕️ 检测到盟级单位: ${leagueMatch[1]}`)
       return leagueMatch[1]
     }
     
-    // 优先级4：如果包含"市辖区"，取市辖区前面的市
+    // 优先级5：如果包含"市辖区"，取市辖区前面的市
     if (cleanName.includes('市辖区')) {
       const cityBeforeDistrictMatch = cleanName.match(/([^省区]*市)市辖区/)
       if (cityBeforeDistrictMatch) {
@@ -80,7 +87,7 @@ function extractCityName(fullLocationName: string): string {
       }
     }
     
-    // 优先级5：如果包含多个"市"，取最后一个市
+    // 优先级6：如果包含多个"市"，取最后一个市
     // 这样可以处理"黑龙江省佳木斯市同江市"这种情况，取"同江市"而不是"佳木斯市"
     const cityMatches = cleanName.match(/([^省区盟市辖]*市)(?!辖区)/g)
     if (cityMatches && cityMatches.length > 0) {
