@@ -23,6 +23,8 @@ import {
 import { PermissionGuard, usePermissionCheck } from '@/components/PermissionGuard'
 import { useGlobalSessionManager } from '@/hooks/useGlobalSessionManager'
 import { handleBackToDashboard as handleBackToDashboardUtil } from '@/utils/navigation-helper'
+import applyCompatibilityFixes from '@/utils/browser-compatibility'
+import CompatibilityErrorBoundary from '@/components/CompatibilityErrorBoundary'
 
 // 直接导入页面组件
 import AstrologyPage from '@/app/astrology/page'
@@ -146,6 +148,9 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
+    // 应用浏览器兼容性修复
+    applyCompatibilityFixes()
+
     // 检查登录状态并获取用户信息
     const loginData = localStorage.getItem('loginData')
     if (!loginData) {
@@ -317,7 +322,7 @@ export default function DashboardPage() {
       devLog.log('Dashboard检查登录数据', parsed)
 
       // 检查登录数据中是否包含完整的用户资料
-      if (parsed.user?.profile_data) {
+      if (parsed.user && parsed.user.profile_data) {
         devLog.log('发现登录时已有的用户资料:', parsed.user.profile_data)
         // 将登录时获取的资料转换为userInfo格式
         const userInfoFromLogin = {
@@ -408,7 +413,7 @@ export default function DashboardPage() {
           
           // 找到所有子账号（parent_id 为主账号 id）并按创建时间升序排序
           const childProfiles = profiles
-            .filter((profile: any) => profile.parent_id === mainProfile?.id)
+            .filter((profile: any) => mainProfile && profile.parent_id === mainProfile.id)
             .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
           setChildUsers(childProfiles)
           
@@ -418,7 +423,7 @@ export default function DashboardPage() {
             try {
               const parsedActiveUser = JSON.parse(savedActiveUser)
               // 验证该用户是否仍在列表中（主账户或子账户）
-              const isMainUser = parsedActiveUser.id === mainProfile?.id
+              const isMainUser = mainProfile && parsedActiveUser.id === mainProfile.id
               const isValidChildUser = childProfiles.find((profile: any) => profile.id === parsedActiveUser.id)
               
               if (isMainUser || isValidChildUser) {
@@ -497,16 +502,16 @@ export default function DashboardPage() {
   // 获取用户显示列表（当前用户不在列表中，主账户排第一个，其他按创建时间升序）
   const getUserDisplayList = () => {
     const displayList = []
-    
+
     // 主账户不是当前用户时，排在第一
-    if (mainUser && activeUser?.id !== mainUser.id) {
+    if (mainUser && activeUser && activeUser.id !== mainUser.id) {
       displayList.push(mainUser)
     }
-    
+
     // 添加不是当前用户的子账户，按创建时间升序排列
-    const availableChildUsers = childUsers.filter(user => user.id !== activeUser?.id)
+    const availableChildUsers = childUsers.filter(user => activeUser && user.id !== activeUser.id)
     displayList.push(...availableChildUsers)
-    
+
     return displayList
   }
 
@@ -1473,9 +1478,9 @@ export default function DashboardPage() {
             hour: currentActiveUser.hour,
             minute: currentActiveUser.minute,
             area: {
-              province: currentActiveUser.area_province || currentActiveUser.area?.province,
-              city: currentActiveUser.area_city || currentActiveUser.area?.city,
-              district: currentActiveUser.area_district || currentActiveUser.area?.district
+              province: currentActiveUser.area_province || (currentActiveUser.area && currentActiveUser.area.province),
+              city: currentActiveUser.area_city || (currentActiveUser.area && currentActiveUser.area.city),
+              district: currentActiveUser.area_district || (currentActiveUser.area && currentActiveUser.area.district)
             }
           }
           // 设置userData到localStorage，确保PersonalityPage能正常加载
@@ -1500,9 +1505,9 @@ export default function DashboardPage() {
             hour: currentActiveUserWealth.hour,
             minute: currentActiveUserWealth.minute,
             area: {
-              province: currentActiveUserWealth.area_province || currentActiveUserWealth.area?.province,
-              city: currentActiveUserWealth.area_city || currentActiveUserWealth.area?.city,
-              district: currentActiveUserWealth.area_district || currentActiveUserWealth.area?.district
+              province: currentActiveUserWealth.area_province || (currentActiveUserWealth.area && currentActiveUserWealth.area.province),
+              city: currentActiveUserWealth.area_city || (currentActiveUserWealth.area && currentActiveUserWealth.area.city),
+              district: currentActiveUserWealth.area_district || (currentActiveUserWealth.area && currentActiveUserWealth.area.district)
             }
           }
           localStorage.setItem('userData', JSON.stringify(userData))
@@ -1525,9 +1530,9 @@ export default function DashboardPage() {
             hour: currentActiveUserMarriage.hour,
             minute: currentActiveUserMarriage.minute,
             area: {
-              province: currentActiveUserMarriage.area_province || currentActiveUserMarriage.area?.province,
-              city: currentActiveUserMarriage.area_city || currentActiveUserMarriage.area?.city,
-              district: currentActiveUserMarriage.area_district || currentActiveUserMarriage.area?.district
+              province: currentActiveUserMarriage.area_province || (currentActiveUserMarriage.area && currentActiveUserMarriage.area.province),
+              city: currentActiveUserMarriage.area_city || (currentActiveUserMarriage.area && currentActiveUserMarriage.area.city),
+              district: currentActiveUserMarriage.area_district || (currentActiveUserMarriage.area && currentActiveUserMarriage.area.district)
             }
           }
           localStorage.setItem('userData', JSON.stringify(userData))
@@ -1550,9 +1555,9 @@ export default function DashboardPage() {
             hour: currentActiveUserHealth.hour,
             minute: currentActiveUserHealth.minute,
             area: {
-              province: currentActiveUserHealth.area_province || currentActiveUserHealth.area?.province,
-              city: currentActiveUserHealth.area_city || currentActiveUserHealth.area?.city,
-              district: currentActiveUserHealth.area_district || currentActiveUserHealth.area?.district
+              province: currentActiveUserHealth.area_province || (currentActiveUserHealth.area && currentActiveUserHealth.area.province),
+              city: currentActiveUserHealth.area_city || (currentActiveUserHealth.area && currentActiveUserHealth.area.city),
+              district: currentActiveUserHealth.area_district || (currentActiveUserHealth.area && currentActiveUserHealth.area.district)
             }
           }
           localStorage.setItem('userData', JSON.stringify(userData))
@@ -1716,7 +1721,7 @@ export default function DashboardPage() {
                 <div className="max-w-4xl mx-auto">
                   <div className="flex justify-center items-center space-x-3 mb-3">
                     <h2 className="text-lg md:text-2xl font-medium text-gray-700">
-                      欢迎回来，{activeUser?.name || '用户'}道友
+                      欢迎回来，{activeUser && activeUser.name ? activeUser.name : '用户'}道友
                     </h2>
                     {/* 角色标签 */}
                     {userRole && (
@@ -1748,7 +1753,12 @@ export default function DashboardPage() {
 
                   {/* 哲学文案 */}
                   <h1 className="text-2xl md:text-4xl font-semibold text-gray-900 leading-relaxed tracking-wider mt-6 md:mt-8">
-                    人立于命 命行运中 命由心敕 心御乾坤
+                    <span className="md:hidden">
+                      人立于命 命行运中<br />命由心敕 心御乾坤
+                    </span>
+                    <span className="hidden md:inline">
+                      人立于命 命行运中 命由心敕 心御乾坤
+                    </span>
                   </h1>
                 </div>
               </div>
@@ -1829,9 +1839,23 @@ export default function DashboardPage() {
                       {/* 标题和副标题在右*/}
                       <div className="flex-1 text-left flex flex-col justify-center mt-4 md:mt-0">
                         <h3 className="font-medium text-xl mb-2 text-gray-900">
-                          {module.title}
+                          <span className="md:hidden">
+                            {(() => {
+                              const title = module.title
+                              if (title === '八字排盘') return <>八字<br />排盘</>
+                              if (title === '性格内观') return <>性格<br />内观</>
+                              if (title === '事业财富') return <>事业<br />财富</>
+                              if (title === '婚恋感情') return <>婚恋<br />感情</>
+                              if (title === '身体健康') return <>身体<br />健康</>
+                              if (title === '2026年运') return <>2026<br />年运</>
+                              return title
+                            })()}
+                          </span>
+                          <span className="hidden md:inline">
+                            {module.title}
+                          </span>
                         </h3>
-                        <p className="text-base leading-relaxed italic text-gray-500 hidden md:block">
+                        <p className="text-base leading-relaxed italic text-gray-500 hidden lg:block">
                           {module.subtitle}
                         </p>
                       </div>
@@ -1857,6 +1881,7 @@ export default function DashboardPage() {
   }
 
   return (
+    <CompatibilityErrorBoundary>
     <div className="h-screen bg-gray-100 flex flex-col overflow-hidden">
       {/* 移动端顶部导航栏 */}
       <div className="md:hidden bg-white shadow-sm border-b border-gray-200 p-4 flex-shrink-0">
@@ -1882,28 +1907,28 @@ export default function DashboardPage() {
             onClick={() => setUserSelectorVisible(true)}
           >
             <div className="flex-shrink-0 mt-1">
-              {allUsersBaziData[activeUser?.id]?.paipan?.dayPillar?.heavenly
+              {activeUser && allUsersBaziData[activeUser.id] && allUsersBaziData[activeUser.id].paipan && allUsersBaziData[activeUser.id].paipan.dayPillar && allUsersBaziData[activeUser.id].paipan.dayPillar.heavenly
                 ? getTianganIcon(allUsersBaziData[activeUser.id].paipan.dayPillar.heavenly, {
                     width: 28,
                     height: 28,
                     className: "text-green-600 md:block hidden"
                   })
                 : <div className="w-7 h-7 bg-green-100 rounded-full flex items-center justify-center md:block hidden">
-                    <span className="text-green-600 text-xs">{activeUser?.name ? activeUser.name.charAt(0) : ''}</span>
+                    <span className="text-green-600 text-xs">{activeUser && activeUser.name ? activeUser.name.charAt(0) : ''}</span>
                   </div>
               }
-              {allUsersBaziData[activeUser?.id]?.paipan?.dayPillar?.heavenly
+              {activeUser && allUsersBaziData[activeUser.id] && allUsersBaziData[activeUser.id].paipan && allUsersBaziData[activeUser.id].paipan.dayPillar && allUsersBaziData[activeUser.id].paipan.dayPillar.heavenly
                 ? getTianganIcon(allUsersBaziData[activeUser.id].paipan.dayPillar.heavenly, {
                     width: 32,
                     height: 32,
                     className: "text-green-600 md:hidden block"
                   })
                 : <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center md:hidden block">
-                    <span className="text-green-600 text-xs">{activeUser?.name ? activeUser.name.charAt(0) : ''}</span>
+                    <span className="text-green-600 text-xs">{activeUser && activeUser.name ? activeUser.name.charAt(0) : ''}</span>
                   </div>
               }
             </div>
-            <span className="text-sm text-gray-700 truncate max-w-16">{activeUser?.name || '用户'}</span>
+            <span className="text-sm text-gray-700 truncate max-w-16">{activeUser && activeUser.name ? activeUser.name : '用户'}</span>
             <DownOutlined className="text-xs text-gray-500" />
           </div>
         </div>
@@ -1911,7 +1936,7 @@ export default function DashboardPage() {
 
       <div className="flex flex-1 min-h-0">
         {/* 左侧导航栏*/}
-        <div className="w-48 bg-white shadow-sm border-r border-gray-200 flex flex-col hidden md:flex h-full overflow-hidden">
+        <div className="w-48 bg-white shadow-sm border-r border-gray-200 flex flex-col hidden md:flex h-screen overflow-y-auto">
         {/* Logo区域 */}
         <div className="p-4 border-b border-gray-100 text-center flex-shrink-0">
           <div className="flex flex-col items-center space-y-2">
@@ -1938,7 +1963,7 @@ export default function DashboardPage() {
                     })
                   : <GenIcon width={32} height={32} className="text-green-600" />
                 } */}
-              {allUsersBaziData[activeUser.id]?.paipan?.dayPillar?.heavenly
+              {activeUser && allUsersBaziData[activeUser.id] && allUsersBaziData[activeUser.id].paipan && allUsersBaziData[activeUser.id].paipan.dayPillar && allUsersBaziData[activeUser.id].paipan.dayPillar.heavenly
               ? getTianganIcon(allUsersBaziData[activeUser.id].paipan.dayPillar.heavenly, {
                 width: 32,
                 height: 32,
@@ -1951,7 +1976,7 @@ export default function DashboardPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center space-x-2">
-                  {allUsersBaziData[activeUser.id]?.paipan?.dayPillar?.heavenly
+                  {activeUser && allUsersBaziData[activeUser.id] && allUsersBaziData[activeUser.id].paipan && allUsersBaziData[activeUser.id].paipan.dayPillar && allUsersBaziData[activeUser.id].paipan.dayPillar.heavenly
                     ? <div className="text-base font-semibold text-gray-900">{activeUser.name}</div>
                     : <div className="w-[96px] h-[24px] bg-white rounded-md"></div>}
                   {/* 角色标签 */}
@@ -1974,7 +1999,7 @@ export default function DashboardPage() {
                     </Tooltip>
                   )} */}
                   </div>
-                  {allUsersBaziData[activeUser.id]?.paipan?.dayPillar?.heavenly
+                  {activeUser && allUsersBaziData[activeUser.id] && allUsersBaziData[activeUser.id].paipan && allUsersBaziData[activeUser.id].paipan.dayPillar && allUsersBaziData[activeUser.id].paipan.dayPillar.heavenly
                     ? <div className="text-xs text-gray-500">当前用户</div>
                     : <div className="w-[96px] h-[24px] bg-white rounded-md"></div>}
               </div>
@@ -1987,7 +2012,7 @@ export default function DashboardPage() {
               <div className="space-y-1 max-h-40 overflow-y-auto">
                 {getUserDisplayList().map((user: any, index: number) => {
                   const isMainUser = user.parent_id === null
-                  const isActive = activeUser?.id === user.id
+                  const isActive = activeUser && activeUser.id === user.id
 
                   return (
                     <div
@@ -1999,7 +2024,7 @@ export default function DashboardPage() {
                       <span className="text-gray-400 text-sm flex-shrink-0">└─</span>
                       {/* 统一图标处理 */}
                       <div className="flex-shrink-0">
-                        {allUsersBaziData[user.id]?.paipan?.dayPillar?.heavenly
+                        {allUsersBaziData[user.id] && allUsersBaziData[user.id].paipan && allUsersBaziData[user.id].paipan.dayPillar && allUsersBaziData[user.id].paipan.dayPillar.heavenly
                           ? getTianganIcon(allUsersBaziData[user.id].paipan.dayPillar.heavenly, {
                              width: 28,
                              height: 28,
@@ -2210,43 +2235,63 @@ export default function DashboardPage() {
       </div>
 
       {/* 主内容区*/}
-      <div className="flex-1 p-0.5 md:p-1 pb-24 md:pb-1 overflow-y-auto h-full min-h-0">
+      <div className={`flex-1 p-0.5 md:p-1 md:pb-1 overflow-y-auto h-full min-h-0 ${
+        (currentView === 'dashboard' || currentView === 'consultation')
+          ? 'pb-24'  // 为问道1v1按钮预留空间
+          : 'pb-1'   // 其他页面最小底部空间，最大化内容展示
+      }`}>
         <Suspense fallback={
-          <div className="flex items-center justify-center h-64">
-            <Spin size="large" />
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '16rem',
+            flexDirection: 'column'
+          }}>
+            <div style={{
+              width: '32px',
+              height: '32px',
+              border: '3px solid #f3f3f3',
+              borderTop: '3px solid #3498db',
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite'
+            }}></div>
+            <p style={{ marginTop: '16px', color: '#666' }}>加载中...</p>
           </div>
         }>
           {renderMainContent()}
         </Suspense>
       </div>
 
-      {/* 移动端底部问道1v1按钮 */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 flex-shrink-0">
-        <div className="relative">
-          {/* 选中状态下显示ons.png图片 */}
-          {currentView === 'consultation' && (
-            <div className="absolute inset-0 bg-cover bg-center bg-no-repeat rounded-lg opacity-60 z-10 pointer-events-none"
-                 style={{ 
-                   backgroundImage: 'url(/images/ons.png)',
-                   filter: 'brightness(1.2) contrast(1.3) saturate(1.5) hue-rotate(-10deg)'
-                 }}>
-            </div>
-          )}
-          <Button
-            type="primary"
-            block
-            size="large"
-            onClick={handleConsultation}
-            className={`border-none shadow-lg relative z-20 ${
-              currentView === 'consultation' 
-                ? 'bg-blue-600 hover:bg-blue-700' 
-                : 'bg-black hover:bg-gray-800'
-            }`}
-          >
-            <span className="font-medium tracking-wide text-white">问道1v1</span>
-          </Button>
+      {/* 移动端底部问道1v1按钮 - 只在dashboard和consultation视图显示 */}
+      {(currentView === 'dashboard' || currentView === 'consultation') && (
+        <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 flex-shrink-0">
+          <div className="relative">
+            {/* 选中状态下显示ons.png图片 */}
+            {currentView === 'consultation' && (
+              <div className="absolute inset-0 bg-cover bg-center bg-no-repeat rounded-lg opacity-60 z-10 pointer-events-none"
+                   style={{
+                     backgroundImage: 'url(/images/ons.png)',
+                     filter: 'brightness(1.2) contrast(1.3) saturate(1.5) hue-rotate(-10deg)'
+                   }}>
+              </div>
+            )}
+            <Button
+              type="primary"
+              block
+              size="large"
+              onClick={handleConsultation}
+              className={`border-none shadow-lg relative z-20 ${
+                currentView === 'consultation'
+                  ? 'bg-blue-600 hover:bg-blue-700'
+                  : 'bg-black hover:bg-gray-800'
+              }`}
+            >
+              <span className="font-medium tracking-wide text-white">问道1v1</span>
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 移动端用户选择器抽屉 */}
       <Drawer
@@ -2263,7 +2308,7 @@ export default function DashboardPage() {
             <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
               <div className="flex items-center space-x-3">
                 <div className="flex-shrink-0">
-                  {allUsersBaziData[activeUser.id]?.paipan?.dayPillar?.heavenly
+                  {activeUser && allUsersBaziData[activeUser.id] && allUsersBaziData[activeUser.id].paipan && allUsersBaziData[activeUser.id].paipan.dayPillar && allUsersBaziData[activeUser.id].paipan.dayPillar.heavenly
                     ? getTianganIcon(allUsersBaziData[activeUser.id].paipan.dayPillar.heavenly, {
                         width: 32,
                         height: 32,
@@ -2297,7 +2342,7 @@ export default function DashboardPage() {
                   }}
                 >
                   <div className="flex-shrink-0">
-                    {allUsersBaziData[user.id]?.paipan?.dayPillar?.heavenly
+                    {allUsersBaziData[user.id] && allUsersBaziData[user.id].paipan && allUsersBaziData[user.id].paipan.dayPillar && allUsersBaziData[user.id].paipan.dayPillar.heavenly
                       ? getTianganIcon(allUsersBaziData[user.id].paipan.dayPillar.heavenly, {
                           width: 32,
                           height: 32,
@@ -2342,5 +2387,6 @@ export default function DashboardPage() {
       </Drawer>
     </div>
     </div>
+    </CompatibilityErrorBoundary>
   )
 }

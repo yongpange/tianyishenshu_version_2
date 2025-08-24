@@ -111,13 +111,9 @@ export function showBackConfirmModal(
 ): void {
   Modal.confirm({
     title: '返回「命书」',
-    content: React.createElement('div', {}, [
-      React.createElement('p', { key: 'message' }, '检测到有对话正在生成中，返回会中断当前的AI回复流程。'),
-      React.createElement('p', {
-        key: 'tip',
-        className: 'text-gray-600 text-sm mt-2'
-      }, '💡 对话正在生成中，「返回命书」则打断对话流程。后续可在「对话历史」中查看，但会延迟5分钟显示。')
-    ]),
+    content: React.createElement('p', {
+      className: 'text-gray-600 text-sm'
+    }, '💡 对话正在生成中，「返回命书」则打断对话流程。后续可在「对话历史」中查看，但会延迟5分钟显示。'),
     okText: '返回「命书」',
     cancelText: '继续等待',
     okType: 'default',
