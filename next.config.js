@@ -21,6 +21,15 @@ const nextConfig = {
     // 移除console.log在生产环境中
     removeConsole: process.env.NODE_ENV === 'production',
   },
+  // URL重写规则 - 将生产环境URL映射到本地页面
+  async rewrites() {
+    return [
+      {
+        source: '/aboutus.html',
+        destination: '/about/company-intro',
+      },
+    ]
+  },
   // 实验性功能配置
   experimental: {
     // 确保更好的兼容性
