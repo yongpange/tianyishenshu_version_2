@@ -18,7 +18,6 @@ import {
   message
 } from 'antd'
 import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import {
   ArrowLeftOutlined,
   ArrowRightOutlined,
@@ -457,7 +456,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         status: result.status,
         taskId: result.taskId,
         hasReport: !!result.report,
-        reportContentLength: result.report?.content?.length || 0,
+        reportContentLength: result.report && result.report.content ? result.report.content.length : 0,
         reportUserId: reportUserId,
         isUserProfileId: isUserProfileId,
         apiEndpoint: moduleConfig.apiEndpoint,
@@ -639,7 +638,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       let chatMessages: ChatMessage[] = []
       if (messagesResult.success && messagesResult.messages) {
         chatMessages = messagesResult.messages.map((dbMsg: any) => ({
-          id: dbMsg.metadata?.frontend_id || dbMsg.id,
+          id: (dbMsg.metadata && dbMsg.metadata.frontend_id) || dbMsg.id,
           type: dbMsg.role === 'user' ? 'user' : 'bot',
           content: dbMsg.content,
           timestamp: new Date(dbMsg.created_at),
@@ -979,11 +978,11 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
   const updateConversationTitle = async (conversationId: string, messages: ChatMessage[], currentConversations: ConversationHistory[]) => {
     if (messages.length >= 1) {
       const currentConv = currentConversations.find(conv => conv.id === conversationId)
-      if (currentConv?.isManualTitle) {
+      if (currentConv && currentConv.isManualTitle) {
         return
       }
 
-      if (currentConv?.title && currentConv.title !== '新对话') {
+      if (currentConv && currentConv.title && currentConv.title !== '新对话') {
         return
       }
 
@@ -1007,7 +1006,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       setConversations(updatedConversations)
       localStorage.setItem(`${moduleConfig.moduleId}_conversations`, JSON.stringify(updatedConversations))
 
-      if (currentConv?.dbConversationId) {
+      if (currentConv && currentConv.dbConversationId) {
         const updateDatabase = async () => {
           try {
             const updateResponse = await fetch('/api/conversations/update', {
@@ -1042,7 +1041,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
   const pinConversation = async (conversationId: string) => {
     try {
       const conversation = conversations.find(conv => conv.id === conversationId)
-      if (!conversation?.dbConversationId) {
+      if (!conversation || !conversation.dbConversationId) {
         message.error('操作失败：对话信息错误')
         return
       }
@@ -1099,7 +1098,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
 
     try {
       const conversation = conversations.find(conv => conv.id === renamingConversationId)
-      if (!conversation?.dbConversationId) {
+      if (!conversation || !conversation.dbConversationId) {
         message.error('重命名失败：对话信息错误')
         return
       }
@@ -1180,7 +1179,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
             if (conversationToDelete.dbConversationId) {
               try {
                 const activeUser = getActiveUser()
-                if (!activeUser?.id) {
+                if (!activeUser || !activeUser.id) {
                   return
                 }
 
@@ -1247,7 +1246,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       alert('用户信息缺失，请先完善个人信息')
       return
     }
-    if (!activeUser?.id) {
+    if (!activeUser || !activeUser.id) {
       alert('无法获取用户信息，请重新登录')
       return
     }
@@ -1323,7 +1322,8 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
     }
 
     // 立即显示用户消息并更新标题
-    const isFirstMessageInNewConversation = workingConversations.find(conv => conv.id === currentActiveConversationId)?.messages.length === 0
+    const currentConversation = workingConversations.find(conv => conv.id === currentActiveConversationId)
+    const isFirstMessageInNewConversation = currentConversation && currentConversation.messages.length === 0
     
     let newTitle = ''
     if (isFirstMessageInNewConversation) {
@@ -1358,7 +1358,10 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       currentActiveConversationId,
       userMessage,
       finalConversationsLength: finalConversations.length,
-      currentConvMessages: finalConversations.find(c => c.id === currentActiveConversationId)?.messages.length
+      currentConvMessages: (() => {
+        const conv = finalConversations.find(c => c.id === currentActiveConversationId)
+        return conv ? conv.messages.length : 0
+      })()
     })
     
     devLog.log('🔥 准备原子性状态更新:', {
@@ -2148,7 +2151,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
   const updateUserChatCredits = async () => {
     try {
       const activeUser = getActiveUser()
-      if (!activeUser?.id) {
+      if (!activeUser || !activeUser.id) {
         return
       }
 
@@ -2220,7 +2223,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
   const getCurrentModuleReport = async () => {
     try {
       const activeUser = getActiveUser()
-      if (!activeUser?.id) {
+      if (!activeUser || !activeUser.id) {
         return null
       }
 
@@ -2435,7 +2438,8 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
     processedContent = processedContent.replace(/(\d+\.)\s{2,}(\*\*[^*]+\*\*)/g, '$1$2')
     
     // 修正三：在破折号列表前添加换行（排除连续破折号和数字范围等情况）
-    processedContent = processedContent.replace(/([^\s\n\d])\s*(?<!-|、)-(?!-|\d)\s+([^-、\n])/g, '$1\n- $2')
+    // 使用兼容的正则表达式，避免后视断言
+    processedContent = processedContent.replace(/([^\s\n\d\-、])\s*-(?!-|\d)\s+([^-、\n])/g, '$1\n- $2')
     
     // 清理多余的空行
     processedContent = processedContent.replace(/\n\s*\n\s*\n/g, '\n\n')
@@ -2538,7 +2542,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       processedParagraph = processedParagraph.replace(/(\d+\.)\s*\n+\s*(\*\*[^*]+\*\*)/g, '$1 $2')
       
       // 修正三：在破折号前添加换行 "xxx- yyy" -> "xxx\n- yyy"（排除中文顿号）
-      processedParagraph = processedParagraph.replace(/([^\s\n])(?<!、)-\s+([^-、])/g, '$1\n- $2')
+      processedParagraph = processedParagraph.replace(/([^\s\n、])-\s+([^-、])/g, '$1\n- $2')
       
       // 按标点符号分割句子
       const sentences = processedParagraph.split(/[。；！？]/).map(s => s.trim()).filter(s => s.length > 0)
@@ -2566,7 +2570,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
         
         // 再次应用格式修正，确保在重组后仍然正确
         rebuiltParagraph = rebuiltParagraph.replace(/(\d+\.)\s*\n+\s*(\*\*[^*]+\*\*)/g, '$1 $2')
-        rebuiltParagraph = rebuiltParagraph.replace(/([^\s\n])(?<!、)-\s+([^-、])/g, '$1\n- $2')
+        rebuiltParagraph = rebuiltParagraph.replace(/([^\s\n、])-\s+([^-、])/g, '$1\n- $2')
         
         if (rebuiltParagraph.trim()) {
           finalParagraphs.push(rebuiltParagraph)
@@ -2585,7 +2589,7 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
     finalResult = finalResult.replace(/(\d+\.)\s*\n+\s*([^\n]+)/g, '$1 $2')
     
     // 修正三：在破折号列表前添加换行（排除中文顿号）
-    finalResult = finalResult.replace(/([^\s\n])(?<!、)\s*-\s+([^-、\n])/g, '$1\n- $2')
+    finalResult = finalResult.replace(/([^\s\n、])\s*-\s+([^-、\n])/g, '$1\n- $2')
     
     // 清理多余的空行
     finalResult = finalResult.replace(/\n\s*\n\s*\n/g, '\n\n')
@@ -3144,7 +3148,6 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
               ) : reportContent ? (
                 <div className="prose prose-gray max-w-none">
                   <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
                     components={{
                       h1: ({ children }) => <h1 className="text-2xl font-bold text-gray-900 mb-4">{children}</h1>,
                       h2: ({ children }) => <h2 className="text-xl font-semibold text-gray-900 mb-3 mt-6">{children}</h2>,
@@ -3395,7 +3398,6 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                         return (
                           <div className="bg-gray-100 text-gray-900 rounded-lg p-4">
                             <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
                               components={{
                                 p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
                                 strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
@@ -3424,7 +3426,6 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
                       // 👤 User消息渲染逻辑
                       <div className="bg-gray-100 text-gray-900 rounded-lg p-4">
                         <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
                           components={{
                             p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
                             strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
