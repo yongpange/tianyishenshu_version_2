@@ -25,6 +25,24 @@ export default function HomePage() {
               <TianIcon width={32} height={32} className="text-black" />
               <span className="text-xl font-bold text-black">天乙神算</span>
             </div>
+
+            {/* 中间导航菜单 */}
+            <div className="hidden md:flex items-center space-x-8">
+              <Link href="/">
+                <button className="text-black font-semibold relative pb-1 border-b-2 border-black">
+                  主页
+                </button>
+              </Link>
+              <button className="text-gray-700 font-medium relative pb-1">
+                产品
+              </button>
+              <Link href="/about">
+                <button className="text-gray-700 hover:text-black transition-colors duration-200 font-medium relative pb-1 hover:border-b-2 hover:border-black">
+                  关于我们
+                </button>
+              </Link>
+            </div>
+
             <div className="flex items-center space-x-4">
               <Link href="/login">
                 <button className="btn-secondary text-sm px-6 py-2">
