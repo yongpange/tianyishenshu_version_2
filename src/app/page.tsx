@@ -143,7 +143,11 @@ export default function HomePage() {
             <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
               <div className="text-sm text-gray-400 text-center md:text-left">
                 <p>© 2025 昆仑墟（上海）网络科技有限公司 版权所有</p>
-                <p>沪ICP备2025131650号-1</p>
+                <p>
+                  <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                    沪ICP备2025131650号-2
+                  </a>
+                </p>
               </div>
               <div className="flex space-x-4 text-sm">
                 <Link href="/privacy-policy" className="text-gray-400 hover:text-white transition-colors">
