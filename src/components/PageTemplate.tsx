@@ -2256,6 +2256,14 @@ export default function PageTemplate({ moduleConfig }: PageTemplateProps) {
       // 第一次聊天的完整提示词模板
       let promptContent = '# 请直接调用工作流分析，以下为输入信息：\n\n'
       
+      // 获取用户性别信息
+      const activeUser = getActiveUser()
+      if (activeUser && activeUser.gender) {
+        const genderText = activeUser.gender === 'male' ? '男' : '女'
+        promptContent += `## 用户性别（user_profiles表中获取）\n`
+        promptContent += `性别：${genderText}\n\n`
+      }
+      
       // 获取八字信息
       const astrologyContext = await getUserAstrologyContext()
       if (astrologyContext) {
