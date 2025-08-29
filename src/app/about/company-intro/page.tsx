@@ -1,7 +1,12 @@
-'use client'
-
 import Link from 'next/link'
 import TianIcon from '@/components/icons/TianIcon'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = {
+  title: '关于天乙神算 - 天乙神算官网',
+  description: '天乙神算，八字命理AI测算平台，于2025年春季正式发布上线，是一家以东方术数体系为根基、人工智能技术为引擎的创新型企业。',
+  keywords: '天乙神算, 关于天乙神算, 公司介绍, 八字命理AI, 东方术数, 人工智能技术, 创新型企业',
+}
 
 export default function CompanyIntroPage() {
   return (

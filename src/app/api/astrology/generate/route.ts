@@ -58,7 +58,7 @@ function extractCityName(fullLocationName: string): string {
     }
     
     // 优先级2：如果是xxxx州xxxx市或xxxx州xxxx县格式，取最后的市或县
-    const stateMatch = cleanName.match(/州([^州]*[市县])/)
+    const stateMatch = cleanName.match(/自治州([^自治州]*[市县])/)
     if (stateMatch) {
       console.log(`🏛️ 检测到州级单位下的市/县: ${stateMatch[1]}`)
       return stateMatch[1]
