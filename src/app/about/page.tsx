@@ -68,7 +68,7 @@ export default function AboutPage() {
                     />
                   </div>
                   <div className="flex-1">
-                    <h2 className="text-xl font-semibold text-gray-800 hover:text-black transition-colors duration-200 underline hover:no-underline">
+                    <h2 className="text-xl font-semibold text-gray-800 hover:text-black transition-colors duration-200 no-underline hover:underline">
                       公司简介：天乙神算正式上线发布！
                     </h2>
                   </div>
@@ -86,7 +86,7 @@ export default function AboutPage() {
                     />
                   </div>
                   <div className="flex-1">
-                    <h2 className="text-xl font-semibold text-gray-800 hover:text-black transition-colors duration-200 underline hover:no-underline">
+                    <h2 className="text-xl font-semibold text-gray-800 hover:text-black transition-colors duration-200 no-underline hover:underline">
                       使用反馈：感谢小伙伴们的支持和建议！
                     </h2>
                   </div>

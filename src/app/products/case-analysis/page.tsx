@@ -82,7 +82,7 @@ export default function CaseAnalysisPage() {
                     />
                   </div>
                   <div className="flex-1">
-                    <h2 className="text-xl font-semibold text-gray-800 hover:text-black transition-colors duration-200 underline hover:no-underline">
+                    <h2 className="text-xl font-semibold text-gray-800 hover:text-black transition-colors duration-200 no-underline hover:underline">
                       命稿案例—刘强东
                     </h2>
                   </div>
@@ -100,7 +100,7 @@ export default function CaseAnalysisPage() {
                     />
                   </div>
                   <div className="flex-1">
-                    <h2 className="text-xl font-semibold text-gray-800 hover:text-black transition-colors duration-200 underline hover:no-underline">
+                    <h2 className="text-xl font-semibold text-gray-800 hover:text-black transition-colors duration-200 no-underline hover:underline">
                       命稿案例—刘涛
                     </h2>
                   </div>
