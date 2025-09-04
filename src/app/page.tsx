@@ -33,9 +33,11 @@ export default function HomePage() {
                   主页
                 </button>
               </Link>
-              <button className="text-gray-700 font-medium relative pb-1">
-                产品
-              </button>
+              <Link href="/products">
+                <button className="text-gray-700 hover:text-black transition-colors duration-200 font-medium relative pb-1 hover:border-b-2 hover:border-black">
+                  产品
+                </button>
+              </Link>
               <Link href="/about">
                 <button className="text-gray-700 hover:text-black transition-colors duration-200 font-medium relative pb-1 hover:border-b-2 hover:border-black">
                   关于我们

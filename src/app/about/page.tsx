@@ -22,9 +22,11 @@ export default function AboutPage() {
                   主页
                 </button>
               </Link>
-              <button className="text-gray-700 font-medium relative pb-1">
-                产品
-              </button>
+              <Link href="/products">
+                <button className="text-gray-700 hover:text-black transition-colors duration-200 font-medium relative pb-1 hover:border-b-2 hover:border-black">
+                  产品
+                </button>
+              </Link>
               <Link href="/about">
                 <button className="text-black font-semibold relative pb-1 border-b-2 border-black">
                   关于我们
@@ -74,20 +76,22 @@ export default function AboutPage() {
               </Link>
 
               {/* 第二行：使用反馈 */}
-              <div className="flex items-center space-x-8 bg-white rounded-lg m-2">
-                <div className="flex-shrink-0">
-                  <img
-                    src="/images/about/user-feedback.jpg"
-                    alt="使用反馈"
-                    className="w-20 h-20 object-cover rounded-lg"
-                  />
+              <Link href="/about/user-feedback">
+                <div className="flex items-center space-x-8 bg-white rounded-lg m-2 hover:shadow-lg transition-shadow duration-300 cursor-pointer">
+                  <div className="flex-shrink-0">
+                    <img
+                      src="/images/about/user-feedback.jpg"
+                      alt="使用反馈"
+                      className="w-20 h-20 object-cover rounded-lg"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <h2 className="text-xl font-semibold text-gray-800 hover:text-black transition-colors duration-200 underline hover:no-underline">
+                      使用反馈：感谢小伙伴们的支持和建议！
+                    </h2>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <h2 className="text-xl font-semibold text-gray-800">
-                    使用反馈：感谢小伙伴们的支持和建议！
-                  </h2>
-                </div>
-              </div>
+              </Link>
 
             </div>
           </div>
