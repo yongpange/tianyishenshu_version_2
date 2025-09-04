@@ -112,6 +112,46 @@ export default function BaziDestinyPage() {
                 </div>
               </section>
 
+              {/* 案例解析 */}
+              <section>
+                <h2 className="text-2xl font-bold text-black mb-4">【案例解析】</h2>
+                <div className="space-y-4">
+                  <Link href="/products/case-liuqiangdong">
+                    <div className="flex items-center space-x-4 bg-white p-4 rounded-lg hover:shadow-md transition-shadow duration-200 cursor-pointer border border-gray-200">
+                      <div className="flex-shrink-0">
+                        <img
+                          src="/images/products/case-liuqiangdong.jpg"
+                          alt="刘强东案例"
+                          className="w-16 h-16 object-cover rounded-lg"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-gray-800 hover:text-black transition-colors duration-200 no-underline hover:underline">
+                          命稿案例—刘强东
+                        </h3>
+                      </div>
+                    </div>
+                  </Link>
+
+                  <Link href="/products/case-liutao">
+                    <div className="flex items-center space-x-4 bg-white p-4 rounded-lg hover:shadow-md transition-shadow duration-200 cursor-pointer border border-gray-200">
+                      <div className="flex-shrink-0">
+                        <img
+                          src="/images/products/case-liutao.jpg"
+                          alt="刘涛案例"
+                          className="w-16 h-16 object-cover rounded-lg"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-gray-800 hover:text-black transition-colors duration-200 no-underline hover:underline">
+                          命稿案例—刘涛
+                        </h3>
+                      </div>
+                    </div>
+                  </Link>
+                </div>
+              </section>
+
             </div>
 
             {/* 返回按钮 */}
