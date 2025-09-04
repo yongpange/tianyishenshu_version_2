@@ -49,7 +49,7 @@ export default function ProductPricingPage() {
                   </p>
                 </div>
 
-                <div className="bg-gray-50 p-6 rounded-lg mb-6">
+                <div className="bg-gray-50 py-6 pr-6 pl-0 rounded-lg mb-6">
                   <p className="text-lg font-semibold text-black">年度会员包含：5项专项报告+50次深度对话</p>
                 </div>
 
@@ -77,7 +77,7 @@ export default function ProductPricingPage() {
                 
                 <div className="space-y-4">
                   <p className="mb-4">
-                    <span className="font-semibold text-black">【普通版】</span>
+                    <span className="font-semibold text-black">【用户版】</span>
                     面向没有八字基础的小伙伴们，专业词汇很少，直接进行分析；
                   </p>
 
@@ -119,40 +119,45 @@ export default function ProductPricingPage() {
       {/* Footer */}
       <footer className="bg-gray-50 py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row md:justify-between md:items-center">
-            {/* 左侧空白区域，用于平衡布局 */}
+          <div className="flex flex-col md:flex-row md:items-center">
+            {/* 左侧空白区域，保持不变 */}
             <div className="hidden md:block md:w-1/3"></div>
 
-            {/* 中间品牌信息 */}
-            <div className="text-center md:w-1/3 mb-6 md:mb-0">
-              <div className="flex items-center justify-center space-x-2 mb-4">
-                <TianIcon width={24} height={24} className="text-black" />
-                <span className="text-lg font-bold text-black">天乙神算</span>
-              </div>
-              <p className="text-gray-600">
-                © 2024 天乙神算. 保留所有权利.
-              </p>
-            </div>
-
-            {/* 右侧客服入口 */}
-            <div className="text-center md:text-right md:w-1/3">
-              <h3 className="text-lg font-semibold mb-4">请联系下方微信客服~</h3>
-              <div className="flex justify-center md:justify-end space-x-4">
+            {/* 中间和右侧容器组合，整体居中 */}
+            <div className="flex-1 flex justify-center">
+              <div className="flex flex-col md:flex-row items-center md:items-start space-y-6 md:space-y-0 md:space-x-12">
+                {/* 中间品牌信息 */}
                 <div className="text-center">
-                  <img
-                    src="/images/wechat-qr-1.jpg"
-                    alt="客服微信1"
-                    className="w-20 h-20 mx-auto mb-2"
-                  />
-                  <p className="text-xs text-gray-400">芷暄师妹</p>
+                  <div className="flex items-center justify-center space-x-2 mb-4">
+                    <TianIcon width={24} height={24} className="text-black" />
+                    <span className="text-lg font-bold text-black">天乙神算</span>
+                  </div>
+                  <p className="text-gray-600">
+                    © 2024 天乙神算. 保留所有权利.
+                  </p>
                 </div>
+
+                {/* 右侧客服入口 */}
                 <div className="text-center">
-                  <img
-                    src="/images/wechat-qr-2.jpg"
-                    alt="客服微信2"
-                    className="w-20 h-20 mx-auto mb-2"
-                  />
-                  <p className="text-xs text-gray-400">丁火师妹</p>
+                  <h3 className="text-lg font-semibold mb-4">请联系下方微信客服~</h3>
+                  <div className="flex justify-center space-x-4">
+                    <div className="text-center">
+                      <img
+                        src="/images/wechat-qr-1.jpg"
+                        alt="客服微信1"
+                        className="w-20 h-20 mx-auto mb-2"
+                      />
+                      <p className="text-xs text-gray-400">芷暄师妹</p>
+                    </div>
+                    <div className="text-center">
+                      <img
+                        src="/images/wechat-qr-2.jpg"
+                        alt="客服微信2"
+                        className="w-20 h-20 mx-auto mb-2"
+                      />
+                      <p className="text-xs text-gray-400">丁火师妹</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
