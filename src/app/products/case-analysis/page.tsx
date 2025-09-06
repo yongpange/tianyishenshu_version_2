@@ -130,7 +130,7 @@ export default function CaseAnalysisPage() {
             <span className="text-lg font-bold text-black">天乙神算</span>
           </div>
           <p className="text-gray-600">
-            © 2024 天乙神算. 保留所有权利.
+            © 2025 天乙神算. 保留所有权利.
           </p>
         </div>
       </footer>
