@@ -2368,7 +2368,7 @@ export default function DashboardPage() {
             className="flex items-center space-x-3 p-3 rounded-lg border-2 border-dashed border-gray-300 cursor-pointer hover:border-gray-400 hover:bg-gray-50 transition-colors"
             onClick={() => {
               if (isAdmin || isVip) {
-                router.push('/profile?mode=add')
+                setCurrentView('add-user')
                 setUserSelectorVisible(false)
               } else {
                 message.info('请开通VIP权限')
