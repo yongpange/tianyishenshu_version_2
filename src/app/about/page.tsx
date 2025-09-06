@@ -102,9 +102,9 @@ export default function AboutPage() {
       <footer className="bg-gray-50 py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-center">
-            <div className="flex flex-col md:flex-row items-center md:items-start space-y-6 md:space-y-0 md:space-x-12">
+            <div className="flex flex-col md:flex-row items-center md:items-start space-y-6 md:space-y-0">
               {/* 天乙神算品牌信息 */}
-              <div className="text-center">
+              <div className="text-center" style={{ marginRight: '120px' }}>
                 <div className="flex items-center justify-center space-x-2 mb-4">
                   <TianIcon width={24} height={24} className="text-black" />
                   <span className="text-lg font-bold text-black">天乙神算</span>
@@ -115,8 +115,8 @@ export default function AboutPage() {
               </div>
 
               {/* 微信客服入口 */}
-              <div className="text-center relative">
-                {/* 跳动箭头 - 位于h3上方 */}
+              <div className="text-center relative" style={{ marginLeft: '160px' }}>
+                {/* 跳动箭头 - 位于容器上方 */}
                 <div className="absolute -top-16 left-1/2 transform -translate-x-1/2">
                   <div className="arrow-bounce">
                     <svg width="60" height="60" viewBox="0 0 24 24" className="text-black">
@@ -124,7 +124,6 @@ export default function AboutPage() {
                     </svg>
                   </div>
                 </div>
-                <h3 className="text-lg font-semibold mb-4">请联系下方微信客服~</h3>
                 <div className="flex justify-center space-x-4">
                   <div className="text-center">
                     <img
