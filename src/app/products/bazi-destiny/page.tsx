@@ -20,7 +20,7 @@ export default function BaziDestinyPage() {
             {/* 标题 */}
             <header className="mb-8">
               <h1 className="text-3xl md:text-4xl font-bold text-black mb-8 text-center tracking-widest">
-                八字命理—产品介绍
+                八字命理—【命书】介绍
               </h1>
             </header>
 
@@ -41,7 +41,7 @@ export default function BaziDestinyPage() {
                 <div className="mb-6">
                   <h2 className="text-2xl font-bold text-black mb-4">【命书】</h2>
                   <p>
-                    是核心频道，包括了八字命理分析的核心主题，包括性格内观、事业发展、商业财富、婚恋感情、身体健康这五个专项主题。
+                    命书是年度 vip 会员的核心频道，以八字命理为核心理法进行分析论述，包括性格内观事业发展、商业财富、婚恋感情、身体健康这五个专项主题。
                   </p>
                 </div>
               </section>

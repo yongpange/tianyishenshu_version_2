@@ -99,18 +99,7 @@ export default function ProductPricingPage() {
               </Link>
             </div>
 
-            {/* 跳动箭头 - 指向客服入口 */}
-            <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="absolute right-4 sm:right-6 lg:right-8 top-8">
-                <div className="flex justify-end">
-                  <div className="arrow-bounce">
-                    <svg width="60" height="60" viewBox="0 0 24 24" className="text-black">
-                      <path d="M12 16l-6-6h12l-6 6z" fill="currentColor"/>
-                    </svg>
-                  </div>
-                </div>
-              </div>
-            </div>
+
 
           </div>
         </article>
@@ -119,44 +108,46 @@ export default function ProductPricingPage() {
       {/* Footer */}
       <footer className="bg-gray-50 py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row md:items-center">
-            {/* 左侧空白区域，保持不变 */}
-            <div className="hidden md:block md:w-1/3"></div>
-
-            {/* 中间和右侧容器组合，整体居中 */}
-            <div className="flex-1 flex justify-center">
-              <div className="flex flex-col md:flex-row items-center md:items-start space-y-6 md:space-y-0 md:space-x-12">
-                {/* 中间品牌信息 */}
-                <div className="text-center">
-                  <div className="flex items-center justify-center space-x-2 mb-4">
-                    <TianIcon width={24} height={24} className="text-black" />
-                    <span className="text-lg font-bold text-black">天乙神算</span>
-                  </div>
-                  <p className="text-gray-600">
-                    © 2024 天乙神算. 保留所有权利.
-                  </p>
+          <div className="flex justify-center">
+            <div className="flex flex-col md:flex-row items-center md:items-start space-y-6 md:space-y-0 md:space-x-12">
+              {/* 天乙神算品牌信息 */}
+              <div className="text-center">
+                <div className="flex items-center justify-center space-x-2 mb-4">
+                  <TianIcon width={24} height={24} className="text-black" />
+                  <span className="text-lg font-bold text-black">天乙神算</span>
                 </div>
+                <p className="text-gray-600">
+                  © 2024 天乙神算. 保留所有权利.
+                </p>
+              </div>
 
-                {/* 右侧客服入口 */}
-                <div className="text-center">
-                  <h3 className="text-lg font-semibold mb-4">请联系下方微信客服~</h3>
-                  <div className="flex justify-center space-x-4">
-                    <div className="text-center">
-                      <img
-                        src="/images/wechat-qr-1.jpg"
-                        alt="客服微信1"
-                        className="w-20 h-20 mx-auto mb-2"
-                      />
-                      <p className="text-xs text-gray-400">芷暄师妹</p>
-                    </div>
-                    <div className="text-center">
-                      <img
-                        src="/images/wechat-qr-2.jpg"
-                        alt="客服微信2"
-                        className="w-20 h-20 mx-auto mb-2"
-                      />
-                      <p className="text-xs text-gray-400">丁火师妹</p>
-                    </div>
+              {/* 微信客服入口 */}
+              <div className="text-center relative">
+                {/* 跳动箭头 - 位于h3上方 */}
+                <div className="absolute -top-16 left-1/2 transform -translate-x-1/2">
+                  <div className="arrow-bounce">
+                    <svg width="60" height="60" viewBox="0 0 24 24" className="text-black">
+                      <path d="M12 16l-6-6h12l-6 6z" fill="currentColor"/>
+                    </svg>
+                  </div>
+                </div>
+                <h3 className="text-lg font-semibold mb-4">请联系下方微信客服~</h3>
+                <div className="flex justify-center space-x-4">
+                  <div className="text-center">
+                    <img
+                      src="/images/wechat-qr-1.jpg"
+                      alt="客服微信1"
+                      className="w-20 h-20 mx-auto mb-2"
+                    />
+                    <p className="text-xs text-gray-400">芷暄师妹</p>
+                  </div>
+                  <div className="text-center">
+                    <img
+                      src="/images/wechat-qr-2.jpg"
+                      alt="客服微信2"
+                      className="w-20 h-20 mx-auto mb-2"
+                    />
+                    <p className="text-xs text-gray-400">丁火师妹</p>
                   </div>
                 </div>
               </div>
