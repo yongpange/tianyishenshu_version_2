@@ -24,6 +24,7 @@ import {
 import { CheckCircleFilled, LoadingOutlined, CalendarOutlined } from '@ant-design/icons'
 import { AuthGuard } from '@/components/AuthGuard'
 import { devLog } from '@/utils/dev-logger'
+import ConfirmSubmitModal from '@/components/ConfirmSubmitModal'
 import TianIcon from '@/components/icons/TianIcon'
 
 // 动态导入地区选择器，避免 SSR 问题
@@ -81,6 +82,8 @@ function ProfilePageContent() {
   const [showLunarModal, setShowLunarModal] = useState(false)
   const [isAddingNewUser, setIsAddingNewUser] = useState(false)
   const [inviteCode, setInviteCode] = useState('')
+  const [showConfirmModal, setShowConfirmModal] = useState(false)
+  const [pendingFormData, setPendingFormData] = useState<ProfileFormData | null>(null)
   const [lunarDate, setLunarDate] = useState({
     year: undefined as number | undefined,
     month: undefined as number | undefined,
@@ -418,11 +421,20 @@ function ProfilePageContent() {
     setProgress(progress)
   }
 
-  // 表单提交
+  // 表单提交 - 先显示确认模态框
   const onSubmit = async (data: ProfileFormData) => {
+    setPendingFormData(data)
+    setShowConfirmModal(true)
+  }
+
+  // 实际的提交逻辑
+  const handleConfirmSubmit = async () => {
+    if (!pendingFormData) return
+
     try {
       setLoading(true)
       setShowProgress(true)
+      setShowConfirmModal(false)
 
       // 第一阶段：验证和准备数据 (0-20%)
       updateProgressStep(GenerationStep.ANALYZING, 10)
@@ -444,24 +456,24 @@ function ProfilePageContent() {
         devLog.log('🔧 新增用户：将用户资料保存到当前登录用户下')
       }
 
-      devLog.log('📝 提交表单数据:', data)
+      devLog.log('📝 提交表单数据:', pendingFormData)
 
       // 保存到 localStorage (仅普通用户模式)
       if (!isAddingNewUser) {
-        localStorage.setItem('userData', JSON.stringify(data))
+        localStorage.setItem('userData', JSON.stringify(pendingFormData))
       }
       updateProgressStep(GenerationStep.ANALYZING, 20)
 
       // 转换为 UserInfo 格式
       const userInfo = {
-        name: data.nickname,
-        gender: data.gender === '男' ? 'male' : data.gender === '女' ? 'female' : data.gender,
-        year: data.year,
-        month: data.month,
-        day: data.day,
-        hour: data.hour,
-        minute: data.minute,
-        area: data.area
+        name: pendingFormData.nickname,
+        gender: pendingFormData.gender === '男' ? 'male' : pendingFormData.gender === '女' ? 'female' : pendingFormData.gender,
+        year: pendingFormData.year,
+        month: pendingFormData.month,
+        day: pendingFormData.day,
+        hour: pendingFormData.hour,
+        minute: pendingFormData.minute,
+        area: pendingFormData.area
       }
 
       // 第二阶段：保存用户资料 (20-40%)
@@ -554,6 +566,12 @@ function ProfilePageContent() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // 取消确认提交
+  const handleCancelConfirm = () => {
+    setShowConfirmModal(false)
+    setPendingFormData(null)
   }
 
   return (
@@ -917,6 +935,14 @@ function ProfilePageContent() {
 
           </div>
         </Modal>
+
+        {/* 确认提交模态框 */}
+        <ConfirmSubmitModal
+          visible={showConfirmModal}
+          onCancel={handleCancelConfirm}
+          onConfirm={handleConfirmSubmit}
+          loading={loading}
+        />
       </Card>
     </div>
   )
