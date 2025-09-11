@@ -240,38 +240,78 @@ export default function InviteCodesManagement() {
 
   const handleDeleteCode = async (id: string, record?: InviteCode) => {
     try {
-      // 使用级联删除API
+      // 确认删除对话框
+      const isUsedCode = record && record.status === 'used' && record.user_name
+      const confirmMessage = isUsedCode 
+        ? `确定要删除兑换码及关联的用户数据吗？\n用户: ${record.user_name}\n手机: ${record.user_phone || '未知'}\n\n⚠️ 此操作将删除用户的所有数据（对话、报告等），且不可恢复！`
+        : '确定要删除这个兑换码吗？'
+
+      const confirmed = window.confirm(confirmMessage)
+      if (!confirmed) {
+        return
+      }
+
+      console.log('🗑️ 开始删除兑换码:', id, '记录信息:', record)
+
+      // 使用事务化级联删除API
       const response = await fetch(`/api/invite-code/cascade-delete?id=${id}`, {
         method: 'DELETE'
       })
 
       if (response.ok) {
         const result = await response.json()
+        console.log('✅ 删除结果:', result)
+        
         if (result.success) {
           // 重新加载兑换码列表以获取最新数据
           await loadCodes()
-          message.success(result.message || '删除成功')
+          
+          // 显示详细的删除结果
+          if (result.deleted_items) {
+            const items = result.deleted_items
+            const deletedCount = Object.values(items).reduce((count: number, value) => {
+              if (typeof value === 'number') return count + value
+              if (typeof value === 'boolean' && value) return count + 1
+              return count
+            }, 0)
+            
+            message.success({
+              content: `${result.message || '删除成功'}\n共删除 ${deletedCount} 项相关数据`,
+              duration: 5
+            })
+          } else {
+            message.success(result.message || '删除成功')
+          }
           return
         } else {
           // 检查是否是主用户有子用户的情况
-          if (result.hasChildUsers) {
-            message.error(result.message)
+          if (result.has_child_users || result.hasChildUsers) {
+            message.error({
+              content: result.message,
+              duration: 8
+            })
             return
           }
-          throw new Error(result.message)
+          throw new Error(result.message || '删除失败')
         }
       } else {
         const errorResult = await response.json()
-        if (errorResult.hasChildUsers) {
-          message.error(errorResult.message)
+        if (errorResult.has_child_users || errorResult.hasChildUsers) {
+          message.error({
+            content: errorResult.message,
+            duration: 8
+          })
           return
         }
-        throw new Error(errorResult.message || '删除失败')
+        throw new Error(errorResult.message || `HTTP ${response.status}: 删除失败`)
       }
     } catch (error) {
-      devLog.error('删除兑换码失败:', error)
+      devLog.error('❌ 删除兑换码失败:', error)
       const errorMessage = error instanceof Error ? error.message : '删除失败，请重试'
-      message.error(errorMessage)
+      message.error({
+        content: `删除失败: ${errorMessage}`,
+        duration: 8
+      })
     }
   }
 
