@@ -97,19 +97,52 @@ export async function POST(request: NextRequest) {
       console.error('Report query error:', reportError)
     }
 
-    // 验证短信验证码
-    const smsVerifyResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/sms/verify`, {
+    // 验证短信验证码 - 使用内部API调用
+    console.log('🔍 开始验证短信验证码:', { phone: phone.slice(0, 3) + '****' + phone.slice(-4), code, type: 'login' })
+
+    // 构建内部API URL
+    const baseUrl = process.env.NEXTAUTH_URL || `http://localhost:3000`
+    const smsVerifyUrl = `${baseUrl}/api/sms/verify`
+
+    console.log('📡 调用短信验证API:', smsVerifyUrl)
+
+    const smsVerifyResponse = await fetch(smsVerifyUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phone, code, type: 'login' })
     })
 
     if (!smsVerifyResponse.ok) {
-      const smsError = await smsVerifyResponse.json()
-      return NextResponse.json(
-        { error: 'INVALID_CODE', message: smsError.message || '验证码错误' },
-        { status: 400 }
-      )
+      console.error('❌ 短信验证API调用失败:', {
+        status: smsVerifyResponse.status,
+        statusText: smsVerifyResponse.statusText,
+        url: smsVerifyUrl
+      })
+
+      try {
+        const smsError = await smsVerifyResponse.json()
+        console.error('❌ 短信验证错误详情:', smsError)
+        return NextResponse.json(
+          { error: 'INVALID_CODE', message: smsError.message || '验证码错误' },
+          { status: 400 }
+        )
+      } catch (parseError) {
+        console.error('❌ 解析短信验证响应失败:', parseError)
+        console.error('❌ 响应内容可能不是JSON格式')
+
+        // 尝试获取响应文本内容
+        try {
+          const responseText = await smsVerifyResponse.text()
+          console.error('❌ 实际响应内容:', responseText.substring(0, 200))
+        } catch (textError) {
+          console.error('❌ 无法获取响应文本:', textError)
+        }
+
+        return NextResponse.json(
+          { error: 'SMS_VERIFY_ERROR', message: '短信验证服务异常，请稍后重试' },
+          { status: 500 }
+        )
+      }
     }
 
     // 检查用户状态
