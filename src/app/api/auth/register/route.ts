@@ -69,22 +69,44 @@ export async function POST(request: NextRequest) {
     }
 
     // 验证短信验证码
-    const smsVerifyResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/sms/verify`, {
+    console.log('🔍 开始验证短信验证码:', { phone: phone.slice(0, 3) + '****' + phone.slice(-4), code, type: 'register' })
+
+    const baseUrl = process.env.NEXTAUTH_URL || `http://localhost:3000`
+    const smsVerifyUrl = `${baseUrl}/api/sms/verify`
+
+    const smsVerifyResponse = await fetch(smsVerifyUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phone, code, type: 'register' })
     })
 
     if (!smsVerifyResponse.ok) {
-      const smsError = await smsVerifyResponse.json()
-      return NextResponse.json(
-        { error: 'INVALID_CODE', message: smsError.message || '验证码错误' },
-        { status: 400 }
-      )
+      console.error('❌ 短信验证API调用失败:', {
+        status: smsVerifyResponse.status,
+        statusText: smsVerifyResponse.statusText,
+        url: smsVerifyUrl
+      })
+
+      try {
+        const smsError = await smsVerifyResponse.json()
+        return NextResponse.json(
+          { error: 'INVALID_CODE', message: smsError.message || '验证码错误' },
+          { status: 400 }
+        )
+      } catch (parseError) {
+        console.error('❌ 解析短信验证响应失败:', parseError)
+        return NextResponse.json(
+          { error: 'SMS_VERIFY_ERROR', message: '短信验证服务异常，请稍后重试' },
+          { status: 500 }
+        )
+      }
     }
 
     // 验证兑换码
-    const inviteVerifyResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/invite-code/verify`, {
+    console.log('🔍 开始验证兑换码:', { inviteCode: inviteCode.slice(0, 4) + '****' + inviteCode.slice(-4) })
+
+    const inviteVerifyUrl = `${baseUrl}/api/invite-code/verify`
+    const inviteVerifyResponse = await fetch(inviteVerifyUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code: inviteCode })
