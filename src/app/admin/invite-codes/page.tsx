@@ -29,6 +29,8 @@ import {
   SearchOutlined 
 } from '@ant-design/icons'
 import { devLog } from '@/utils/dev-logger'
+import { getAreaNameByCode, getAreaPath } from '@/utils/area-data'
+import SimpleAreaSelector from '@/components/SimpleAreaSelector'
 
 const { Header, Content } = Layout
 const { TextArea } = Input
@@ -52,6 +54,34 @@ interface InviteCode {
   user_profiles_id?: string // 添加精确的用户资料ID
 }
 
+// 用户资料详情类型
+interface UserProfileDetail {
+  id: string
+  name: string
+  gender: 'male' | 'female'
+  year: number
+  month: number
+  day: number
+  hour: number
+  minute: number
+  area_province: string
+  area_city: string
+  area_district: string
+  users?: {
+    phone_number: string
+  }
+}
+
+// 地区编码与名称
+interface AreaInfo {
+  provinceCode: string
+  cityCode: string
+  districtCode: string
+  provinceName: string
+  cityName: string
+  districtName: string
+}
+
 // 角色选项类型
 interface RoleOption {
   role_name: string
@@ -72,6 +102,14 @@ export default function InviteCodesManagement() {
   const [roleOptions, setRoleOptions] = useState<RoleOption[]>([])
   const [regenerateLoading, setRegenerateLoading] = useState<string>('')
   const [searchText, setSearchText] = useState<string>('')
+  // 用户信息编辑相关状态
+  const [userEditModalVisible, setUserEditModalVisible] = useState(false)
+  const [editingUserProfile, setEditingUserProfile] = useState<UserProfileDetail | null>(null)
+  const [userProfileLoading, setUserProfileLoading] = useState(false)
+  const [currentEditRecord, setCurrentEditRecord] = useState<InviteCode | null>(null)
+  // 地区相关状态
+  const [areaInfo, setAreaInfo] = useState<AreaInfo | null>(null)
+  const [areaSelectValue, setAreaSelectValue] = useState<{province?: string, city?: string, district?: string}>({})
   const router = useRouter()
 
   // 根据搜索文本过滤兑换码
@@ -442,6 +480,219 @@ export default function InviteCodesManagement() {
     })
   }
 
+  // 获取用户详细资料并转换地区编码
+  const fetchUserProfile = async (userProfileId: string): Promise<UserProfileDetail | null> => {
+    try {
+      setUserProfileLoading(true)
+      const response = await fetch(`/api/user-profiles/detail?id=${userProfileId}`)
+      
+      if (response.ok) {
+        const result = await response.json()
+        if (result.success) {
+          const profile = result.data
+          
+          // 转换地区编码为名称（如果需要的话）
+          await convertAreaCodesToNames(profile)
+          
+          return profile
+        }
+      }
+      
+      const errorResult = await response.json()
+      message.error(errorResult.message || '获取用户资料失败')
+      return null
+    } catch (error) {
+      devLog.error('获取用户资料失败:', error)
+      message.error('获取用户资料失败')
+      return null
+    } finally {
+      setUserProfileLoading(false)
+    }
+  }
+
+  // 转换地区编码为名称
+  const convertAreaCodesToNames = async (profile: UserProfileDetail) => {
+    try {
+      // 检查是否已经是名称格式（包含中文字符）
+      const isProvinceCode = /^\d+$/.test(profile.area_province)
+      const isCityCode = /^\d+$/.test(profile.area_city)
+      const isDistrictCode = /^\d+$/.test(profile.area_district)
+      
+      let provinceCode = profile.area_province
+      let cityCode = profile.area_city  
+      let districtCode = profile.area_district
+      
+      let provinceName = profile.area_province
+      let cityName = profile.area_city
+      let districtName = profile.area_district
+      
+      // 如果是编码格式，转换为名称
+      if (isProvinceCode) {
+        const name = await getAreaNameByCode(profile.area_province)
+        if (name) {
+          provinceName = name
+        }
+      } else {
+        // 如果是名称格式，可能需要反向查找编码（这里先保持原样）
+        provinceCode = profile.area_province
+      }
+      
+      if (isCityCode) {
+        const name = await getAreaNameByCode(profile.area_city)
+        if (name) {
+          cityName = name
+        }
+      } else {
+        cityCode = profile.area_city
+      }
+      
+      if (isDistrictCode) {
+        const name = await getAreaNameByCode(profile.area_district)
+        if (name) {
+          districtName = name
+        }
+      } else {
+        districtCode = profile.area_district
+      }
+      
+      // 设置地区信息
+      setAreaInfo({
+        provinceCode,
+        cityCode, 
+        districtCode,
+        provinceName,
+        cityName,
+        districtName
+      })
+      
+      // 设置地区选择器的值（使用编码）
+      setAreaSelectValue({
+        province: isProvinceCode ? provinceCode : undefined,
+        city: isCityCode ? cityCode : undefined,
+        district: isDistrictCode ? districtCode : undefined
+      })
+      
+      devLog.log('🌍 地区信息转换完成:', {
+        原始数据: { province: profile.area_province, city: profile.area_city, district: profile.area_district },
+        转换结果: { provinceName, cityName, districtName }
+      })
+      
+    } catch (error) {
+      devLog.error('转换地区编码失败:', error)
+    }
+  }
+
+  // 更新用户资料
+  const updateUserProfile = async (profileData: UserProfileDetail): Promise<boolean> => {
+    try {
+      setUserProfileLoading(true)
+      
+      // 如果使用了地区选择器，更新地区信息
+      if (areaSelectValue.province) {
+        profileData.area_province = areaSelectValue.province
+      }
+      if (areaSelectValue.city) {
+        profileData.area_city = areaSelectValue.city
+      }
+      if (areaSelectValue.district) {
+        profileData.area_district = areaSelectValue.district
+      }
+      
+      const response = await fetch(`/api/user-profiles/detail`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profileData)
+      })
+      
+      if (response.ok) {
+        const result = await response.json()
+        if (result.success) {
+          message.success('用户资料更新成功')
+          return true
+        }
+      }
+      
+      const errorResult = await response.json()
+      message.error(errorResult.message || '更新用户资料失败')
+      return false
+    } catch (error) {
+      devLog.error('更新用户资料失败:', error)
+      message.error('更新用户资料失败')
+      return false
+    } finally {
+      setUserProfileLoading(false)
+    }
+  }
+
+  // 处理八字排盘报告重新生成（修改版本）
+  const handleRegenerateAstrologyWithEdit = async (record: InviteCode) => {
+    if (!record.user_profiles_id || !record.user_name) {
+      message.error('该兑换码没有绑定用户信息或缺少用户资料ID')
+      return
+    }
+
+    // 获取用户详细信息
+    const userProfile = await fetchUserProfile(record.user_profiles_id)
+    if (!userProfile) {
+      return
+    }
+
+    // 设置编辑状态并打开弹窗
+    setCurrentEditRecord(record)
+    setEditingUserProfile(userProfile)
+    setUserEditModalVisible(true)
+  }
+
+  // 确认更新用户信息并重新生成八字报告
+  const handleConfirmUpdateAndRegenerate = async () => {
+    if (!editingUserProfile || !currentEditRecord) {
+      return
+    }
+
+    // 1. 先更新用户信息
+    const updateSuccess = await updateUserProfile(editingUserProfile)
+    if (!updateSuccess) {
+      return
+    }
+
+    // 2. 重新生成八字报告
+    setUserEditModalVisible(false)
+    
+    const loadingKey = `astrology_${currentEditRecord.id}`
+    setRegenerateLoading(loadingKey)
+    
+    try {
+      const response = await fetch(`/api/admin/regenerate-reports`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          reportType: 'astrology',
+          userProfileId: currentEditRecord.user_profiles_id,
+          singleUser: true,
+          adminToken: localStorage.getItem('admin_token')
+        })
+      })
+
+      const result = await response.json()
+      
+      if (result.success) {
+        message.success(`为用户 ${currentEditRecord.user_name} 重新生成八字排盘报告已启动`)
+      } else {
+        message.error(result.error || '重新生成失败')
+      }
+    } catch (error) {
+      devLog.error('重新生成报告失败:', error)
+      message.error('重新生成失败，请重试')
+    } finally {
+      setRegenerateLoading('')
+      // 清理状态
+      setEditingUserProfile(null)
+      setCurrentEditRecord(null)
+      setAreaInfo(null)
+      setAreaSelectValue({})
+    }
+  }
+
   const handleRegenerateReportForUser = async (record: InviteCode, reportType: string) => {
     if (!record.user_profiles_id || !record.user_name) {
       message.error('该兑换码没有绑定用户信息或缺少用户资料ID')
@@ -702,8 +953,8 @@ export default function InviteCodesManagement() {
                 type="primary"
                 loading={regenerateLoading === `astrology_${record.id}`}
                 disabled={regenerateLoading !== ''}
-                onClick={() => handleRegenerateReportForUser(record, 'astrology')}
-                title="重新生成八字排盘"
+                onClick={() => handleRegenerateAstrologyWithEdit(record)}
+                title="重新生成八字排盘（可编辑出生信息）"
               >
                 ☯️
               </Button>
@@ -1083,6 +1334,179 @@ export default function InviteCodesManagement() {
               </>
             )}
           </div>
+        </Modal>
+
+        {/* 用户信息编辑Modal */}
+        <Modal
+          title={`编辑用户出生信息 - ${currentEditRecord?.user_name || ''}`}
+          open={userEditModalVisible}
+          onOk={handleConfirmUpdateAndRegenerate}
+          onCancel={() => {
+            setUserEditModalVisible(false)
+            setEditingUserProfile(null)
+            setCurrentEditRecord(null)
+            setAreaInfo(null)
+            setAreaSelectValue({})
+          }}
+          confirmLoading={userProfileLoading || regenerateLoading !== ''}
+          okText="更新并重新生成八字报告"
+          cancelText="取消"
+          width={600}
+          maskClosable={false}
+        >
+          {editingUserProfile && (
+            <div className="space-y-4">
+              <div className="mb-4 p-3 rounded-md bg-blue-50">
+                <p className="text-sm text-blue-600">
+                  📝 <strong>编辑说明：</strong>修改用户的出生信息和地址信息后，系统将自动重新生成八字排盘报告。
+                </p>
+              </div>
+              
+              {/* 基本信息 */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    姓名
+                  </label>
+                  <Input
+                    value={editingUserProfile.name}
+                    onChange={(e) => setEditingUserProfile(prev => prev ? {...prev, name: e.target.value} : null)}
+                    placeholder="请输入姓名"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    性别
+                  </label>
+                  <Select
+                    value={editingUserProfile.gender}
+                    onChange={(value) => setEditingUserProfile(prev => prev ? {...prev, gender: value} : null)}
+                    className="w-full"
+                    placeholder="选择性别"
+                  >
+                    <Select.Option value="male">男</Select.Option>
+                    <Select.Option value="female">女</Select.Option>
+                  </Select>
+                </div>
+              </div>
+              
+              {/* 出生时间 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  出生时间
+                </label>
+                <div className="grid grid-cols-5 gap-2">
+                  <InputNumber
+                    value={editingUserProfile.year}
+                    onChange={(value) => setEditingUserProfile(prev => prev ? {...prev, year: value || new Date().getFullYear()} : null)}
+                    placeholder="年"
+                    min={1900}
+                    max={2030}
+                    className="w-full"
+                  />
+                  <InputNumber
+                    value={editingUserProfile.month}
+                    onChange={(value) => setEditingUserProfile(prev => prev ? {...prev, month: value || 1} : null)}
+                    placeholder="月"
+                    min={1}
+                    max={12}
+                    className="w-full"
+                  />
+                  <InputNumber
+                    value={editingUserProfile.day}
+                    onChange={(value) => setEditingUserProfile(prev => prev ? {...prev, day: value || 1} : null)}
+                    placeholder="日"
+                    min={1}
+                    max={31}
+                    className="w-full"
+                  />
+                  <InputNumber
+                    value={editingUserProfile.hour}
+                    onChange={(value) => setEditingUserProfile(prev => prev ? {...prev, hour: value || 0} : null)}
+                    placeholder="时"
+                    min={0}
+                    max={23}
+                    className="w-full"
+                  />
+                  <InputNumber
+                    value={editingUserProfile.minute}
+                    onChange={(value) => setEditingUserProfile(prev => prev ? {...prev, minute: value || 0} : null)}
+                    placeholder="分"
+                    min={0}
+                    max={59}
+                    className="w-full"
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  格式：年-月-日 时:分（例：1990-05-15 14:30）
+                </p>
+              </div>
+              
+              {/* 地址信息 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  出生地点
+                </label>
+                
+                {/* 当前地区信息显示 */}
+                {areaInfo && (
+                  <div className="mb-3 p-2 bg-blue-50 rounded-md">
+                    <p className="text-sm text-blue-700">
+                      <strong>当前地区：</strong>
+                      {areaInfo.provinceName} {areaInfo.cityName} {areaInfo.districtName}
+                    </p>
+                    <p className="text-xs text-blue-500 mt-1">
+                      📝 使用下方地区选择器可修改地区信息
+                    </p>
+                  </div>
+                )}
+                
+                {/* 地区选择器 */}
+                <SimpleAreaSelector
+                  value={areaSelectValue}
+                  onChange={(value) => {
+                    setAreaSelectValue(value)
+                    devLog.log('🌍 地区选择更新:', value)
+                  }}
+                  placeholder={{
+                    province: '选择省份',
+                    city: '选择城市', 
+                    district: '选择区/县'
+                  }}
+                  size="middle"
+                />
+                
+                <p className="text-xs text-gray-500 mt-2">
+                  请选择具体的出生地点，影响八字排盘的精准度。如不修改则保持原地区信息。
+                </p>
+              </div>
+              
+              {/* 当前信息展示 */}
+              <div className="p-3 bg-gray-50 rounded-md">
+                <p className="text-sm text-gray-600 mb-2">信息预览：</p>
+                <p className="text-sm">
+                  <strong>姓名：</strong>{editingUserProfile.name}  
+                  <strong>性别：</strong>{editingUserProfile.gender === 'male' ? '男' : '女'}  
+                  <strong>手机：</strong>{editingUserProfile.users?.phone_number || '未知'}
+                </p>
+                <p className="text-sm">
+                  <strong>出生：</strong>
+                  {editingUserProfile.year}-{String(editingUserProfile.month).padStart(2, '0')}-{String(editingUserProfile.day).padStart(2, '0')} 
+                  {String(editingUserProfile.hour).padStart(2, '0')}:{String(editingUserProfile.minute).padStart(2, '0')}
+                </p>
+                <p className="text-sm">
+                  <strong>地点：</strong>
+                  {areaInfo ? 
+                    `${areaInfo.provinceName} ${areaInfo.cityName} ${areaInfo.districtName}` : 
+                    `${editingUserProfile.area_province} ${editingUserProfile.area_city} ${editingUserProfile.area_district}`
+                  }
+                  {areaSelectValue.province && (
+                    <span className="text-orange-600 ml-2">(将更新为新选择的地区)</span>
+                  )}
+                </p>
+              </div>
+            </div>
+          )}
         </Modal>
       </Content>
     </Layout>
