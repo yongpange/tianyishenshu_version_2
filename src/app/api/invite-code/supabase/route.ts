@@ -11,56 +11,189 @@ function generateInviteCode(): string {
   return result
 }
 
-// 获取所有兑换码
-export async function GET() {
+// 获取兑换码 - 支持分页和搜索
+export async function GET(request: NextRequest) {
   try {
-    // 打印环境变量调试信息
-    console.log('🔍 API路由环境变量检查:')
-    console.log('NEXT_PUBLIC_SUPABASE_URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
-    console.log('NEXT_PUBLIC_SUPABASE_ANON_KEY:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? `${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.substring(0, 10)}...` : 'undefined')
-    console.log('SUPABASE_SERVICE_ROLE_KEY:', process.env.SUPABASE_SERVICE_ROLE_KEY ? `${process.env.SUPABASE_SERVICE_ROLE_KEY.substring(0, 10)}...` : 'undefined')
+    // 获取查询参数
+    const { searchParams } = new URL(request.url)
+    const page = parseInt(searchParams.get('page') || '1')
+    const pageSize = parseInt(searchParams.get('pageSize') || '10')
+    const search = searchParams.get('search') || ''
+    
+    // 验证参数
+    const validatedPage = Math.max(1, page)
+    const validatedPageSize = Math.min(Math.max(1, pageSize), 100) // 限制最大每页100条
+    const offset = (validatedPage - 1) * validatedPageSize
+
+    console.log('📊 分页查询参数:', {
+      page: validatedPage,
+      pageSize: validatedPageSize,
+      search,
+      offset
+    })
     
     // 检查Supabase管理员连接是否可用
     if (!supabaseAdmin) {
       console.warn('⚠️ Supabase 管理员权限未正确配置，返回空数据')
       return NextResponse.json({
         success: true,
-        data: []
+        data: [],
+        pagination: {
+          page: validatedPage,
+          pageSize: validatedPageSize,
+          total: 0,
+          totalPages: 0
+        }
       })
     }
 
     console.log('✅ Supabase 管理员客户端已初始化，尝试连接数据库...')
 
-    const { data, error } = await supabase
-  .from('invite_codes')
-  .select(`
-    *,
-    user_profiles!left (
-      id,
-      name,
-      chat_remaining_count,
-      user_role,
-      users!left (
-        id,
-        phone_number,
-        latest_verification_code,
-        verification_code_expires_at
-      )
-    )
-  `)
-  .order('created_at', { ascending: false })
+    let data, error, count
 
-    // console.log('📊 数据库查询结果:')
-    // console.log('错误信息:', error)
-    // console.log('data:', data)
-    // console.log('数据条数:', data ? data.length : 0)
+    if (search && search.trim()) {
+      const searchTerm = search.trim()
+      console.log('🔍 执行搜索:', searchTerm)
+      
+      // 使用数据库级搜索，分别查询用户名和手机号，然后合并结果
+      try {
+        let searchResults: any[] = []
+        let searchIds = new Set<string>()
+
+        // 1. 先搜索用户名
+        try {
+          const nameSearchQuery = supabase
+            .from('invite_codes')
+            .select(`
+              *,
+              user_profiles!left (
+                id,
+                name,
+                chat_remaining_count,
+                user_role,
+                users!left (
+                  id,
+                  phone_number,
+                  latest_verification_code,
+                  verification_code_expires_at
+                )
+              )
+            `)
+            .not('user_profiles', 'is', null) // 只查询有用户资料的兑换码
+            .ilike('user_profiles.name', `%${searchTerm}%`)
+            .order('created_at', { ascending: false })
+
+          const nameResult = await nameSearchQuery
+          
+          if (nameResult.data) {
+            nameResult.data.forEach(item => {
+              if (!searchIds.has(item.id)) {
+                searchResults.push(item)
+                searchIds.add(item.id)
+              }
+            })
+          }
+        } catch (nameError) {
+          console.warn('🔍 用户名搜索失败:', nameError)
+        }
+
+        // 2. 再搜索手机号（如果还没有足够结果）
+        try {
+          const phoneSearchQuery = supabase
+            .from('invite_codes')
+            .select(`
+              *,
+              user_profiles!left (
+                id,
+                name,
+                chat_remaining_count,
+                user_role,
+                users!left (
+                  id,
+                  phone_number,
+                  latest_verification_code,
+                  verification_code_expires_at
+                )
+              )
+            `)
+            .not('user_profiles', 'is', null) // 只查询有用户资料的兑换码
+            .not('user_profiles.users', 'is', null) // 确保有用户数据
+            .ilike('user_profiles.users.phone_number', `%${searchTerm}%`)
+            .order('created_at', { ascending: false })
+
+          const phoneResult = await phoneSearchQuery
+          
+          if (phoneResult.data) {
+            phoneResult.data.forEach(item => {
+              if (!searchIds.has(item.id)) {
+                searchResults.push(item)
+                searchIds.add(item.id)
+              }
+            })
+          }
+        } catch (phoneError) {
+          console.warn('🔍 手机号搜索失败:', phoneError)
+        }
+
+        // 3. 按创建时间倒序排序合并的结果
+        searchResults.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+        // 4. 手动分页
+        const totalFiltered = searchResults.length
+        const startIndex = offset
+        const endIndex = Math.min(startIndex + validatedPageSize, totalFiltered)
+        const paginatedData = searchResults.slice(startIndex, endIndex)
+
+        data = paginatedData
+        error = null
+        count = totalFiltered
+
+        console.log('✅ 搜索完成:', {
+          searchTerm,
+          totalFound: totalFiltered,
+          currentPage: paginatedData.length,
+          searchMethod: '数据库级分别搜索'
+        })
+        
+      } catch (searchError) {
+        console.error('🔍 搜索查询失败:', searchError)
+        throw searchError
+      }
+    } else {
+      // 没有搜索，执行普通分页查询
+      const query = supabase
+        .from('invite_codes')
+        .select(`
+          *,
+          user_profiles!left (
+            id,
+            name,
+            chat_remaining_count,
+            user_role,
+            users!left (
+              id,
+              phone_number,
+              latest_verification_code,
+              verification_code_expires_at
+            )
+          )
+        `, { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(offset, offset + validatedPageSize - 1)
+
+      const result = await query
+      data = result.data
+      error = result.error
+      count = result.count
+      console.log('✅ 普通查询完成:', { dataCount: data?.length, count })
+    }
     
     if (error) {
       console.error('❌ Supabase查询错误:', error)
       throw error
     }
 
-    // 处理数据格式，展平用户信息，与SQL查询结果保持一致
+    // 处理数据格式，展平用户信息
     const processedData = data?.map(item => ({
       ...item,
       // 添加与SQL查询一致的字段名
@@ -77,14 +210,33 @@ export async function GET() {
       user_phone: item.user_profiles?.phone_number || item.user_profiles?.users?.phone_number || null,
       user_name: item.user_profiles?.name || null, 
       remaining_tokens: item.user_profiles?.chat_remaining_count || null,
-      chat_total_count: item.chat_total_count || null, // 添加 invite_codes 表的 chat_total_count 字段
-      user_role: item.user_profiles?.user_role || item.user_role || null // 已激活用户从user_profiles取，未激活从invite_codes取
+      chat_total_count: item.chat_total_count || null,
+      user_role: item.user_profiles?.user_role || item.user_role || null
     })) || []
 
-    console.log('✅ 成功获取兑换码数据:', processedData?.length || 0, '条')
+    const total = count || 0
+    const totalPages = Math.ceil(total / validatedPageSize)
+
+    console.log('✅ 成功获取兑换码数据:', {
+      dataCount: processedData.length,
+      total,
+      page: validatedPage,
+      pageSize: validatedPageSize,
+      totalPages,
+      hasSearch: !!search
+    })
+
     return NextResponse.json({
       success: true,
-      data: processedData
+      data: processedData,
+      pagination: {
+        page: validatedPage,
+        pageSize: validatedPageSize,
+        total,
+        totalPages,
+        hasNext: validatedPage < totalPages,
+        hasPrev: validatedPage > 1
+      }
     })
   } catch (error) {
     console.error('❌ 获取兑换码失败:', error)
