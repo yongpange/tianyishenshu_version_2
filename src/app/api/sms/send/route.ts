@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { sendSmsCode, validatePhoneNumber, generateVerificationCode } from '@/lib/tencent-sms'
 import { supabaseAdmin } from '@/lib/supabase'
+import { rateLimiter, RATE_LIMIT_RULES } from '@/lib/rate-limiter'
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,6 +17,40 @@ export async function POST(request: NextRequest) {
 
     // 清理手机号
     const cleanPhone = phone.trim()
+
+    // 检查SMS发送限流
+    const rateLimitResult = await rateLimiter.checkRateLimit(cleanPhone, RATE_LIMIT_RULES.SMS_SEND)
+
+    if (!rateLimitResult.allowed) {
+      console.log('🚫 SMS发送限流触发:', {
+        phone: cleanPhone,
+        retryAfter: rateLimitResult.retryAfter
+      })
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: `发送过于频繁，请${rateLimitResult.retryAfter}秒后重试`,
+          retryAfter: rateLimitResult.retryAfter
+        },
+        { status: 429 }
+      )
+    }
+
+    // 检查防重复提交（30秒内不能重复发送）
+    const isDuplicate = !(await rateLimiter.checkDuplicate(cleanPhone, 'sms_send', 30))
+
+    if (isDuplicate) {
+      console.log('🔄 检测到SMS重复发送:', cleanPhone)
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: '请勿重复发送，请稍后再试'
+        },
+        { status: 409 }
+      )
+    }
 
     // 检查用户是否存在
     let { data: user, error: userError } = await supabaseAdmin

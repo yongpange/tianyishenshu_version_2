@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { rateLimiter, RATE_LIMIT_RULES } from '@/lib/rate-limiter'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -26,6 +27,22 @@ export async function POST(request: NextRequest) {
         { error: 'INVALID_PHONE', message: '手机号格式不正确' },
         { status: 400 }
       )
+    }
+
+    // 检查登录尝试限流
+    const rateLimitResult = await rateLimiter.checkRateLimit(cleanPhone, RATE_LIMIT_RULES.LOGIN_ATTEMPT)
+
+    if (!rateLimitResult.allowed) {
+      console.log('🚫 登录尝试限流触发:', {
+        phone: cleanPhone,
+        retryAfter: rateLimitResult.retryAfter
+      })
+
+      return NextResponse.json({
+        error: 'TOO_MANY_ATTEMPTS',
+        message: `登录尝试过于频繁，请${Math.ceil(rateLimitResult.retryAfter! / 60)}分钟后重试`,
+        retryAfter: rateLimitResult.retryAfter
+      }, { status: 429 })
     }
 
     // 验证验证码格式

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { reportStatusCache, ReportType, ReportStatus } from '@/lib/report-status-cache'
 
 // 请求接口
 interface StatusRequest {
@@ -107,6 +108,55 @@ export async function POST(request: NextRequest): Promise<NextResponse<StatusRes
 
     console.log('✅ 确定用户资料ID:', userProfileId)
 
+    // 优先从Redis缓存获取报告状态
+    const cachedStatus = await reportStatusCache.getReportStatus(ReportType.PERSONALITY, userProfileId)
+
+    if (cachedStatus) {
+      console.log('📊 从缓存获取报告状态:', {
+        status: cachedStatus.status,
+        progress: cachedStatus.progress,
+        source: cachedStatus.source,
+        taskId: cachedStatus.taskId
+      })
+
+      // 如果指定了taskId，检查是否匹配
+      if (taskId && taskId !== 'existing' && cachedStatus.taskId !== taskId) {
+        console.log('⚠️ TaskId不匹配，查询数据库')
+        // 继续执行数据库查询逻辑
+      } else {
+        // 返回缓存的状态
+        let responseStatus: StatusResponse['status'] = 'not_found'
+
+        switch (cachedStatus.status) {
+          case ReportStatus.GENERATING:
+            responseStatus = 'generating'
+            break
+          case ReportStatus.COMPLETED:
+            responseStatus = 'completed'
+            break
+          case ReportStatus.FAILED:
+            responseStatus = 'failed'
+            break
+          default:
+            responseStatus = 'not_found'
+        }
+
+        return NextResponse.json({
+          success: true,
+          status: responseStatus,
+          progress: cachedStatus.progress,
+          content: cachedStatus.content,
+          error: cachedStatus.error,
+          taskId: cachedStatus.taskId,
+          generatedAt: cachedStatus.updatedAt,
+          cozeConversationId: undefined // 缓存中暂不存储此字段
+        })
+      }
+    }
+
+    // 缓存未命中或需要查询特定taskId，从数据库获取
+    console.log('🔍 缓存未命中，查询数据库...')
+
     // 构建查询条件
     let query = supabaseAdmin
       .from('personality_reports')
@@ -135,6 +185,14 @@ export async function POST(request: NextRequest): Promise<NextResponse<StatusRes
 
     if (!reports || reports.length === 0) {
       console.log('❌ 未找到报告记录')
+
+      // 缓存"未找到"状态
+      await reportStatusCache.setReportStatus(ReportType.PERSONALITY, userProfileId, {
+        status: ReportStatus.NOT_STARTED,
+        progress: 0,
+        updatedAt: new Date().toISOString()
+      })
+
       return NextResponse.json({
         success: true,
         status: 'not_found',
@@ -143,7 +201,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<StatusRes
     }
 
     const report = reports[0]
-    console.log('📊 报告状态:', {
+    console.log('📊 数据库报告状态:', {
       status: report.status,
       progress: report.progress,
       contentLength: report.content?.length || 0,
@@ -155,48 +213,69 @@ export async function POST(request: NextRequest): Promise<NextResponse<StatusRes
     let progress = 0
     let content = undefined
     let errorMessage = undefined
+    let cacheStatus: ReportStatus = ReportStatus.NOT_STARTED
 
     // 检查是否有新的status字段
     if (report.status) {
       switch (report.status) {
         case 'generating':
           responseStatus = 'generating'
+          cacheStatus = ReportStatus.GENERATING
           progress = report.progress || 0
           break
 
         case 'completed':
           responseStatus = 'completed'
+          cacheStatus = ReportStatus.COMPLETED
           progress = 100
           content = report.content
           break
 
         case 'failed':
           responseStatus = 'failed'
+          cacheStatus = ReportStatus.FAILED
           progress = 0
           errorMessage = report.error_message || '生成失败'
           break
 
         default:
           responseStatus = 'not_found'
+          cacheStatus = ReportStatus.NOT_STARTED
       }
     } else {
       // 兼容旧数据：根据content判断状态
       if (report.content && report.content.trim().length > 0) {
         if (report.content.startsWith('生成失败:') || report.content.startsWith('生成过程出错:')) {
           responseStatus = 'failed'
+          cacheStatus = ReportStatus.FAILED
           progress = 0
           errorMessage = report.content
         } else {
           responseStatus = 'completed'
+          cacheStatus = ReportStatus.COMPLETED
           progress = 100
           content = report.content
         }
       } else {
         // 空内容可能表示正在生成
         responseStatus = 'generating'
+        cacheStatus = ReportStatus.GENERATING
         progress = 50 // 假设进度
       }
     }
+
+    // 异步缓存状态到Redis（不等待结果）
+    reportStatusCache.setReportStatus(ReportType.PERSONALITY, userProfileId, {
+      status: cacheStatus,
+      progress: progress,
+      taskId: report.task_id,
+      reportId: report.id,
+      content: content,
+      error: errorMessage,
+      updatedAt: report.updated_at || report.created_at || new Date().toISOString()
+    }).catch(err => {
+      console.warn('⚠️ 异步缓存报告状态失败:', err)
+    })
 
     return NextResponse.json({
       success: true,

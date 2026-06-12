@@ -1,14 +1,43 @@
 import { PcaCodeData, ProvinceData, CityData, DistrictData, AreaDataCache } from '@/types/area'
 import { devLog } from '@/utils/dev-logger'
+import { getAreaData as getAreaDataFromCache } from '@/lib/static-data-cache'
 
-// 全局缓存
+// 全局缓存（作为降级方案）
 let areaDataCache: AreaDataCache | null = null
 let dataLoadPromise: Promise<AreaDataCache> | null = null
 
 /**
- * 加载省市区数据
+ * 加载省市区数据（优先使用Redis缓存）
  */
 export async function loadAreaData(): Promise<AreaDataCache> {
+  try {
+    // 优先从Redis缓存获取
+    devLog.log('🌍 开始加载省市区数据（优先缓存）...')
+    const cachedData = await getAreaDataFromCache()
+
+    // 更新内存缓存
+    areaDataCache = cachedData
+
+    devLog.log('✅ 省市区数据加载完成（来源：缓存）', {
+      provinces: cachedData.provinces.length,
+      cities: cachedData.cities.size,
+      districts: cachedData.districts.size
+    })
+
+    return cachedData
+
+  } catch (error) {
+    devLog.warn('⚠️ 从缓存加载省市区数据失败，降级到原有逻辑', error)
+
+    // 降级到原有的内存缓存逻辑
+    return loadAreaDataFallback()
+  }
+}
+
+/**
+ * 降级的省市区数据加载逻辑
+ */
+async function loadAreaDataFallback(): Promise<AreaDataCache> {
   // 如果已有缓存，直接返回
   if (areaDataCache) {
     return areaDataCache
@@ -22,26 +51,26 @@ export async function loadAreaData(): Promise<AreaDataCache> {
   // 开始加载数据
   dataLoadPromise = (async () => {
     try {
-      devLog.log('🌍 开始加载省市区数据...')
+      devLog.log('🌍 开始加载省市区数据（降级模式）...')
       const startTime = Date.now()
-      
+
       const response = await fetch('/pca-code.json')
       if (!response.ok) {
         throw new Error(`Failed to load area data: ${response.status}`)
       }
-      
+
       const rawData: PcaCodeData = await response.json()
-      
+
       // 构建缓存结构
       const provinces: ProvinceData[] = rawData
       const cities = new Map<string, CityData[]>()
       const districts = new Map<string, DistrictData[]>()
-      
+
       // 预处理数据，建立索引
       provinces.forEach(province => {
         if (province.children) {
           cities.set(province.code, province.children)
-          
+
           province.children.forEach(city => {
             if (city.children) {
               districts.set(city.code, city.children)

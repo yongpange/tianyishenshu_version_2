@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { createJWTToken } from '@/lib/coze-auth'
+import { tokenCache } from '@/lib/token-cache'
 import { CozeAPI } from '@coze/api'
 
 // 验证Token是否有效的函数
@@ -112,52 +113,68 @@ export async function POST(request: NextRequest) {
 
     console.log('🔑 管理Coze Token:', { userProfileId, forceRefresh })
 
-    const supabase = supabaseAdmin
+    // 1. 优先从Redis缓存获取Token
+    let cachedToken = await tokenCache.getToken(userProfileId)
 
-    // 1. 获取用户当前的token信息
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('coze_access_token, coze_token_expires_at, coze_token_created_at')
-      .eq('id', userProfileId)
-      .single()
+    if (cachedToken && !forceRefresh) {
+      console.log('📋 从缓存获取到Token，验证其有效性...')
 
-    if (profileError) {
-      console.error('❌ 获取用户资料失败:', profileError)
-      return NextResponse.json({
-        success: false,
-        error: 'USER_PROFILE_NOT_FOUND',
-        message: '用户资料不存在'
-      }, { status: 404 })
-    }
+      // 检查缓存的验证结果
+      let isTokenValid = await tokenCache.getCachedTokenValidation(cachedToken.token)
 
-    const now = new Date()
-    const tokenExpiresAt = userProfile.coze_token_expires_at ? new Date(userProfile.coze_token_expires_at) : null
-    const isTokenValid = tokenExpiresAt && tokenExpiresAt > now && userProfile.coze_access_token
-    
-    console.log('🔍 Token状态检查:', {
-      hasToken: !!userProfile.coze_access_token,
-      expiresAt: tokenExpiresAt?.toISOString(),
-      isValid: isTokenValid,
-      forceRefresh
-    })
+      // 如果没有缓存的验证结果，进行验证
+      if (isTokenValid === null) {
+        console.log('🔍 验证Token有效性...')
+        isTokenValid = await validateCozeToken(cachedToken.token)
 
-    // 2. 如果token存在且没有过期，验证其有效性
-    if (isTokenValid && !forceRefresh) {
-      console.log('📋 Token存在且未过期，验证其有效性...')
-      
-      const isTokenReallyValid = await validateCozeToken(userProfile.coze_access_token!)
-      
-      if (isTokenReallyValid) {
-        console.log('✅ 使用现有有效Token')
+        // 缓存验证结果
+        await tokenCache.cacheTokenValidation(cachedToken.token, isTokenValid)
+      }
+
+      if (isTokenValid) {
+        console.log('✅ 使用缓存的有效Token')
         return NextResponse.json({
           success: true,
-          token: userProfile.coze_access_token,
-          expiresAt: userProfile.coze_token_expires_at,
-          createdAt: userProfile.coze_token_created_at,
-          cached: true
+          token: cachedToken.token,
+          expiresAt: cachedToken.expiresAt,
+          createdAt: cachedToken.createdAt,
+          cached: true,
+          source: cachedToken.source
         })
       } else {
-        console.log('❌ Token验证失败，需要重新生成')
+        console.log('❌ 缓存Token验证失败，需要重新生成')
+        // 清除无效的缓存
+        await tokenCache.invalidateToken(userProfileId)
+      }
+    }
+
+    // 2. 如果缓存未命中，从数据库获取
+    if (!cachedToken) {
+      console.log('🔍 缓存未命中，从数据库获取Token...')
+      cachedToken = await tokenCache.getTokenFromDatabase(userProfileId)
+
+      if (cachedToken && !forceRefresh) {
+        console.log('📋 数据库Token验证其有效性...')
+
+        const isTokenValid = await validateCozeToken(cachedToken.token)
+
+        if (isTokenValid) {
+          console.log('✅ 数据库Token有效')
+          // 缓存验证结果
+          await tokenCache.cacheTokenValidation(cachedToken.token, true)
+
+          return NextResponse.json({
+            success: true,
+            token: cachedToken.token,
+            expiresAt: cachedToken.expiresAt,
+            createdAt: cachedToken.createdAt,
+            cached: false,
+            source: 'database'
+          })
+        } else {
+          console.log('❌ 数据库Token验证失败，需要重新生成')
+          await tokenCache.invalidateToken(userProfileId)
+        }
       }
     }
 
@@ -218,31 +235,33 @@ export async function POST(request: NextRequest) {
 
       console.log('✅ 新Token验证通过')
 
-      // 4. 保存新token到数据库
+      // 4. 保存新token到数据库和缓存
       // expires_in 是绝对时间戳（Unix时间戳，以秒为单位），不是相对时间
       const newExpiresAt = new Date(tokenData.expires_in * 1000 - 60000) // 提前1分钟过期
-      
+
       console.log('📅 Token过期时间计算:', {
         expires_in_timestamp: tokenData.expires_in,
         expires_in_date: new Date(tokenData.expires_in * 1000).toISOString(),
         final_expires_at: newExpiresAt.toISOString(),
         current_time: now.toISOString()
       })
-      
-      const { error: updateError } = await supabase
-        .from('user_profiles')
-        .update({
-          coze_access_token: tokenData.access_token,
-          coze_token_expires_at: newExpiresAt.toISOString(),
-          coze_token_created_at: now.toISOString()
-        })
-        .eq('id', userProfileId)
 
-      if (updateError) {
-        console.error('❌ 保存Token失败:', updateError)
+      // 使用Token缓存管理器更新token（同时更新数据库和缓存）
+      const updateSuccess = await tokenCache.updateToken(
+        userProfileId,
+        tokenData.access_token,
+        newExpiresAt.toISOString(),
+        now.toISOString()
+      )
+
+      if (!updateSuccess) {
+        console.error('❌ 保存Token失败')
         // 即使保存失败，也返回token，避免阻塞用户
       } else {
-        console.log('✅ Token已保存到数据库')
+        console.log('✅ Token已保存到数据库和缓存')
+
+        // 缓存验证结果（新token肯定是有效的）
+        await tokenCache.cacheTokenValidation(tokenData.access_token, true)
       }
 
       return NextResponse.json({
@@ -250,21 +269,25 @@ export async function POST(request: NextRequest) {
         token: tokenData.access_token,
         expiresAt: newExpiresAt.toISOString(),
         createdAt: now.toISOString(),
-        cached: false
+        cached: false,
+        source: 'new_generated'
       })
 
     } catch (tokenError) {
       console.error('❌ 获取新Token失败:', tokenError)
-      
-      // 如果获取新token失败，但有旧token，仍然返回旧token（可能已过期但可以尝试）
-      if (userProfile.coze_access_token) {
-        console.log('⚠️ 返回可能过期的Token作为备用')
+
+      // 如果获取新token失败，尝试从缓存获取备用token
+      const fallbackToken = await tokenCache.getToken(userProfileId)
+
+      if (fallbackToken) {
+        console.log('⚠️ 返回缓存的备用Token')
         return NextResponse.json({
           success: true,
-          token: userProfile.coze_access_token,
-          expiresAt: userProfile.coze_token_expires_at,
-          createdAt: userProfile.coze_token_created_at,
+          token: fallbackToken.token,
+          expiresAt: fallbackToken.expiresAt,
+          createdAt: fallbackToken.createdAt,
           cached: true,
+          source: fallbackToken.source,
           warning: '获取新token失败，使用缓存token'
         })
       }
@@ -301,8 +324,20 @@ export async function DELETE(request: NextRequest) {
 
     console.log('🗑️ 清除用户Token:', userProfileId)
 
-    const supabase = supabaseAdmin
+    // 使用Token缓存管理器清除token（同时清除数据库和缓存）
+    const clearSuccess = await tokenCache.invalidateToken(userProfileId)
 
+    if (!clearSuccess) {
+      console.error('❌ 清除Token失败')
+      return NextResponse.json({
+        success: false,
+        error: 'CLEAR_TOKEN_FAILED',
+        message: '清除Token失败'
+      }, { status: 500 })
+    }
+
+    // 额外清除数据库中的token记录
+    const supabase = supabaseAdmin
     const { error } = await supabase
       .from('user_profiles')
       .update({
@@ -313,15 +348,10 @@ export async function DELETE(request: NextRequest) {
       .eq('id', userProfileId)
 
     if (error) {
-      console.error('❌ 清除Token失败:', error)
-      return NextResponse.json({
-        success: false,
-        error: 'CLEAR_TOKEN_FAILED',
-        message: '清除Token失败'
-      }, { status: 500 })
+      console.warn('⚠️ 清除数据库Token记录失败:', error)
     }
 
-    console.log('✅ Token已清除')
+    console.log('✅ Token已清除（缓存和数据库）')
     return NextResponse.json({
       success: true,
       message: 'Token已清除'

@@ -44,7 +44,7 @@ export default function DebugOAuthPage() {
       setResults(data)
     } catch (error) {
       console.error('直接OAuth测试失败:', error)
-      setResults({ error: error.message })
+      setResults({ error: error instanceof Error ? error.message : String(error) })
     } finally {
       setLoading(false)
     }

@@ -2,6 +2,8 @@
 // 用于Docker容器健康检查和负载均衡器探测
 
 import { NextRequest, NextResponse } from 'next/server'
+import { checkRedisConnection } from '@/lib/redis'
+import { supabaseAdmin } from '@/lib/supabase'
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,18 +21,22 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 检查Supabase连接（可选）
+    // 检查Supabase连接
     try {
-      // 这里可以添加Supabase连接检查
-      healthStatus.services.database = 'healthy'
+      const { data, error } = await supabaseAdmin
+        .from('users')
+        .select('count')
+        .limit(1)
+
+      healthStatus.services.database = error ? 'unhealthy' : 'healthy'
     } catch (error) {
       healthStatus.services.database = 'unhealthy'
     }
 
-    // 检查Redis连接（可选）
+    // 检查Redis连接
     try {
-      // 这里可以添加Redis连接检查
-      healthStatus.services.redis = 'healthy'
+      const isRedisHealthy = await checkRedisConnection()
+      healthStatus.services.redis = isRedisHealthy ? 'healthy' : 'unhealthy'
     } catch (error) {
       healthStatus.services.redis = 'unhealthy'
     }
