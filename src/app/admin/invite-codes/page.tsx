@@ -102,6 +102,15 @@ export default function InviteCodesManagement() {
   const [roleOptions, setRoleOptions] = useState<RoleOption[]>([])
   const [regenerateLoading, setRegenerateLoading] = useState<string>('')
   const [searchText, setSearchText] = useState<string>('')
+  // 添加分页相关状态
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: 10,
+    total: 0,
+    totalPages: 0
+  })
+  // 添加搜索防抖状态
+  const [searchLoading, setSearchLoading] = useState(false)
   // 用户信息编辑相关状态
   const [userEditModalVisible, setUserEditModalVisible] = useState(false)
   const [editingUserProfile, setEditingUserProfile] = useState<UserProfileDetail | null>(null)
@@ -112,17 +121,6 @@ export default function InviteCodesManagement() {
   const [areaSelectValue, setAreaSelectValue] = useState<{province?: string, city?: string, district?: string}>({})
   const router = useRouter()
 
-  // 根据搜索文本过滤兑换码
-  const filteredCodes = codes.filter(code => {
-    if (!searchText.trim()) return true
-    
-    const search = searchText.toLowerCase().trim()
-    const phone = (code.user_phone || '').toLowerCase()
-    const name = (code.user_name || '').toLowerCase()
-    
-    return phone.includes(search) || name.includes(search)
-  })
-
   useEffect(() => {
     // 检查管理员登录状态
     const token = localStorage.getItem('admin_token')
@@ -132,53 +130,97 @@ export default function InviteCodesManagement() {
     }
 
     // 加载兑换码列表
-    loadCodes()
+    loadCodes(1, pagination.pageSize, '')
     // 加载角色选项
     loadRoleOptions()
 
-    // 设置定时刷新，每30秒检查一次兑换码状态
-    const interval = setInterval(() => {
-      loadCodes()
-    }, 30000)
+    // 注释掉定时刷新功能
+    // const interval = setInterval(() => {
+    //   loadCodes(pagination.page, pagination.pageSize, searchText)
+    // }, 30000)
 
-    return () => clearInterval(interval)
+    // return () => clearInterval(interval)
   }, [router])
 
-  const loadCodes = async () => {
+  // 搜索防抖效果
+  useEffect(() => {
+    const debounceTimer = setTimeout(() => {
+      if (searchText !== undefined) {
+        loadCodes(1, pagination.pageSize, searchText) // 搜索时重置到第一页
+      }
+    }, 500) // 500ms防抖
+
+    return () => clearTimeout(debounceTimer)
+  }, [searchText])
+
+  const loadCodes = async (page: number = 1, pageSize: number = 10, search: string = '') => {
     try {
-      // 优先从Supabase加载兑换码
-      const response = await fetch('/api/invite-code/supabase')
+      setLoading(true)
+      if (search !== searchText && search !== '') {
+        setSearchLoading(true)
+      }
+
+      // 构建查询参数
+      const params = new URLSearchParams({
+        page: page.toString(),
+        pageSize: pageSize.toString(),
+      })
+      
+      if (search && search.trim()) {
+        params.append('search', search.trim())
+      }
+
+      // 优先从Supabase加载兑换码，带分页参数
+      const response = await fetch(`/api/invite-code/supabase?${params.toString()}`)
       if (response.ok) {
         const result = await response.json()
         if (result.success) {
-          devLog.log('📊 从Supabase获取到的原始数据:', result.data?.length || 0, '条')
+          devLog.log('📊 从Supabase获取分页数据:', {
+            dataCount: result.data?.length || 0,
+            pagination: result.pagination,
+            hasSearch: !!search
+          })
           
-          // 按创建时间倒序排列（最新的在上面）
-          const sortedCodes = result.data.sort((a: any, b: any) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-          )
           // 确保字段名映射正确
-          const processedCodes = sortedCodes.map((code: any) => ({
+          const processedCodes = result.data?.map((code: any) => ({
             ...code,
             createdAt: code.created_at,
             usedAt: code.used_at
-          }))
-          
-          devLog.log('✅ 处理后的兑换码数据:', processedCodes?.length || 0, '条')
-          devLog.log('📋 数据示例:', processedCodes.slice(0, 2))
+          })) || []
           
           setCodes(processedCodes)
+          setPagination(result.pagination || {
+            page: 1,
+            pageSize: 10,
+            total: 0,
+            totalPages: 0
+          })
           return
         }
       }
+      
+      // 如果Supabase失败，显示错误信息
+      console.error('获取兑换码数据失败')
+      setCodes([])
+      setPagination({
+        page: 1,
+        pageSize: 10,
+        total: 0,
+        totalPages: 0
+      })
     } catch (error) {
       devLog.error('从Supabase加载兑换码失败:', error)
+      setCodes([])
+      setPagination({
+        page: 1,
+        pageSize: 10,
+        total: 0,
+        totalPages: 0
+      })
+    } finally {
+      setLoading(false)
+      setSearchLoading(false)
     }
-
-    // 降级到localStorage
-    const data = localStorage.getItem('invite_codes')
-    const allCodes = data ? JSON.parse(data) : []
-    setCodes(allCodes)
   }
 
   const loadRoleOptions = async () => {
@@ -193,6 +235,30 @@ export default function InviteCodesManagement() {
     } catch (error) {
       devLog.error('加载角色选项失败:', error)
     }
+  }
+
+  // 分页变化处理
+  const handleTableChange = (paginationConfig: any) => {
+    const newPage = paginationConfig.current || 1
+    const newPageSize = paginationConfig.pageSize || 10
+    
+    loadCodes(newPage, newPageSize, searchText)
+  }
+
+  // 搜索文本变化处理
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchText(e.target.value)
+  }
+
+  // 清空搜索
+  const handleSearchClear = () => {
+    setSearchText('')
+  }
+
+  // 回车触发搜索
+  const handleSearchEnter = () => {
+    // 立即触发搜索，跳过防抖延迟
+    loadCodes(1, pagination.pageSize, searchText)
   }
 
   const handleLogout = () => {
@@ -242,8 +308,8 @@ export default function InviteCodesManagement() {
           message.success('兑换码生成成功！')
           setModalVisible(false)
           setRemarks('')
-          // 重新加载兑换码列表
-          await loadCodes()
+          // 重新加载当前页数据
+          await loadCodes(pagination.page, pagination.pageSize, searchText)
           return
         }
       }
@@ -301,8 +367,8 @@ export default function InviteCodesManagement() {
         console.log('✅ 删除结果:', result)
         
         if (result.success) {
-          // 重新加载兑换码列表以获取最新数据
-          await loadCodes()
+          // 重新加载当前页数据
+          await loadCodes(pagination.page, pagination.pageSize, searchText)
           
           // 显示详细的删除结果
           if (result.deleted_items) {
@@ -395,8 +461,8 @@ export default function InviteCodesManagement() {
       if (response.ok) {
         const result = await response.json()
         if (result.success) {
-          // 重新加载兑换码列表以获取最新数据
-          await loadCodes()
+          // 重新加载当前页数据
+          await loadCodes(pagination.page, pagination.pageSize, searchText)
           setEditModalVisible(false)
           setEditingCode(null)
           setEditRemarks('')
@@ -1045,28 +1111,29 @@ export default function InviteCodesManagement() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <div className="text-center p-4 bg-blue-50 rounded-lg">
               <div className="text-2xl font-bold text-blue-600">
-                {filteredCodes.length}
-                {searchText && <span className="text-sm text-gray-500"> / {codes.length}</span>}
+                {pagination.total}
               </div>
-              <div className="text-sm text-gray-600">{searchText ? '搜索结果' : '总兑换码'}</div>
+              <div className="text-sm text-gray-600">
+                {searchText ? `搜索结果 (共${pagination.total}条)` : '总兑换码'}
+              </div>
             </div>
             <div className="text-center p-4 bg-green-50 rounded-lg">
               <div className="text-2xl font-bold text-green-600">
-                {filteredCodes.filter(c => c.status === 'active').length}
+                {codes.filter(c => c.status === 'active').length}
               </div>
-              <div className="text-sm text-gray-600">未使用</div>
+              <div className="text-sm text-gray-600">未使用 (当前页)</div>
             </div>
             <div className="text-center p-4 bg-blue-50 rounded-lg">
               <div className="text-2xl font-bold text-blue-500">
-                {filteredCodes.filter(c => c.status === 'used').length}
+                {codes.filter(c => c.status === 'used').length}
               </div>
-              <div className="text-sm text-gray-600">已使用</div>
+              <div className="text-sm text-gray-600">已使用 (当前页)</div>
             </div>
             <div className="text-center p-4 bg-red-50 rounded-lg">
               <div className="text-2xl font-bold text-red-500">
-                {filteredCodes.filter(c => c.status === 'expired').length}
+                {codes.filter(c => c.status === 'expired').length}
               </div>
-              <div className="text-sm text-gray-600">已过期</div>
+              <div className="text-sm text-gray-600">已过期 (当前页)</div>
             </div>
           </div>
           
@@ -1074,19 +1141,19 @@ export default function InviteCodesManagement() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-gray-200">
             <div className="text-center p-3 bg-purple-50 rounded-lg">
               <div className="text-lg font-semibold text-purple-600">
-                {filteredCodes.filter(c => c.user_phone).length}
+                {codes.filter(c => c.user_phone).length}
               </div>
-              <div className="text-sm text-gray-600">已绑定用户</div>
+              <div className="text-sm text-gray-600">已绑定用户 (当前页)</div>
             </div>
             <div className="text-center p-3 bg-orange-50 rounded-lg">
               <div className="text-lg font-semibold text-orange-600">
-                {filteredCodes.filter(c => c.user_role === 'vip_user').length}
+                {codes.filter(c => c.user_role === 'vip_user').length}
               </div>
-              <div className="text-sm text-gray-600">VIP用户</div>
+              <div className="text-sm text-gray-600">VIP用户 (当前页)</div>
             </div>
             <div className="text-center p-3 bg-cyan-50 rounded-lg">
               <div className="text-lg font-semibold text-cyan-600">
-                {filteredCodes.reduce((sum, c) => {
+                {codes.reduce((sum, c) => {
                   // 已激活用户使用 remaining_tokens，未激活用户使用 chat_total_count
                   if (c.user_phone) {
                     return sum + (c.remaining_tokens || 0)
@@ -1095,7 +1162,7 @@ export default function InviteCodesManagement() {
                   }
                 }, 0)}
               </div>
-              <div className="text-sm text-gray-600">总剩余对话次数</div>
+              <div className="text-sm text-gray-600">剩余对话次数 (当前页)</div>
             </div>
           </div>
           
@@ -1103,18 +1170,18 @@ export default function InviteCodesManagement() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-200">
             <div className="text-center p-3 bg-yellow-50 rounded-lg">
               <div className="text-lg font-semibold text-yellow-600">
-                {filteredCodes.filter(c => c.latest_verification_code).length}
+                {codes.filter(c => c.latest_verification_code).length}
               </div>
-              <div className="text-sm text-gray-600">有验证码的用户</div>
+              <div className="text-sm text-gray-600">有验证码的用户 (当前页)</div>
             </div>
             <div className="text-center p-3 bg-red-50 rounded-lg">
               <div className="text-lg font-semibold text-red-600">
-                {filteredCodes.filter(c => {
+                {codes.filter(c => {
                   if (!c.verification_code_expires_at) return false
                   return new Date() > new Date(c.verification_code_expires_at)
                 }).length}
               </div>
-              <div className="text-sm text-gray-600">验证码已过期</div>
+              <div className="text-sm text-gray-600">验证码已过期 (当前页)</div>
             </div>
           </div>
         </Card>
@@ -1126,9 +1193,11 @@ export default function InviteCodesManagement() {
             <Space>
               <Input
                 placeholder="搜索手机号或用户名称"
-                prefix={<SearchOutlined />}
+                prefix={searchLoading ? <div className="animate-spin text-blue-500">🔄</div> : <SearchOutlined />}
                 value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
+                onChange={handleSearchChange}
+                onClear={handleSearchClear}
+                onPressEnter={handleSearchEnter}
                 style={{ width: 250 }}
                 allowClear
               />
@@ -1144,17 +1213,21 @@ export default function InviteCodesManagement() {
         >
           <Table
             columns={columns}
-            dataSource={filteredCodes}
+            dataSource={codes}
             rowKey="id"
+            loading={loading}
+            onChange={handleTableChange}
             pagination={{
-              pageSize: 10,
-              total: filteredCodes.length,
+              current: pagination.page,
+              pageSize: pagination.pageSize,
+              total: pagination.total,
               showSizeChanger: true,
               showQuickJumper: true,
               showTotal: (total, range) => 
-                `第 ${range[0]}-${range[1]} 条 / 共 ${total} 条${searchText ? ` (搜索结果，总数据 ${codes.length} 条)` : ''}`,
+                `第 ${range[0]}-${range[1]} 条 / 共 ${total} 条${searchText ? ` (搜索: "${searchText}")` : ''}`,
               pageSizeOptions: ['10', '20', '50', '100'],
-              size: 'default'
+              size: 'default',
+              showLessItems: true
             }}
             scroll={{ x: 2200 }}
           />
