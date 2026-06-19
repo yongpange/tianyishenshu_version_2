@@ -1778,13 +1778,17 @@ export default function DashboardPage() {
                 return (
                   <Card
                     key={module.id}
-                    className="transition-all duration-300 border-gray-200 bg-white relative hover:shadow-lg hover:scale-[1.02] cursor-pointer hover:border-gray-300"
+                    className={`transition-all duration-300 border-gray-200 bg-white relative ${
+                      hasAccess
+                        ? 'hover:shadow-lg hover:scale-[1.02] cursor-pointer hover:border-gray-300'
+                        : 'opacity-60 grayscale cursor-not-allowed'
+                    }`}
                     bodyStyle={{ padding: '32px 16px', minHeight: '140px' }}
                     onClick={() => {
                       if (hasAccess) {
                         handleReportClick(module.id, module.title)
                       } else {
-                        // 为无权限用户提供更友好的提示
+                        // 无权限：卡片已置灰，点击仍给出友好提示
                         if (isPremiumModule) {
                           message.info(`请开通VIP权限`)
                         } else {

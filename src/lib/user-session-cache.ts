@@ -255,25 +255,50 @@ export class UserSessionCacheManager {
       // 1. 先从Redis获取
       const key = this.getPermissionsKey(userId)
       const cached = await redisCache.get<string[]>(key)
-      
+
       if (cached) {
         devLog.log(`✅ 用户权限缓存命中: ${userId}`)
         return cached
       }
-      
-      // 2. 从数据库获取
-      const { data: permissions, error } = await supabaseAdmin
-        .from('user_permissions')
-        .select('permission')
-        .eq('user_id', userId)
 
-      if (error) {
-        devLog.error(`❌ 查询用户权限失败: ${userId}`, error)
+      // 2. 从数据库获取：user_profiles.user_role → user_roles_permissions.permissions
+      //    （注：原实现查询的 user_permissions 表并不存在，此处改为真实链路）
+      const { data: profile, error: profileError } = await supabaseAdmin
+        .from('user_profiles')
+        .select('user_role')
+        .eq('user_id', userId)
+        .is('parent_id', null)
+        .single()
+
+      if (profileError && profileError.code !== 'PGRST116') {
+        devLog.error(`❌ 查询用户角色失败: ${userId}`, profileError)
         return []
       }
 
-      const permissionList = permissions?.map(p => p.permission) || []
-      
+      const roleName = profile?.user_role || 'basic_user'
+
+      const { data: roleData, error: roleError } = await supabaseAdmin
+        .from('user_roles_permissions')
+        .select('permissions')
+        .eq('role_name', roleName)
+        .eq('is_active', true)
+        .single()
+
+      if (roleError || !roleData) {
+        devLog.error(`❌ 查询角色权限失败: ${userId} (role=${roleName})`, roleError)
+        return []
+      }
+
+      // 将 {"module":["action",...]} 扁平化为 ["module:action", ...]
+      const permsObj = (roleData.permissions || {}) as Record<string, string[]>
+      const permissionList: string[] = []
+      for (const moduleKey of Object.keys(permsObj)) {
+        const actions = permsObj[moduleKey] || []
+        for (const action of actions) {
+          permissionList.push(`${moduleKey}:${action}`)
+        }
+      }
+
       // 异步缓存权限
       redisCache.set(key, permissionList, this.PERMISSIONS_TTL).catch(err => {
         devLog.warn(`⚠️ 缓存用户权限失败: ${userId}`, err)
@@ -335,10 +360,10 @@ export class UserSessionCacheManager {
    */
   private async getSessionFromDatabase(userId: string): Promise<Omit<CachedUserSession, 'source'> | null> {
     try {
-      // 查询用户基本信息
+      // 查询用户基本信息（仅真实存在的字段）
       const { data: user, error: userError } = await supabaseAdmin
         .from('users')
-        .select('id, phone_number, role, is_active, chat_credits')
+        .select('id, phone_number')
         .eq('id', userId)
         .single()
 
@@ -347,10 +372,10 @@ export class UserSessionCacheManager {
         return null
       }
 
-      // 查询用户资料信息（主资料）
+      // 查询用户资料信息（主资料，按真实表结构取字段）
       const { data: profile, error: profileError } = await supabaseAdmin
         .from('user_profiles')
-        .select('id, name, nickname, birth_date, birth_time, birth_location, gender')
+        .select('id, name, gender, year, month, day, hour, minute, area_province, area_city, area_district, user_role, chat_remaining_count')
         .eq('user_id', userId)
         .is('parent_id', null) // 只查找主用户资料
         .single()
@@ -359,7 +384,23 @@ export class UserSessionCacheManager {
         devLog.error(`❌ 查询用户资料失败: ${userId}`, profileError)
       }
 
-      // 获取用户权限
+      // 由出生年月日时分组装生日/时间字符串
+      const birthDate = profile && profile.year != null
+        ? `${profile.year}-${String(profile.month).padStart(2, '0')}-${String(profile.day).padStart(2, '0')}`
+        : undefined
+      const birthTime = profile && profile.hour != null
+        ? `${String(profile.hour).padStart(2, '0')}:${String(profile.minute ?? 0).padStart(2, '0')}`
+        : undefined
+      const birthLocation = profile
+        ? [profile.area_province, profile.area_city, profile.area_district].filter(Boolean).join('') || undefined
+        : undefined
+
+      // 业务角色（admin/vip_user/basic_user/guest）来自 user_profiles.user_role；
+      // 这里映射到中间件用的枚举：仅 admin 提升，其余视为普通用户。
+      const businessRole = profile?.user_role || 'basic_user'
+      const role = businessRole === 'admin' ? UserRole.ADMIN : UserRole.USER
+
+      // 获取用户权限（基于角色的权限明细，扁平化为 "module:action" 列表）
       const permissions = await this.getUserPermissions(userId)
 
       const session: Omit<CachedUserSession, 'source'> = {
@@ -367,15 +408,15 @@ export class UserSessionCacheManager {
         userProfileId: profile?.id || '',
         phoneNumber: user.phone_number,
         name: profile?.name,
-        nickname: profile?.nickname,
-        birthDate: profile?.birth_date,
-        birthTime: profile?.birth_time,
-        birthLocation: profile?.birth_location,
+        nickname: profile?.name,
+        birthDate,
+        birthTime,
+        birthLocation,
         gender: profile?.gender,
-        role: user.role || UserRole.USER,
+        role,
         permissions,
-        isActive: user.is_active || true,
-        chatCredits: user.chat_credits || 0,
+        isActive: true,
+        chatCredits: profile?.chat_remaining_count ?? 0,
         cachedAt: new Date().toISOString()
       }
 

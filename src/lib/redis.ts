@@ -19,7 +19,7 @@ interface RedisConfig {
 
 /**
  * 获取Redis配置
- */二步：创建免费数据库
+ */
 function getRedisConfig(): RedisConfig {
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379'
   const redisPassword = process.env.REDIS_PASSWORD || undefined
